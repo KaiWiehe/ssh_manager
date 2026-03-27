@@ -320,7 +320,7 @@ class SessionTree(ttk.Frame):
         open_folders: set[str] = set()
         for item_id in self._tv.get_children():
             if self._tv.item(item_id, "open"):
-                open_folders.add(self._tv.item(item_id, "text"))
+                open_folders.add(self._tv.item(item_id, "text").strip())
 
         # Alles löschen
         self._tv.delete(*self._tv.get_children())
