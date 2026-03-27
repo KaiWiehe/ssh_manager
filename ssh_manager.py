@@ -95,7 +95,8 @@ class TerminalLauncher:
     def launch(sessions: list[Session], user: str) -> None:
         """
         Öffnet alle Sessions als neue Tabs in einem Windows Terminal Fenster.
-        Raises OSError wenn wt.exe nicht gefunden wird.
+        Hinweis: Da shell=True genutzt wird, wirft Popen keine Exception wenn
+        wt.exe fehlt – cmd.exe startet, aber wt.exe schlägt intern fehl.
         """
         if not sessions:
             return

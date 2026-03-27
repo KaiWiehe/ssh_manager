@@ -39,6 +39,10 @@ def test_parse_session_key_url_encoded_folder():
 from ssh_manager import build_wt_command
 
 
+def test_build_wt_command_empty_sessions():
+    assert build_wt_command([], "tool-admin") == ""
+
+
 def test_build_wt_command_single_session():
     sessions = [Session("k", "srv1", [], "10.0.0.1")]
     cmd = build_wt_command(sessions, "tool-admin")
