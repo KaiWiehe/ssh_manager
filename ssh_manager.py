@@ -471,6 +471,93 @@ class SessionTree(ttk.Frame):
 
 
 # ---------------------------------------------------------------------------
+# UserDialog
+# ---------------------------------------------------------------------------
+class UserDialog(tk.Toplevel):
+    """
+    Modaler Dialog zur Benutzernamen-Auswahl.
+    Nach Schließen: self.result = gewählter Username (str) oder None (Abbrechen).
+    """
+
+    def __init__(self, parent: tk.Tk):
+        super().__init__(parent)
+        self.title("Benutzername auswählen")
+        self.resizable(False, False)
+        self.result: Optional[str] = None
+
+        # Modal machen
+        self.transient(parent)
+        self.grab_set()
+
+        self._build()
+        self._center_on_parent(parent)
+
+        # Tastaturkürzel
+        self.bind("<Return>", lambda _: self._on_ok())
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="Quickselect:").grid(
+            row=0, column=0, columnspan=len(QUICK_USERS), sticky="w", pady=(0, 4)
+        )
+
+        self._user_var = tk.StringVar(value=DEFAULT_USER)
+
+        # Quickselect-Buttons
+        for col, username in enumerate(QUICK_USERS):
+            ttk.Button(
+                frame,
+                text=username,
+                command=lambda u=username: self._user_var.set(u),
+                width=14,
+            ).grid(row=1, column=col, padx=2, pady=(0, 8))
+
+        # Freitext-Eingabe
+        ttk.Label(frame, text="Benutzername:").grid(
+            row=2, column=0, sticky="w", pady=(0, 4)
+        )
+        entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
+        entry.grid(row=3, column=0, columnspan=len(QUICK_USERS), sticky="ew", pady=(0, 12))
+        entry.select_range(0, "end")
+        entry.focus()
+
+        # OK / Abbrechen
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=4, column=0, columnspan=len(QUICK_USERS))
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(
+            side="left", padx=4
+        )
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(
+            side="left", padx=4
+        )
+
+    def _on_ok(self) -> None:
+        user = self._user_var.get().strip()
+        if user:
+            self.result = user
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+# ---------------------------------------------------------------------------
 # SSHManagerApp
 # ---------------------------------------------------------------------------
 class SSHManagerApp(tk.Tk):
