@@ -401,6 +401,11 @@ class SessionTree(ttk.Frame):
 
     def _set_folder_checked(self, folder_item_id: str, state: bool) -> None:
         """Alle Session-Zeilen unter einem Ordner an-/abhaken (rekursiv)."""
+        self._set_folder_checked_inner(folder_item_id, state)
+        self._notify_count()
+
+    def _set_folder_checked_inner(self, folder_item_id: str, state: bool) -> None:
+        """Rekursiver Kern ohne Notification – nur von _set_folder_checked aufrufen."""
         for child_id in self._tv.get_children(folder_item_id):
             tags = self._tv.item(child_id, "tags")
             if self.TAG_SESSION in tags:
@@ -410,8 +415,7 @@ class SessionTree(ttk.Frame):
                     image=self._img_checked if state else self._img_unchecked,
                 )
             elif self.TAG_FOLDER in tags:
-                self._set_folder_checked(child_id, state)
-        self._notify_count()
+                self._set_folder_checked_inner(child_id, state)
 
     def _on_right_click(self, event: tk.Event) -> None:
         """Kontextmenü für Ordner-Zeilen anzeigen."""
