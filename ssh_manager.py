@@ -58,3 +58,48 @@ def parse_session_key(key: str) -> tuple[list[str], str]:
     folder_path = [unquote(p) for p in parts[:-1]]
     name = unquote(parts[-1])
     return folder_path, name
+
+
+def build_wt_command(sessions: list[Session], user: str) -> str:
+    """
+    Erzeugt den wt.exe-Befehl, der alle Sessions als neue Tabs öffnet.
+    Alle Tabs landen im selben Windows Terminal Fenster.
+
+    Format:
+      wt.exe new-tab -p "Git Bash" -- ssh USER@HOST
+        ; new-tab -p "Git Bash" -- ssh -p PORT USER@HOST2
+        ...
+    """
+    parts = []
+    for i, session in enumerate(sessions):
+        if session.port != 22:
+            ssh_cmd = f"ssh -p {session.port} {user}@{session.hostname}"
+        else:
+            ssh_cmd = f"ssh {user}@{session.hostname}"
+
+        if i == 0:
+            parts.append(f'wt.exe new-tab -p "Git Bash" -- {ssh_cmd}')
+        else:
+            parts.append(f'new-tab -p "Git Bash" -- {ssh_cmd}')
+
+    return " ; ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# TerminalLauncher
+# ---------------------------------------------------------------------------
+class TerminalLauncher:
+    """Startet wt.exe mit mehreren SSH-Tabs."""
+
+    @staticmethod
+    def launch(sessions: list[Session], user: str) -> None:
+        """
+        Öffnet alle Sessions als neue Tabs in einem Windows Terminal Fenster.
+        Raises OSError wenn wt.exe nicht gefunden wird.
+        """
+        if not sessions:
+            return
+        cmd = build_wt_command(sessions, user)
+        # shell=True nötig: wt.exe parst `;` als eigenen Subcommand-Separator,
+        # cmd.exe behandelt `;` nicht als Sonderzeichen und reicht es durch.
+        subprocess.Popen(cmd, shell=True)
