@@ -252,6 +252,221 @@ def _create_checkbox_images(root: tk.Tk) -> tuple[tk.PhotoImage, tk.PhotoImage]:
 
 
 # ---------------------------------------------------------------------------
+# SessionTree
+# ---------------------------------------------------------------------------
+class SessionTree(ttk.Frame):
+    """
+    ttk.Treeview-Wrapper mit Checkbox-Unterstützung.
+    Zeigt Sessions gruppiert nach Ordnern an.
+    Unterstützt Live-Filter, Rechtsklick-Kontextmenü, Checkbox-Toggle.
+    """
+
+    # Tag-Konstanten
+    TAG_SESSION = "session"
+    TAG_FOLDER = "folder"
+
+    def __init__(
+        self,
+        parent: tk.Widget,
+        sessions: list[Session],
+        img_unchecked: tk.PhotoImage,
+        img_checked: tk.PhotoImage,
+        on_selection_changed,  # Callable[[int], None]
+    ):
+        super().__init__(parent)
+        self._sessions = sessions
+        self._img_unchecked = img_unchecked
+        self._img_checked = img_checked
+        self._on_selection_changed = on_selection_changed
+
+        # item_id → Session (nur für Session-Zeilen, nicht Ordner)
+        self._item_to_session: dict[str, Session] = {}
+        # item_id → checked state
+        self._checked: dict[str, bool] = {}
+
+        self._build()
+        self.populate(sessions)
+
+    def _build(self) -> None:
+        """Erstellt Treeview + Scrollbar."""
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        self._tv = ttk.Treeview(
+            self,
+            columns=("hostname", "port"),
+            selectmode="none",  # Selektion via Checkboxen, nicht Highlight
+        )
+        self._tv.heading("#0", text="Name", anchor="w")
+        self._tv.heading("hostname", text="Hostname", anchor="w")
+        self._tv.heading("port", text="Port", anchor="w")
+        self._tv.column("#0", width=260, stretch=True)
+        self._tv.column("hostname", width=200, stretch=True)
+        self._tv.column("port", width=60, stretch=False)
+
+        vsb = ttk.Scrollbar(self, orient="vertical", command=self._tv.yview)
+        self._tv.configure(yscrollcommand=vsb.set)
+
+        self._tv.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+
+        # Events
+        self._tv.bind("<ButtonRelease-1>", self._on_left_click)
+        self._tv.bind("<ButtonRelease-3>", self._on_right_click)
+
+    def populate(self, sessions: list[Session]) -> None:
+        """Füllt den Baum mit Sessions. Löscht vorherige Inhalte."""
+        # Zustand merken (welche Ordner waren offen?)
+        open_folders: set[str] = set()
+        for item_id in self._tv.get_children():
+            if self._tv.item(item_id, "open"):
+                open_folders.add(self._tv.item(item_id, "text"))
+
+        # Alles löschen
+        self._tv.delete(*self._tv.get_children())
+        self._item_to_session.clear()
+        self._checked.clear()
+
+        # Ordner-Nodes: folder_key → item_id
+        folder_items: dict[str, str] = {}
+
+        for session in sessions:
+            # Ordner-Hierarchie aufbauen
+            parent_id = ""
+            for depth, folder_name in enumerate(session.folder_path):
+                folder_key = "/".join(session.folder_path[: depth + 1])
+                if folder_key not in folder_items:
+                    was_open = folder_name in open_folders
+                    folder_id = self._tv.insert(
+                        parent_id, "end",
+                        text=f"  {folder_name}",
+                        open=was_open,
+                        tags=(self.TAG_FOLDER,),
+                    )
+                    folder_items[folder_key] = folder_id
+                parent_id = folder_items[folder_key]
+
+            # Session-Zeile
+            port_str = str(session.port) if session.port != 22 else ""
+            item_id = self._tv.insert(
+                parent_id, "end",
+                image=self._img_unchecked,
+                text=f"  {session.display_name}",
+                values=(session.hostname, port_str),
+                tags=(self.TAG_SESSION,),
+            )
+            self._item_to_session[item_id] = session
+            self._checked[item_id] = False
+
+    def _on_left_click(self, event: tk.Event) -> None:
+        """Checkbox togglen wenn auf eine Session-Zeile geklickt wird."""
+        item_id = self._tv.identify_row(event.y)
+        if not item_id:
+            return
+        if self.TAG_SESSION not in self._tv.item(item_id, "tags"):
+            return
+        self._toggle(item_id)
+
+    def _toggle(self, item_id: str) -> None:
+        """Checkbox-Zustand einer Session-Zeile umschalten."""
+        new_state = not self._checked.get(item_id, False)
+        self._checked[item_id] = new_state
+        self._tv.item(
+            item_id,
+            image=self._img_checked if new_state else self._img_unchecked,
+        )
+        self._notify_count()
+
+    def _notify_count(self) -> None:
+        count = sum(1 for v in self._checked.values() if v)
+        self._on_selection_changed(count)
+
+    def get_selected_sessions(self) -> list[Session]:
+        """Gibt alle ausgewählten (gecheckte) Sessions zurück."""
+        return [
+            self._item_to_session[iid]
+            for iid, checked in self._checked.items()
+            if checked
+        ]
+
+    def set_all_checked(self, state: bool) -> None:
+        """Alle sichtbaren Session-Zeilen an-/abhaken."""
+        for item_id in self._checked:
+            self._checked[item_id] = state
+            self._tv.item(
+                item_id,
+                image=self._img_checked if state else self._img_unchecked,
+            )
+        self._notify_count()
+
+    def _set_folder_checked(self, folder_item_id: str, state: bool) -> None:
+        """Alle Session-Zeilen unter einem Ordner an-/abhaken (rekursiv)."""
+        for child_id in self._tv.get_children(folder_item_id):
+            tags = self._tv.item(child_id, "tags")
+            if self.TAG_SESSION in tags:
+                self._checked[child_id] = state
+                self._tv.item(
+                    child_id,
+                    image=self._img_checked if state else self._img_unchecked,
+                )
+            elif self.TAG_FOLDER in tags:
+                self._set_folder_checked(child_id, state)
+        self._notify_count()
+
+    def _on_right_click(self, event: tk.Event) -> None:
+        """Kontextmenü für Ordner-Zeilen anzeigen."""
+        item_id = self._tv.identify_row(event.y)
+        if not item_id:
+            return
+        if self.TAG_FOLDER not in self._tv.item(item_id, "tags"):
+            return
+
+        menu = tk.Menu(self, tearoff=False)
+        menu.add_command(
+            label="Alle im Ordner auswählen",
+            command=lambda: self._set_folder_checked(item_id, True),
+        )
+        menu.add_command(
+            label="Alle im Ordner abwählen",
+            command=lambda: self._set_folder_checked(item_id, False),
+        )
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def filter(self, query: str) -> None:
+        """
+        Filtert sichtbare Sessions nach query (case-insensitive, Name + Hostname).
+        Bei leerem query werden alle Sessions wieder angezeigt.
+        Checkbox-Zustände bleiben beim Filtern erhalten.
+        """
+        q = query.strip().lower()
+
+        # Checkbox-Zustände vor dem Neuaufbau sichern (item_id ändert sich)
+        checked_keys = {
+            self._item_to_session[iid].key
+            for iid, v in self._checked.items()
+            if v
+        }
+
+        if q:
+            filtered = [
+                s for s in self._sessions
+                if q in s.display_name.lower() or q in s.hostname.lower()
+            ]
+        else:
+            filtered = self._sessions
+
+        self.populate(filtered)
+
+        # Checkbox-Zustände wiederherstellen
+        for item_id, session in self._item_to_session.items():
+            if session.key in checked_keys:
+                self._checked[item_id] = True
+                self._tv.item(item_id, image=self._img_checked)
+
+        self._notify_count()
+
+
+# ---------------------------------------------------------------------------
 # SSHManagerApp
 # ---------------------------------------------------------------------------
 class SSHManagerApp(tk.Tk):
