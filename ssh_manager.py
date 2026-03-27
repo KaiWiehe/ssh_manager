@@ -207,3 +207,166 @@ class RegistryReader:
             username=username,
             port=port,
         )
+
+
+# ---------------------------------------------------------------------------
+# Checkbox-Images (werden in SessionTree und SSHManagerApp verwendet)
+# ---------------------------------------------------------------------------
+def _create_checkbox_images(root: tk.Tk) -> tuple[tk.PhotoImage, tk.PhotoImage]:
+    """
+    Erzeugt zwei 16×16 PhotoImages für checked/unchecked Checkboxen.
+    Gibt (img_unchecked, img_checked) zurück.
+    """
+    size = 16
+    border_color = "#808080"
+    bg_color = "#ffffff"
+    check_color = "#1a7a3a"
+
+    def make(checked: bool) -> tk.PhotoImage:
+        img = tk.PhotoImage(width=size, height=size)
+        # Alle Pixel mit Hintergrundfarbe füllen
+        row_bg = "{" + " ".join([bg_color] * size) + "}"
+        for y in range(size):
+            img.put(row_bg, to=(0, y, size, y + 1))
+        # Rahmen zeichnen
+        border_row = "{" + " ".join([border_color] * size) + "}"
+        img.put(border_row, to=(0, 0, size, 1))        # oben
+        img.put(border_row, to=(0, size - 1, size, size))  # unten
+        for y in range(size):
+            img.put("{" + border_color + "}", to=(0, y, 1, y + 1))       # links
+            img.put("{" + border_color + "}", to=(size - 1, y, size, y + 1))  # rechts
+        if checked:
+            # Häkchen: kurzer Abstieg (3,9)→(6,12), dann Aufstieg (6,12)→(13,5)
+            check_px = "{" + check_color + "}"
+            coords_down = [(3, 9), (4, 10), (5, 11), (6, 12)]
+            coords_up = [(7, 11), (8, 10), (9, 9), (10, 8), (11, 7), (12, 6), (13, 5)]
+            for x, y in coords_down + coords_up:
+                if 0 < x < size and 0 < y < size:
+                    img.put(check_px, to=(x, y, x + 1, y + 1))
+                    # Doppelt breit für bessere Sichtbarkeit
+                    if y + 1 < size:
+                        img.put(check_px, to=(x, y + 1, x + 1, y + 2))
+        return img
+
+    return make(False), make(True)
+
+
+# ---------------------------------------------------------------------------
+# SSHManagerApp
+# ---------------------------------------------------------------------------
+class SSHManagerApp(tk.Tk):
+    """Hauptfenster der SSH-Manager Applikation."""
+
+    def __init__(self):
+        super().__init__()
+        self.title(WINDOW_TITLE)
+        self.minsize(*WINDOW_MIN_SIZE)
+        self.geometry("750x550")
+
+        # Stil
+        style = ttk.Style(self)
+        style.theme_use("clam")
+
+        # Registry laden
+        try:
+            reader = RegistryReader()
+            self._sessions = reader.load_sessions()
+        except OSError as e:
+            messagebox.showerror(
+                "Registry-Fehler",
+                f"WinSCP-Sessions konnten nicht geladen werden:\n{e}\n\n"
+                f"Pfad: HKCU\\{REGISTRY_PATH}"
+            )
+            self._sessions = []
+
+        # Checkbox-Images (nach Tk-Initialisierung erzeugen!)
+        self._img_unchecked, self._img_checked = _create_checkbox_images(self)
+
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Erstellt alle UI-Elemente."""
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        # Toolbar (Zeile 0)
+        toolbar = ttk.Frame(self, padding=(8, 6))
+        toolbar.grid(row=0, column=0, sticky="ew")
+        toolbar.columnconfigure(1, weight=1)
+
+        ttk.Label(toolbar, text="Suche:").grid(row=0, column=0, padx=(0, 4))
+        self._search_var = tk.StringVar()
+        search_entry = ttk.Entry(toolbar, textvariable=self._search_var)
+        search_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+
+        ttk.Button(toolbar, text="Alle auswählen",
+                   command=self._select_all).grid(row=0, column=2, padx=2)
+        ttk.Button(toolbar, text="Alle abwählen",
+                   command=self._deselect_all).grid(row=0, column=3, padx=2)
+
+        # SessionTree (Zeile 1)
+        self._tree = SessionTree(
+            self,
+            sessions=self._sessions,
+            img_unchecked=self._img_unchecked,
+            img_checked=self._img_checked,
+            on_selection_changed=self._on_selection_changed,
+        )
+        self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
+
+        # Verbinden-Button (Zeile 2)
+        bottom = ttk.Frame(self, padding=(8, 6))
+        bottom.grid(row=2, column=0, sticky="ew")
+        bottom.columnconfigure(0, weight=1)
+
+        self._connect_btn = ttk.Button(
+            bottom,
+            text="Verbinden",
+            command=self._on_connect,
+            state=tk.DISABLED,
+        )
+        self._connect_btn.grid(row=0, column=0)
+
+        # Suche verdrahten
+        self._search_var.trace_add("write", lambda *_: self._on_search_changed())
+
+    def _on_selection_changed(self, count: int) -> None:
+        """Callback vom SessionTree – aktualisiert den Verbinden-Button."""
+        if count > 0:
+            self._connect_btn.config(
+                text=f"Verbinden ({count} ausgewählt)",
+                state=tk.NORMAL,
+            )
+        else:
+            self._connect_btn.config(text="Verbinden", state=tk.DISABLED)
+
+    def _on_search_changed(self) -> None:
+        self._tree.filter(self._search_var.get())
+
+    def _select_all(self) -> None:
+        self._tree.set_all_checked(True)
+
+    def _deselect_all(self) -> None:
+        self._tree.set_all_checked(False)
+
+    def _on_connect(self) -> None:
+        selected = self._tree.get_selected_sessions()
+        if not selected:
+            return
+        dialog = UserDialog(self)
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return  # Abbrechen gedrückt
+        user = dialog.result
+        try:
+            TerminalLauncher.launch(selected, user)
+        except Exception as e:
+            messagebox.showerror("Fehler beim Starten", str(e))
+
+
+# ---------------------------------------------------------------------------
+# Entry Point
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    app = SSHManagerApp()
+    app.mainloop()
