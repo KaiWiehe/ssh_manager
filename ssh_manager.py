@@ -114,6 +114,7 @@ class TerminalLauncher:
 
 # Allowlist patterns for input validation (defence against shell injection via
 # registry data that ends up in build_wt_command which uses shell=True).
+# Colon allowed for IPv6 addresses.
 _HOSTNAME_RE = re.compile(r'^[A-Za-z0-9.\-:_]+$')
 _USERNAME_RE = re.compile(r'^[A-Za-z0-9.\-_]*$')
 
@@ -145,14 +146,14 @@ class RegistryReader:
                 if decoded_name == "Default Settings":
                     continue
 
-                session = self._read_session(base_key, subkey_name)
+                session = self._read_session(subkey_name)
                 if session is not None:
                     sessions.append(session)
 
         sessions.sort(key=lambda s: (s.folder_key.lower(), s.display_name.lower()))
         return sessions
 
-    def _read_session(self, base_key, subkey_name: str) -> Optional[Session]:
+    def _read_session(self, subkey_name: str) -> Optional[Session]:
         """Liest eine einzelne Session. Gibt None zurück wenn kein HostName oder Validierung fehlschlägt."""
         full_path = REGISTRY_PATH + "\\" + subkey_name
         try:
