@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tkinter as tk
 from tkinter import messagebox, ttk
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import unquote
 import winreg
@@ -143,7 +143,7 @@ class RegistryReader:
 
                 # "Default Settings" überspringen
                 decoded_name = unquote(subkey_name)
-                if decoded_name == "Default Settings":
+                if decoded_name in SKIP_SESSIONS:
                     continue
 
                 session = self._read_session(subkey_name)
@@ -538,6 +538,13 @@ class UserDialog(tk.Toplevel):
         user = self._user_var.get().strip()
         if not user:
             return  # Leeres Feld: Dialog bleibt offen
+        if not _USERNAME_RE.match(user):
+            messagebox.showwarning(
+                "Ungültiger Benutzername",
+                "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+                parent=self,
+            )
+            return
         self.result = user
         self.destroy()
 
