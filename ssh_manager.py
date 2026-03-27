@@ -536,8 +536,9 @@ class UserDialog(tk.Toplevel):
 
     def _on_ok(self) -> None:
         user = self._user_var.get().strip()
-        if user:
-            self.result = user
+        if not user:
+            return  # Leeres Feld: Dialog bleibt offen
+        self.result = user
         self.destroy()
 
     def _on_cancel(self) -> None:
