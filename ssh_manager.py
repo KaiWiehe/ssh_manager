@@ -4,10 +4,13 @@ Benötigt: Python 3.8+, Windows, Windows Terminal (wt.exe), Git Bash-Profil.
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 import subprocess
 import sys
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, ttk
 from dataclasses import dataclass
 from typing import Optional
@@ -23,6 +26,7 @@ QUICK_USERS = ["tool-admin", "dev-sys", "de-nb-statist"]
 DEFAULT_USER = "tool-admin"
 WINDOW_TITLE = "SSH-Manager"
 WINDOW_MIN_SIZE = (600, 450)
+_STATE_FILE = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager" / "ui_state.json"
 
 # ---------------------------------------------------------------------------
 # Datenmodell
@@ -252,6 +256,27 @@ def _create_checkbox_images(root: tk.Tk) -> tuple[tk.PhotoImage, tk.PhotoImage]:
 
 
 # ---------------------------------------------------------------------------
+# UI-State Persistenz
+# ---------------------------------------------------------------------------
+def _load_ui_state() -> set[str]:
+    """Lädt gespeicherte expanded_folders aus JSON. Gibt leeres Set zurück wenn nicht vorhanden."""
+    try:
+        data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+        return set(data.get("expanded_folders", []))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return set()
+
+
+def _save_ui_state(expanded_folders: set[str]) -> None:
+    """Speichert expanded_folders als JSON in %APPDATA%\\SSH-Manager\\."""
+    _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _STATE_FILE.write_text(
+        json.dumps({"expanded_folders": sorted(expanded_folders)}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+# ---------------------------------------------------------------------------
 # SessionTree
 # ---------------------------------------------------------------------------
 class SessionTree(ttk.Frame):
@@ -272,6 +297,7 @@ class SessionTree(ttk.Frame):
         img_unchecked: tk.PhotoImage,
         img_checked: tk.PhotoImage,
         on_selection_changed,  # Callable[[int], None]
+        initial_open_folders: set[str] | None = None,
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -283,9 +309,11 @@ class SessionTree(ttk.Frame):
         self._item_to_session: dict[str, Session] = {}
         # item_id → checked state
         self._checked: dict[str, bool] = {}
+        # item_id → folder_key (z.B. "Extern/Sub")
+        self._item_to_folder_key: dict[str, str] = {}
 
         self._build()
-        self.populate(sessions)
+        self.populate(sessions, open_folders=initial_open_folders or set())
 
     def _build(self) -> None:
         """Erstellt Treeview + Scrollbar."""
@@ -314,18 +342,25 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<ButtonRelease-1>", self._on_left_click)
         self._tv.bind("<ButtonRelease-3>", self._on_right_click)
 
-    def populate(self, sessions: list[Session]) -> None:
+    def get_open_folders(self) -> set[str]:
+        """Gibt folder_keys aller aktuell geöffneten Ordner zurück."""
+        return {
+            fkey
+            for item_id, fkey in self._item_to_folder_key.items()
+            if self._tv.item(item_id, "open")
+        }
+
+    def populate(self, sessions: list[Session], open_folders: set[str] | None = None) -> None:
         """Füllt den Baum mit Sessions. Löscht vorherige Inhalte."""
-        # Zustand merken (welche Ordner waren offen?)
-        open_folders: set[str] = set()
-        for item_id in self._tv.get_children():
-            if self._tv.item(item_id, "open"):
-                open_folders.add(self._tv.item(item_id, "text").strip())
+        # Zustand merken (welche Ordner waren offen?) – falls nicht extern übergeben
+        if open_folders is None:
+            open_folders = self.get_open_folders()
 
         # Alles löschen
         self._tv.delete(*self._tv.get_children())
         self._item_to_session.clear()
         self._checked.clear()
+        self._item_to_folder_key.clear()
 
         # Ordner-Nodes: folder_key → item_id
         folder_items: dict[str, str] = {}
@@ -336,7 +371,7 @@ class SessionTree(ttk.Frame):
             for depth, folder_name in enumerate(session.folder_path):
                 folder_key = "/".join(session.folder_path[: depth + 1])
                 if folder_key not in folder_items:
-                    was_open = folder_name in open_folders
+                    was_open = folder_key in open_folders
                     folder_id = self._tv.insert(
                         parent_id, "end",
                         text=f"  {folder_name}",
@@ -344,6 +379,7 @@ class SessionTree(ttk.Frame):
                         tags=(self.TAG_FOLDER,),
                     )
                     folder_items[folder_key] = folder_id
+                    self._item_to_folder_key[folder_id] = folder_key
                 parent_id = folder_items[folder_key]
 
             # Session-Zeile
@@ -596,7 +632,9 @@ class SSHManagerApp(tk.Tk):
         # Checkbox-Images (nach Tk-Initialisierung erzeugen!)
         self._img_unchecked, self._img_checked = _create_checkbox_images(self)
 
+        self._initial_open_folders = _load_ui_state()
         self._build_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self) -> None:
         """Erstellt alle UI-Elemente."""
@@ -625,6 +663,7 @@ class SSHManagerApp(tk.Tk):
             img_unchecked=self._img_unchecked,
             img_checked=self._img_checked,
             on_selection_changed=self._on_selection_changed,
+            initial_open_folders=self._initial_open_folders,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -676,6 +715,10 @@ class SSHManagerApp(tk.Tk):
             TerminalLauncher.launch(selected, user)
         except Exception as e:
             messagebox.showerror("Fehler beim Starten", str(e))
+
+    def _on_close(self) -> None:
+        _save_ui_state(self._tree.get_open_folders())
+        self.destroy()
 
 
 # ---------------------------------------------------------------------------
