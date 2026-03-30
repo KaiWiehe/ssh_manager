@@ -318,6 +318,7 @@ class SessionTree(ttk.Frame):
         img_checked: tk.PhotoImage,
         on_selection_changed,  # Callable[[int], None]
         initial_open_folders: set[str] | None = None,
+        initial_session_colors: dict[str, str] | None = None,
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -331,6 +332,8 @@ class SessionTree(ttk.Frame):
         self._checked: dict[str, bool] = {}
         # item_id → folder_key (z.B. "Extern/Sub")
         self._item_to_folder_key: dict[str, str] = {}
+        # session.key → hex-Farbe
+        self._session_colors: dict[str, str] = dict(initial_session_colors or {})
 
         self._build()
         self.populate(sessions, open_folders=initial_open_folders or set())
@@ -362,6 +365,13 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<ButtonRelease-1>", self._on_left_click)
         self._tv.bind("<ButtonRelease-3>", self._on_right_click)
 
+        self._configure_color_tags()
+
+    def _configure_color_tags(self) -> None:
+        """Registriert für jede Palettenfarbe einen Treeview-Tag."""
+        for _, hex_color in PALETTE:
+            self._tv.tag_configure(_color_tag(hex_color), foreground=hex_color)
+
     def get_open_folders(self) -> set[str]:
         """Gibt folder_keys aller aktuell geöffneten Ordner zurück."""
         return {
@@ -369,6 +379,23 @@ class SessionTree(ttk.Frame):
             for item_id, fkey in self._item_to_folder_key.items()
             if self._tv.item(item_id, "open")
         }
+
+    def get_session_colors(self) -> dict[str, str]:
+        """Gibt eine Kopie des aktuellen session_key → hex Mappings zurück."""
+        return dict(self._session_colors)
+
+    def set_session_color(self, session_key: str, hex_color: str | None) -> None:
+        """Setzt oder entfernt die Textfarbe einer Session sofort im Tree."""
+        if hex_color:
+            self._session_colors[session_key] = hex_color
+        else:
+            self._session_colors.pop(session_key, None)
+        for item_id, session in self._item_to_session.items():
+            if session.key == session_key:
+                color_tag = _color_tag(hex_color) if hex_color else None
+                tags = (self.TAG_SESSION,) + ((color_tag,) if color_tag else ())
+                self._tv.item(item_id, tags=tags)
+                break
 
     def populate(self, sessions: list[Session], open_folders: set[str] | None = None) -> None:
         """Füllt den Baum mit Sessions. Löscht vorherige Inhalte."""
@@ -404,12 +431,14 @@ class SessionTree(ttk.Frame):
 
             # Session-Zeile
             port_str = str(session.port) if session.port != 22 else ""
+            _ctag = _color_tag(self._session_colors[session.key]) if session.key in self._session_colors else None
+            _tags = (self.TAG_SESSION,) + ((_ctag,) if _ctag else ())
             item_id = self._tv.insert(
                 parent_id, "end",
                 image=self._img_unchecked,
                 text=f"  {session.display_name}",
                 values=(session.hostname, port_str),
-                tags=(self.TAG_SESSION,),
+                tags=_tags,
             )
             self._item_to_session[item_id] = session
             self._checked[item_id] = False
