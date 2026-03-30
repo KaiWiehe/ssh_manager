@@ -503,13 +503,18 @@ class SessionTree(ttk.Frame):
                 self._set_folder_checked_inner(child_id, state)
 
     def _on_right_click(self, event: tk.Event) -> None:
-        """Kontextmenü für Ordner-Zeilen anzeigen."""
+        """Kontextmenü je nach Zeilentyp anzeigen."""
         item_id = self._tv.identify_row(event.y)
         if not item_id:
             return
-        if self.TAG_FOLDER not in self._tv.item(item_id, "tags"):
-            return
+        tags = self._tv.item(item_id, "tags")
+        if self.TAG_FOLDER in tags:
+            self._show_folder_menu(item_id, event)
+        elif self.TAG_SESSION in tags:
+            self._show_session_menu(item_id, event)
 
+    def _show_folder_menu(self, item_id: str, event: tk.Event) -> None:
+        """Kontextmenü für Ordner-Zeilen."""
         menu = tk.Menu(self, tearoff=False)
         menu.add_command(
             label="Alle im Ordner auswählen",
@@ -519,6 +524,27 @@ class SessionTree(ttk.Frame):
             label="Alle im Ordner abwählen",
             command=lambda: self._set_folder_checked(item_id, False),
         )
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _show_session_menu(self, item_id: str, event: tk.Event) -> None:
+        """Kontextmenü für Session-Zeilen mit Farb-Submenu."""
+        session = self._item_to_session[item_id]
+        current_color = self._session_colors.get(session.key)
+
+        menu = tk.Menu(self, tearoff=False)
+        color_menu = tk.Menu(menu, tearoff=False)
+        for name, hex_color in PALETTE:
+            prefix = "✓" if hex_color == current_color else "  "
+            color_menu.add_command(
+                label=f"{prefix} {name}",
+                command=lambda hc=hex_color, sk=session.key: self.set_session_color(sk, hc),
+            )
+        color_menu.add_separator()
+        color_menu.add_command(
+            label="✕ Farbe entfernen",
+            command=lambda sk=session.key: self.set_session_color(sk, None),
+        )
+        menu.add_cascade(label="Farbe…", menu=color_menu)
         menu.tk_popup(event.x_root, event.y_root)
 
     def filter(self, query: str) -> None:
