@@ -28,6 +28,22 @@ WINDOW_TITLE = "SSH-Manager"
 WINDOW_MIN_SIZE = (600, 450)
 _STATE_FILE = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager" / "ui_state.json"
 
+PALETTE: list[tuple[str, str]] = [
+    ("Grün (Test)",  "#2d8653"),
+    ("Rot (Live)",   "#c0392b"),
+    ("Blau",         "#2980b9"),
+    ("Orange",       "#d35400"),
+    ("Lila",         "#8e44ad"),
+    ("Türkis",       "#16a085"),
+    ("Grau",         "#7f8c8d"),
+    ("Gelb",         "#b7950b"),
+]
+
+
+def _color_tag(hex_color: str) -> str:
+    """Tag-Name für eine Hex-Farbe, z.B. '#2d8653' → 'color_2d8653'."""
+    return f"color_{hex_color.lstrip('#')}"
+
 # ---------------------------------------------------------------------------
 # Datenmodell
 # ---------------------------------------------------------------------------

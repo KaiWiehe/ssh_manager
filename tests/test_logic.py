@@ -230,3 +230,24 @@ def test_registry_reader_skips_malicious_username():
 
     assert len(sessions) == 1
     assert sessions[0].hostname == "10.0.0.2"
+
+
+from ssh_manager import _color_tag, PALETTE
+
+
+def test_color_tag_strips_hash():
+    assert _color_tag("#2d8653") == "color_2d8653"
+
+
+def test_color_tag_without_hash():
+    assert _color_tag("2d8653") == "color_2d8653"
+
+
+def test_palette_has_eight_entries():
+    assert len(PALETTE) == 8
+
+
+def test_palette_entries_have_name_and_hex():
+    for name, hex_color in PALETTE:
+        assert isinstance(name, str) and len(name) > 0
+        assert hex_color.startswith("#") and len(hex_color) == 7
