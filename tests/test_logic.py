@@ -232,6 +232,42 @@ def test_registry_reader_skips_malicious_username():
     assert sessions[0].hostname == "10.0.0.2"
 
 
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+from ssh_manager import _color_tag, PALETTE, _load_ui_state, _save_ui_state
+
+
+def test_load_ui_state_missing_file_returns_defaults():
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_path = Path(tmp) / "nonexistent.json"
+        with patch("ssh_manager._STATE_FILE", fake_path):
+            folders, colors = _load_ui_state()
+    assert folders == set()
+    assert colors == {}
+
+
+def test_save_and_load_ui_state_roundtrip():
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_path = Path(tmp) / "ui_state.json"
+        with patch("ssh_manager._STATE_FILE", fake_path):
+            _save_ui_state({"Extern", "Extern/Sub"}, {"Extern/srv": "#c0392b"})
+            folders, colors = _load_ui_state()
+    assert folders == {"Extern", "Extern/Sub"}
+    assert colors == {"Extern/srv": "#c0392b"}
+
+
+def test_load_ui_state_ignores_unknown_keys():
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_path = Path(tmp) / "ui_state.json"
+        fake_path.write_text(json.dumps({"expanded_folders": ["A"], "future_key": 42}))
+        with patch("ssh_manager._STATE_FILE", fake_path):
+            folders, colors = _load_ui_state()
+    assert folders == {"A"}
+    assert colors == {}
+
+
 from ssh_manager import _color_tag, PALETTE
 
 

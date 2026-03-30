@@ -274,20 +274,24 @@ def _create_checkbox_images(root: tk.Tk) -> tuple[tk.PhotoImage, tk.PhotoImage]:
 # ---------------------------------------------------------------------------
 # UI-State Persistenz
 # ---------------------------------------------------------------------------
-def _load_ui_state() -> set[str]:
-    """Lädt gespeicherte expanded_folders aus JSON. Gibt leeres Set zurück wenn nicht vorhanden."""
+def _load_ui_state() -> tuple[set[str], dict[str, str]]:
+    """Lädt UI-Zustand aus JSON. Gibt leere Defaults zurück wenn nicht vorhanden."""
     try:
         data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
-        return set(data.get("expanded_folders", []))
+        return set(data.get("expanded_folders", [])), dict(data.get("session_colors", {}))
     except (OSError, json.JSONDecodeError, ValueError):
-        return set()
+        return set(), {}
 
 
-def _save_ui_state(expanded_folders: set[str]) -> None:
-    """Speichert expanded_folders als JSON in %APPDATA%\\SSH-Manager\\."""
+def _save_ui_state(expanded_folders: set[str], session_colors: dict[str, str]) -> None:
+    """Speichert UI-Zustand als JSON in %APPDATA%\\SSH-Manager\\."""
     _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     _STATE_FILE.write_text(
-        json.dumps({"expanded_folders": sorted(expanded_folders)}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {"expanded_folders": sorted(expanded_folders), "session_colors": session_colors},
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
@@ -648,7 +652,7 @@ class SSHManagerApp(tk.Tk):
         # Checkbox-Images (nach Tk-Initialisierung erzeugen!)
         self._img_unchecked, self._img_checked = _create_checkbox_images(self)
 
-        self._initial_open_folders = _load_ui_state()
+        self._initial_open_folders, self._initial_session_colors = _load_ui_state()
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -733,7 +737,7 @@ class SSHManagerApp(tk.Tk):
             messagebox.showerror("Fehler beim Starten", str(e))
 
     def _on_close(self) -> None:
-        _save_ui_state(self._tree.get_open_folders())
+        _save_ui_state(self._tree.get_open_folders(), self._tree.get_session_colors())
         self.destroy()
 
 
