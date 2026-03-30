@@ -739,6 +739,7 @@ class SSHManagerApp(tk.Tk):
             img_checked=self._img_checked,
             on_selection_changed=self._on_selection_changed,
             initial_open_folders=self._initial_open_folders,
+            initial_session_colors=self._initial_session_colors,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
