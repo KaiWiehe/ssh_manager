@@ -456,6 +456,8 @@ class SessionTree(ttk.Frame):
         on_add_session_in_folder=None,   # Callable[[str], None] | None  (folder_key)
         on_duplicate_ssh_alias=None,     # Callable[[Session], None] | None
         on_inspect_ssh_config=None,      # Callable[[Session], None] | None
+        on_duplicate_app_session=None,   # Callable[[Session], None] | None
+        on_move_session=None,            # Callable[[Session], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -469,6 +471,8 @@ class SessionTree(ttk.Frame):
         self._on_add_session_in_folder = on_add_session_in_folder
         self._on_duplicate_ssh_alias = on_duplicate_ssh_alias
         self._on_inspect_ssh_config = on_inspect_ssh_config
+        self._on_duplicate_app_session = on_duplicate_app_session
+        self._on_move_session = on_move_session
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -736,6 +740,16 @@ class SessionTree(ttk.Frame):
                     label="Bearbeiten…",
                     command=lambda s=session: self._on_edit_session(s),
                 )
+            if self._on_duplicate_app_session:
+                menu.add_command(
+                    label="Duplizieren…",
+                    command=lambda s=session: self._on_duplicate_app_session(s),
+                )
+            if self._on_move_session:
+                menu.add_command(
+                    label="In Ordner verschieben…",
+                    command=lambda s=session: self._on_move_session(s),
+                )
             if self._on_delete_session:
                 menu.add_command(
                     label="Löschen",
@@ -760,12 +774,22 @@ class SessionTree(ttk.Frame):
                     label="Löschen",
                     command=lambda s=session: self._on_delete_session(s),
                 )
+            if self._on_move_session:
+                menu.add_command(
+                    label="In Ordner verschieben…",
+                    command=lambda s=session: self._on_move_session(s),
+                )
             if self._on_inspect_ssh_config:
                 menu.add_command(
                     label="Konfiguration anzeigen (ssh -G)…",
                     command=lambda s=session: self._on_inspect_ssh_config(s),
                 )
             menu.add_separator()
+        menu.add_command(
+            label="Hostname kopieren",
+            command=lambda h=session.hostname: (self.clipboard_clear(), self.clipboard_append(h)),
+        )
+        menu.add_separator()
         menu.add_cascade(label="Farbe…", menu=color_menu)
         menu.tk_popup(event.x_root, event.y_root)
 
@@ -942,9 +966,11 @@ class SessionEditDialog(tk.Toplevel):
         session: Optional[Session] = None,
         folder_preset: str = "",
         alias_preset: str = "",
+        duplicate: bool = False,
     ):
         super().__init__(parent)
         self._existing_session = session
+        self._duplicate = duplicate
         self._existing_folders = existing_folders
         self._ssh_aliases = ssh_aliases or []
         self._alias_preset = alias_preset
@@ -955,7 +981,12 @@ class SessionEditDialog(tk.Toplevel):
         else:
             self._initial_mode = "verbindung"
 
-        self.title("Verbindung bearbeiten" if session else "Neue Verbindung")
+        if duplicate:
+            self.title("Verbindung duplizieren")
+        elif session:
+            self.title("Verbindung bearbeiten")
+        else:
+            self.title("Neue Verbindung")
         self.resizable(False, False)
         self.result: Optional[Session] = None
 
@@ -1023,7 +1054,13 @@ class SessionEditDialog(tk.Toplevel):
         self._verbindung_frame.grid(row=content_row, column=0, columnspan=2, sticky="ew")
 
         ttk.Label(self._verbindung_frame, text="Name:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
-        self._name_var = tk.StringVar(value=s.display_name if (s and s.is_app_session) else "")
+        if s and self._duplicate:
+            name_val = "Kopie von " + s.display_name
+        elif s and s.is_app_session:
+            name_val = s.display_name
+        else:
+            name_val = ""
+        self._name_var = tk.StringVar(value=name_val)
         ttk.Entry(self._verbindung_frame, textvariable=self._name_var, width=32).grid(row=0, column=1, sticky="ew")
 
         ttk.Label(self._verbindung_frame, text="Ordner:").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 8))
@@ -1133,7 +1170,11 @@ class SessionEditDialog(tk.Toplevel):
             return
 
         folder_path = [p for p in folder_str.split("/") if p]
-        session_key = self._existing_session.key if self._existing_session else _APP_PREFIX + str(uuid.uuid4())
+        session_key = (
+            self._existing_session.key
+            if self._existing_session and not self._duplicate
+            else _APP_PREFIX + str(uuid.uuid4())
+        )
         self.result = Session(
             key=session_key,
             display_name=name,
@@ -1212,6 +1253,69 @@ class SshConfigInspectDialog(tk.Toplevel):
         btn_frame = ttk.Frame(self, padding=(8, 4, 8, 8))
         btn_frame.grid(row=1, column=0)
         ttk.Button(btn_frame, text="Schließen", command=self.destroy, width=12).pack()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+# ---------------------------------------------------------------------------
+# MoveFolderDialog
+# ---------------------------------------------------------------------------
+class MoveFolderDialog(tk.Toplevel):
+    """
+    Minimaler modaler Dialog zum Verschieben einer Session in einen anderen Ordner.
+    Nach Schließen: self.result = Ordner-String oder None (Abbrechen).
+    """
+
+    def __init__(self, parent: tk.Tk, existing_folders: list[str], current_folder: str):
+        super().__init__(parent)
+        self.title("In Ordner verschieben")
+        self.resizable(False, False)
+        self.result: Optional[str] = None
+        self.transient(parent)
+        self.grab_set()
+        self._build(existing_folders, current_folder)
+        self._center_on_parent(parent)
+        self.bind("<Return>", lambda _: self._on_ok())
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self, existing_folders: list[str], current_folder: str) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        ttk.Label(frame, text="Ordner:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
+        self._folder_var = tk.StringVar(value=current_folder)
+        ttk.Combobox(
+            frame, textvariable=self._folder_var,
+            values=existing_folders, width=30,
+        ).grid(row=0, column=1, sticky="ew")
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=1, column=0, columnspan=2, pady=(12, 0))
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        folder = self._folder_var.get().strip()
+        if not folder:
+            messagebox.showwarning("Fehlendes Feld", "Bitte einen Ordner eingeben.", parent=self)
+            return
+        self.result = folder
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
         self.update_idletasks()
@@ -1307,6 +1411,8 @@ class SSHManagerApp(tk.Tk):
             on_add_session_in_folder=self._add_session,
             on_duplicate_ssh_alias=self._duplicate_ssh_alias,
             on_inspect_ssh_config=self._inspect_ssh_config,
+            on_duplicate_app_session=self._duplicate_app_session,
+            on_move_session=self._move_session,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -1424,6 +1530,40 @@ class SSHManagerApp(tk.Tk):
             if s.key == session.key:
                 # Farbe auf neuen Key übertragen falls Key sich geändert hat (sollte nicht passieren)
                 self._app_sessions[i] = dialog.result
+                break
+        _save_app_sessions(self._app_sessions)
+        self._rebuild_sessions()
+
+    def _duplicate_app_session(self, session: Session) -> None:
+        """Dupliziert eine App-Session (öffnet Dialog mit vorausgefüllten Daten, neue UUID)."""
+        dialog = SessionEditDialog(
+            self, self._get_all_folder_names(), session=session, duplicate=True
+        )
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        self._app_sessions.append(dialog.result)
+        _save_app_sessions(self._app_sessions)
+        self._rebuild_sessions()
+
+    def _move_session(self, session: Session) -> None:
+        """Verschiebt eine App- oder SSH-Alias-Session in einen anderen Ordner."""
+        dialog = MoveFolderDialog(self, self._get_all_folder_names(), session.folder_key)
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        folder_path = [p for p in dialog.result.split("/") if p]
+        for i, s in enumerate(self._app_sessions):
+            if s.key == session.key:
+                self._app_sessions[i] = Session(
+                    key=s.key,
+                    display_name=s.display_name,
+                    folder_path=folder_path,
+                    hostname=s.hostname,
+                    username=s.username,
+                    port=s.port,
+                    source=s.source,
+                )
                 break
         _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
