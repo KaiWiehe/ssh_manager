@@ -30,6 +30,10 @@ WINDOW_MIN_SIZE = (600, 450)
 _STATE_FILE = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager" / "ui_state.json"
 _APP_SESSIONS_FILE = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager" / "app_sessions.json"
 _APP_PREFIX = "__app__"
+_SSH_CONFIG_FILE = Path.home() / ".ssh" / "config"
+_SSH_CONFIG_PREFIX = "__sshcfg__"
+_SSH_ALIAS_PREFIX = "__sshalias__"
+_SSH_CONFIG_DEFAULT_FOLDER = "SSH Config"
 
 PALETTE: list[tuple[str, str]] = [
     ("Grün (Test)",  "#2d8653"),
@@ -59,7 +63,7 @@ class Session:
     hostname: str                   # HostName-Wert
     username: str = ""              # UserName-Wert (optional)
     port: int = 22                  # PortNumber (default 22)
-    source: str = "winscp"          # "winscp" | "app"
+    source: str = "winscp"          # "winscp" | "app" | "ssh_config" | "ssh_alias"
 
     @property
     def folder_key(self) -> str:
@@ -69,6 +73,16 @@ class Session:
     @property
     def is_app_session(self) -> bool:
         return self.source == "app"
+
+    @property
+    def is_ssh_config_session(self) -> bool:
+        """True für ssh_config (aus Config-Datei) und ssh_alias (Kopie, in JSON)."""
+        return self.source in ("ssh_config", "ssh_alias")
+
+    @property
+    def is_ssh_alias_copy(self) -> bool:
+        """True wenn SSH-Alias-Kopie (dupliziert, löschbar, in JSON gespeichert)."""
+        return self.source == "ssh_alias"
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +116,9 @@ def build_wt_command(sessions: list[Session], user: str) -> str:
     """
     parts = []
     for i, session in enumerate(sessions):
-        if session.port != 22:
+        if session.is_ssh_config_session:
+            ssh_cmd = f"ssh {session.display_name}"
+        elif session.port != 22:
             ssh_cmd = f"ssh -p {session.port} {user}@{session.hostname}"
         else:
             ssh_cmd = f"ssh {user}@{session.hostname}"
@@ -305,21 +321,23 @@ def _save_ui_state(expanded_folders: set[str], session_colors: dict[str, str]) -
 
 
 def _load_app_sessions() -> list[Session]:
-    """Lädt eigene App-Sessions aus JSON. Gibt leere Liste zurück wenn nicht vorhanden."""
+    """Lädt eigene App-Sessions und SSH-Alias-Kopien aus JSON."""
     try:
         data = json.loads(_APP_SESSIONS_FILE.read_text(encoding="utf-8"))
         sessions = []
         for entry in data.get("sessions", []):
+            source = entry.get("source", "app")
             folder_str = entry.get("folder", "")
             folder_path = [p for p in folder_str.split("/") if p] if folder_str else []
+            key = (_SSH_ALIAS_PREFIX if source == "ssh_alias" else _APP_PREFIX) + entry["id"]
             sessions.append(Session(
-                key=_APP_PREFIX + entry["id"],
+                key=key,
                 display_name=entry["name"],
                 folder_path=folder_path,
                 hostname=entry["hostname"],
                 username=entry.get("username", ""),
                 port=int(entry.get("port", 22)),
-                source="app",
+                source=source,
             ))
         return sessions
     except (OSError, json.JSONDecodeError, ValueError, KeyError):
@@ -327,13 +345,14 @@ def _load_app_sessions() -> list[Session]:
 
 
 def _save_app_sessions(sessions: list[Session]) -> None:
-    """Speichert eigene App-Sessions als JSON in %APPDATA%\\SSH-Manager\\."""
+    """Speichert eigene App-Sessions und SSH-Alias-Kopien als JSON in %APPDATA%\\SSH-Manager\\."""
     _APP_SESSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
     entries = []
     for s in sessions:
-        if not s.is_app_session:
+        if s.source not in ("app", "ssh_alias"):
             continue
-        session_id = s.key[len(_APP_PREFIX):]
+        prefix = _SSH_ALIAS_PREFIX if s.source == "ssh_alias" else _APP_PREFIX
+        session_id = s.key[len(prefix):]
         entries.append({
             "id": session_id,
             "name": s.display_name,
@@ -341,11 +360,70 @@ def _save_app_sessions(sessions: list[Session]) -> None:
             "hostname": s.hostname,
             "username": s.username,
             "port": s.port,
+            "source": s.source,
         })
     _APP_SESSIONS_FILE.write_text(
         json.dumps({"sessions": entries}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def _load_ssh_config_sessions() -> list[Session]:
+    """
+    Parst ~/.ssh/config und gibt alle Host-Einträge als Sessions zurück.
+    Wildcards (* ?) und Multi-Pattern-Hosts (Leerzeichen) werden übersprungen.
+    Alle Sessions landen im Ordner 'SSH Config'.
+    """
+    try:
+        text = _SSH_CONFIG_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    sessions: list[Session] = []
+    current_alias: str | None = None
+    current_hostname: str | None = None
+    current_user: str = ""
+    current_port: int = 22
+
+    def _flush() -> None:
+        nonlocal current_alias, current_hostname, current_user, current_port
+        if current_alias and '*' not in current_alias and '?' not in current_alias:
+            sessions.append(Session(
+                key=_SSH_CONFIG_PREFIX + current_alias,
+                display_name=current_alias,
+                folder_path=[_SSH_CONFIG_DEFAULT_FOLDER],
+                hostname=current_hostname or current_alias,
+                username=current_user,
+                port=current_port,
+                source="ssh_config",
+            ))
+        current_alias = None
+        current_hostname = None
+        current_user = ""
+        current_port = 22
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        parts = stripped.split(None, 1)
+        if len(parts) < 2:
+            continue
+        kw, val = parts[0].lower(), parts[1].strip()
+        if kw == "host":
+            _flush()
+            current_alias = val if ' ' not in val else None
+        elif kw == "hostname" and current_alias:
+            current_hostname = val
+        elif kw == "user" and current_alias:
+            current_user = val
+        elif kw == "port" and current_alias:
+            try:
+                current_port = int(val)
+            except ValueError:
+                pass
+    _flush()
+    return sessions
 
 
 # ---------------------------------------------------------------------------
@@ -371,11 +449,13 @@ class SessionTree(ttk.Frame):
         on_selection_changed,  # Callable[[int], None]
         initial_open_folders: set[str] | None = None,
         initial_session_colors: dict[str, str] | None = None,
-        on_quick_connect=None,          # Callable[[Session], None] | None
-        on_edit_session=None,           # Callable[[Session], None] | None
-        on_delete_session=None,         # Callable[[Session], None] | None
-        on_delete_folder=None,          # Callable[[list[Session], str], None] | None
-        on_add_session_in_folder=None,  # Callable[[str], None] | None  (folder_key)
+        on_quick_connect=None,           # Callable[[Session], None] | None
+        on_edit_session=None,            # Callable[[Session], None] | None
+        on_delete_session=None,          # Callable[[Session], None] | None
+        on_delete_folder=None,           # Callable[[list[Session], str], None] | None
+        on_add_session_in_folder=None,   # Callable[[str], None] | None  (folder_key)
+        on_duplicate_ssh_alias=None,     # Callable[[Session], None] | None
+        on_inspect_ssh_config=None,      # Callable[[Session], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -387,6 +467,8 @@ class SessionTree(ttk.Frame):
         self._on_delete_session = on_delete_session
         self._on_delete_folder = on_delete_folder
         self._on_add_session_in_folder = on_add_session_in_folder
+        self._on_duplicate_ssh_alias = on_duplicate_ssh_alias
+        self._on_inspect_ssh_config = on_inspect_ssh_config
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -497,7 +579,12 @@ class SessionTree(ttk.Frame):
             port_str = str(session.port) if session.port != 22 else ""
             _ctag = _color_tag(self._session_colors[session.key]) if session.key in self._session_colors else None
             _tags = (self.TAG_SESSION,) + ((_ctag,) if _ctag else ())
-            label = f"  ★ {session.display_name}" if session.is_app_session else f"  {session.display_name}"
+            if session.is_ssh_config_session:
+                label = f"  ⚙ {session.display_name}"
+            elif session.is_app_session:
+                label = f"  ★ {session.display_name}"
+            else:
+                label = f"  {session.display_name}"
             item_id = self._tv.insert(
                 parent_id, "end",
                 image=self._img_unchecked,
@@ -611,7 +698,7 @@ class SessionTree(ttk.Frame):
             command=lambda: self._set_folder_checked(item_id, False),
         )
         folder_sessions = self._get_folder_sessions(item_id)
-        if folder_sessions and all(s.is_app_session for s in folder_sessions) and self._on_delete_folder:
+        if folder_sessions and all(s.source in ("app", "ssh_alias") for s in folder_sessions) and self._on_delete_folder:
             menu.add_separator()
             menu.add_command(
                 label="Ordner löschen",
@@ -653,6 +740,30 @@ class SessionTree(ttk.Frame):
                 menu.add_command(
                     label="Löschen",
                     command=lambda s=session: self._on_delete_session(s),
+                )
+            menu.add_separator()
+        elif session.source == "ssh_config":
+            if self._on_duplicate_ssh_alias:
+                menu.add_command(
+                    label="Als Alias in Ordner duplizieren…",
+                    command=lambda s=session: self._on_duplicate_ssh_alias(s),
+                )
+            if self._on_inspect_ssh_config:
+                menu.add_command(
+                    label="Konfiguration anzeigen (ssh -G)…",
+                    command=lambda s=session: self._on_inspect_ssh_config(s),
+                )
+            menu.add_separator()
+        elif session.is_ssh_alias_copy:
+            if self._on_delete_session:
+                menu.add_command(
+                    label="Löschen",
+                    command=lambda s=session: self._on_delete_session(s),
+                )
+            if self._on_inspect_ssh_config:
+                menu.add_command(
+                    label="Konfiguration anzeigen (ssh -G)…",
+                    command=lambda s=session: self._on_inspect_ssh_config(s),
                 )
             menu.add_separator()
         menu.add_cascade(label="Farbe…", menu=color_menu)
@@ -817,7 +928,9 @@ class UserDialog(tk.Toplevel):
 # ---------------------------------------------------------------------------
 class SessionEditDialog(tk.Toplevel):
     """
-    Modaler Dialog zum Anlegen oder Bearbeiten einer eigenen App-Session.
+    Modaler Dialog zum Anlegen oder Bearbeiten einer eigenen Session.
+    Unterstützt zwei Modi: 'Eigene Verbindung' (Hostname/Port/User) und
+    'SSH-Alias' (Alias aus ~/.ssh/config + Ordner).
     Nach Schließen: self.result = Session oder None (Abbrechen).
     """
 
@@ -825,12 +938,23 @@ class SessionEditDialog(tk.Toplevel):
         self,
         parent: tk.Tk,
         existing_folders: list[str],
+        ssh_aliases: list[str] | None = None,
         session: Optional[Session] = None,
         folder_preset: str = "",
+        alias_preset: str = "",
     ):
         super().__init__(parent)
         self._existing_session = session
         self._existing_folders = existing_folders
+        self._ssh_aliases = ssh_aliases or []
+        self._alias_preset = alias_preset
+
+        # Startmodus: Alias-Modus wenn Preset gesetzt oder bestehende ssh_alias Session
+        if (session and session.is_ssh_alias_copy) or alias_preset:
+            self._initial_mode = "alias"
+        else:
+            self._initial_mode = "verbindung"
+
         self.title("Verbindung bearbeiten" if session else "Neue Verbindung")
         self.resizable(False, False)
         self.result: Optional[Session] = None
@@ -849,41 +973,131 @@ class SessionEditDialog(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
 
+        self._mode_var = tk.StringVar(value=self._initial_mode)
+        content_row = 0
+
+        # Modus-Auswahl (nur wenn Aliases vorhanden und kein Bearbeitungsmodus)
+        can_switch = bool(self._ssh_aliases) and not self._existing_session
+        if can_switch:
+            mode_frame = ttk.Frame(frame)
+            mode_frame.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+            ttk.Radiobutton(
+                mode_frame, text="Eigene Verbindung",
+                variable=self._mode_var, value="verbindung",
+                command=self._on_mode_changed,
+            ).pack(side="left", padx=(0, 12))
+            ttk.Radiobutton(
+                mode_frame, text="SSH-Alias",
+                variable=self._mode_var, value="alias",
+                command=self._on_mode_changed,
+            ).pack(side="left")
+            content_row = 1
+
         s = self._existing_session
 
-        # Name
-        ttk.Label(frame, text="Name:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
-        self._name_var = tk.StringVar(value=s.display_name if s else "")
-        ttk.Entry(frame, textvariable=self._name_var, width=32).grid(row=0, column=1, sticky="ew")
+        # --- SSH-Alias Frame ---
+        self._alias_frame = ttk.Frame(frame)
+        self._alias_frame.columnconfigure(1, weight=1)
+        self._alias_frame.grid(row=content_row, column=0, columnspan=2, sticky="ew")
 
-        # Ordner
-        ttk.Label(frame, text="Ordner:").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 8))
-        self._folder_var = tk.StringVar(value=s.folder_key if s else folder_preset)
-        folder_cb = ttk.Combobox(frame, textvariable=self._folder_var, values=self._existing_folders, width=30)
-        folder_cb.grid(row=1, column=1, sticky="ew")
+        ttk.Label(self._alias_frame, text="Alias:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
+        alias_val = self._alias_preset or (s.display_name if s and s.is_ssh_alias_copy else "")
+        self._alias_var = tk.StringVar(value=alias_val)
+        alias_cb_state = "readonly" if self._alias_preset else "normal"
+        ttk.Combobox(
+            self._alias_frame, textvariable=self._alias_var,
+            values=self._ssh_aliases, width=30, state=alias_cb_state,
+        ).grid(row=0, column=1, sticky="ew")
 
-        # Hostname
-        ttk.Label(frame, text="Hostname:").grid(row=2, column=0, sticky="w", pady=4, padx=(0, 8))
-        self._host_var = tk.StringVar(value=s.hostname if s else "")
-        ttk.Entry(frame, textvariable=self._host_var, width=32).grid(row=2, column=1, sticky="ew")
+        ttk.Label(self._alias_frame, text="Ordner:").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 8))
+        alias_folder_val = (s.folder_key if s and s.is_ssh_alias_copy else folder_preset)
+        self._alias_folder_var = tk.StringVar(value=alias_folder_val)
+        ttk.Combobox(
+            self._alias_frame, textvariable=self._alias_folder_var,
+            values=self._existing_folders, width=30,
+        ).grid(row=1, column=1, sticky="ew")
 
-        # Benutzername (optional)
-        ttk.Label(frame, text="Benutzername:").grid(row=3, column=0, sticky="w", pady=4, padx=(0, 8))
-        self._user_var = tk.StringVar(value=s.username if s else "")
-        ttk.Entry(frame, textvariable=self._user_var, width=32).grid(row=3, column=1, sticky="ew")
+        # --- Eigene Verbindung Frame ---
+        self._verbindung_frame = ttk.Frame(frame)
+        self._verbindung_frame.columnconfigure(1, weight=1)
+        self._verbindung_frame.grid(row=content_row, column=0, columnspan=2, sticky="ew")
 
-        # Port
-        ttk.Label(frame, text="Port:").grid(row=4, column=0, sticky="w", pady=4, padx=(0, 8))
-        self._port_var = tk.StringVar(value=str(s.port) if s else "22")
-        ttk.Entry(frame, textvariable=self._port_var, width=8).grid(row=4, column=1, sticky="w")
+        ttk.Label(self._verbindung_frame, text="Name:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
+        self._name_var = tk.StringVar(value=s.display_name if (s and s.is_app_session) else "")
+        ttk.Entry(self._verbindung_frame, textvariable=self._name_var, width=32).grid(row=0, column=1, sticky="ew")
+
+        ttk.Label(self._verbindung_frame, text="Ordner:").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 8))
+        self._folder_var = tk.StringVar(value=s.folder_key if (s and s.is_app_session) else folder_preset)
+        ttk.Combobox(
+            self._verbindung_frame, textvariable=self._folder_var,
+            values=self._existing_folders, width=30,
+        ).grid(row=1, column=1, sticky="ew")
+
+        ttk.Label(self._verbindung_frame, text="Hostname:").grid(row=2, column=0, sticky="w", pady=4, padx=(0, 8))
+        self._host_var = tk.StringVar(value=s.hostname if (s and s.is_app_session) else "")
+        ttk.Entry(self._verbindung_frame, textvariable=self._host_var, width=32).grid(row=2, column=1, sticky="ew")
+
+        ttk.Label(self._verbindung_frame, text="Benutzername:").grid(row=3, column=0, sticky="w", pady=4, padx=(0, 8))
+        self._user_var = tk.StringVar(value=s.username if (s and s.is_app_session) else "")
+        ttk.Entry(self._verbindung_frame, textvariable=self._user_var, width=32).grid(row=3, column=1, sticky="ew")
+
+        ttk.Label(self._verbindung_frame, text="Port:").grid(row=4, column=0, sticky="w", pady=4, padx=(0, 8))
+        self._port_var = tk.StringVar(value=str(s.port) if (s and s.is_app_session) else "22")
+        ttk.Entry(self._verbindung_frame, textvariable=self._port_var, width=8).grid(row=4, column=1, sticky="w")
 
         # Buttons
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=5, column=0, columnspan=2, pady=(12, 0))
+        btn_frame.grid(row=content_row + 1, column=0, columnspan=2, pady=(12, 0))
         ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
         ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
 
+        # Initialen Zustand: inaktiven Frame ausblenden
+        if self._initial_mode == "alias":
+            self._verbindung_frame.grid_remove()
+        else:
+            self._alias_frame.grid_remove()
+
+    def _on_mode_changed(self) -> None:
+        """Zeigt den aktiven Frame, versteckt den anderen."""
+        if self._mode_var.get() == "alias":
+            self._verbindung_frame.grid_remove()
+            self._alias_frame.grid()
+        else:
+            self._alias_frame.grid_remove()
+            self._verbindung_frame.grid()
+
     def _on_ok(self) -> None:
+        if self._mode_var.get() == "alias":
+            self._on_ok_alias()
+        else:
+            self._on_ok_verbindung()
+
+    def _on_ok_alias(self) -> None:
+        alias = self._alias_var.get().strip()
+        folder_str = self._alias_folder_var.get().strip()
+        if not alias:
+            messagebox.showwarning("Fehlendes Feld", "Bitte einen Alias auswählen.", parent=self)
+            return
+        folder_path = [p for p in folder_str.split("/") if p]
+        if not folder_path:
+            messagebox.showwarning("Fehlendes Feld", "Bitte einen Ordner eingeben.", parent=self)
+            return
+        if self._existing_session and self._existing_session.is_ssh_alias_copy:
+            session_key = self._existing_session.key
+        else:
+            session_key = _SSH_ALIAS_PREFIX + str(uuid.uuid4())
+        self.result = Session(
+            key=session_key,
+            display_name=alias,
+            folder_path=folder_path,
+            hostname=alias,
+            username="",
+            port=22,
+            source="ssh_alias",
+        )
+        self.destroy()
+
+    def _on_ok_verbindung(self) -> None:
         name = self._name_var.get().strip()
         hostname = self._host_var.get().strip()
         username = self._user_var.get().strip()
@@ -919,9 +1133,7 @@ class SessionEditDialog(tk.Toplevel):
             return
 
         folder_path = [p for p in folder_str.split("/") if p]
-        # Bestehende Session-ID wiederverwenden, sonst neue UUID generieren
         session_key = self._existing_session.key if self._existing_session else _APP_PREFIX + str(uuid.uuid4())
-
         self.result = Session(
             key=session_key,
             display_name=name,
@@ -936,6 +1148,70 @@ class SessionEditDialog(tk.Toplevel):
     def _on_cancel(self) -> None:
         self.result = None
         self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+# ---------------------------------------------------------------------------
+# SshConfigInspectDialog
+# ---------------------------------------------------------------------------
+class SshConfigInspectDialog(tk.Toplevel):
+    """
+    Modaler Dialog der die effektive SSH-Konfiguration eines Alias anzeigt (ssh -G <alias>).
+    """
+
+    def __init__(self, parent: tk.Tk, alias: str):
+        super().__init__(parent)
+        self.title(f"SSH-Konfiguration: {alias}")
+        self.resizable(True, True)
+        self.geometry("600x450")
+        self.transient(parent)
+        self.grab_set()
+        self._build(alias)
+        self._center_on_parent(parent)
+
+    def _build(self, alias: str) -> None:
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        txt_frame = ttk.Frame(self, padding=(8, 8, 8, 4))
+        txt_frame.grid(row=0, column=0, sticky="nsew")
+        txt_frame.columnconfigure(0, weight=1)
+        txt_frame.rowconfigure(0, weight=1)
+
+        txt = tk.Text(txt_frame, wrap="none", font=("Consolas", 9))
+        vsb = ttk.Scrollbar(txt_frame, orient="vertical", command=txt.yview)
+        hsb = ttk.Scrollbar(txt_frame, orient="horizontal", command=txt.xview)
+        txt.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        txt.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+
+        try:
+            result = subprocess.run(
+                ["ssh", "-G", alias],
+                capture_output=True, text=True, timeout=5,
+            )
+            output = result.stdout or result.stderr or "(keine Ausgabe)"
+        except Exception as exc:
+            output = f"Fehler: {exc}"
+
+        txt.insert("1.0", output)
+        txt.configure(state="disabled")
+
+        btn_frame = ttk.Frame(self, padding=(8, 4, 8, 8))
+        btn_frame.grid(row=1, column=0)
+        ttk.Button(btn_frame, text="Schließen", command=self.destroy, width=12).pack()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
         self.update_idletasks()
@@ -978,10 +1254,11 @@ class SSHManagerApp(tk.Tk):
             )
             winscp_sessions = []
 
-        # App-eigene Sessions laden und mit WinSCP-Sessions mergen
+        # App-eigene Sessions und SSH-Config-Sessions laden und mergen
         self._app_sessions: list[Session] = _load_app_sessions()
+        ssh_config_sessions = _load_ssh_config_sessions()
         self._sessions = sorted(
-            winscp_sessions + self._app_sessions,
+            winscp_sessions + self._app_sessions + ssh_config_sessions,
             key=lambda s: (s.folder_key.lower(), s.display_name.lower()),
         )
 
@@ -1028,6 +1305,8 @@ class SSHManagerApp(tk.Tk):
             on_delete_session=self._delete_session,
             on_delete_folder=self._delete_folder,
             on_add_session_in_folder=self._add_session,
+            on_duplicate_ssh_alias=self._duplicate_ssh_alias,
+            on_inspect_ssh_config=self._inspect_ssh_config,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -1082,6 +1361,13 @@ class SSHManagerApp(tk.Tk):
 
     def _quick_connect_session(self, session: Session) -> None:
         """Öffnet eine einzelne Session direkt (via Doppelklick oder Kontextmenü)."""
+        if session.is_ssh_config_session:
+            # SSH-Alias: kein UserDialog nötig, User kommt aus ~/.ssh/config
+            try:
+                TerminalLauncher.launch([session], "")
+            except Exception as e:
+                messagebox.showerror("Fehler beim Starten", str(e))
+            return
         dialog = UserDialog(self)
         self.wait_window(dialog)
         if dialog.result is None:
@@ -1092,25 +1378,35 @@ class SSHManagerApp(tk.Tk):
             messagebox.showerror("Fehler beim Starten", str(e))
 
     def _get_all_folder_names(self) -> list[str]:
-        """Gibt alle bekannten Ordnernamen aus WinSCP- und App-Sessions zurück."""
+        """Gibt alle bekannten Ordnernamen aus allen Session-Quellen zurück."""
         folders = set()
         for s in self._sessions:
             if s.folder_key:
                 folders.add(s.folder_key)
         return sorted(folders)
 
+    def _get_ssh_aliases(self) -> list[str]:
+        """Gibt alle SSH-Config-Aliases zurück (für Alias-Picker im Dialog)."""
+        return sorted(s.display_name for s in self._sessions if s.source == "ssh_config")
+
     def _rebuild_sessions(self) -> None:
-        """Merged App-Sessions mit WinSCP-Sessions und aktualisiert den Baum."""
-        winscp = [s for s in self._sessions if not s.is_app_session]
+        """Merged alle Session-Quellen und aktualisiert den Baum."""
+        ssh_config_sessions = _load_ssh_config_sessions()
+        winscp = [s for s in self._sessions if s.source == "winscp"]
         self._sessions = sorted(
-            winscp + self._app_sessions,
+            winscp + self._app_sessions + ssh_config_sessions,
             key=lambda s: (s.folder_key.lower(), s.display_name.lower()),
         )
         self._tree.refresh(self._sessions)
 
     def _add_session(self, folder_preset: str = "") -> None:
-        """Öffnet den Dialog zum Anlegen einer neuen App-Session."""
-        dialog = SessionEditDialog(self, self._get_all_folder_names(), folder_preset=folder_preset)
+        """Öffnet den Dialog zum Anlegen einer neuen Session (App oder SSH-Alias)."""
+        dialog = SessionEditDialog(
+            self,
+            self._get_all_folder_names(),
+            ssh_aliases=self._get_ssh_aliases(),
+            folder_preset=folder_preset,
+        )
         self.wait_window(dialog)
         if dialog.result is None:
             return
@@ -1156,6 +1452,25 @@ class SSHManagerApp(tk.Tk):
         self._app_sessions = [s for s in self._app_sessions if s.key not in keys_to_delete]
         _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
+
+    def _duplicate_ssh_alias(self, session: Session) -> None:
+        """Dupliziert einen SSH-Config-Alias in einen anderen Ordner."""
+        dialog = SessionEditDialog(
+            self,
+            self._get_all_folder_names(),
+            ssh_aliases=self._get_ssh_aliases(),
+            alias_preset=session.display_name,
+        )
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        self._app_sessions.append(dialog.result)
+        _save_app_sessions(self._app_sessions)
+        self._rebuild_sessions()
+
+    def _inspect_ssh_config(self, session: Session) -> None:
+        """Zeigt die effektive SSH-Konfiguration für einen Alias."""
+        SshConfigInspectDialog(self, session.display_name)
 
     def _on_close(self) -> None:
         _save_ui_state(self._tree.get_open_folders(), self._tree.get_session_colors())

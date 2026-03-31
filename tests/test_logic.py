@@ -287,3 +287,72 @@ def test_palette_entries_have_name_and_hex():
     for name, hex_color in PALETTE:
         assert isinstance(name, str) and len(name) > 0
         assert hex_color.startswith("#") and len(hex_color) == 7
+
+
+from ssh_manager import _load_ssh_config_sessions, _SSH_CONFIG_DEFAULT_FOLDER
+from unittest.mock import patch, MagicMock
+
+
+def _mock_ssh_config(content: str):
+    """Erstellt einen Mock für _SSH_CONFIG_FILE mit gegebenem Inhalt."""
+    m = MagicMock()
+    m.read_text.return_value = content
+    return m
+
+
+def test_load_ssh_config_sessions_basic():
+    config = "Host myserver\n  HostName 10.0.0.5\n  User admin\n  Port 2222\n"
+    with patch("ssh_manager._SSH_CONFIG_FILE", _mock_ssh_config(config)):
+        sessions = _load_ssh_config_sessions()
+    assert len(sessions) == 1
+    s = sessions[0]
+    assert s.display_name == "myserver"
+    assert s.hostname == "10.0.0.5"
+    assert s.username == "admin"
+    assert s.port == 2222
+    assert s.source == "ssh_config"
+    assert s.folder_path == [_SSH_CONFIG_DEFAULT_FOLDER]
+
+
+def test_load_ssh_config_sessions_skips_wildcards():
+    config = "Host *\n  ServerAliveInterval 60\nHost realhost\n  HostName 1.2.3.4\n"
+    with patch("ssh_manager._SSH_CONFIG_FILE", _mock_ssh_config(config)):
+        sessions = _load_ssh_config_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].display_name == "realhost"
+
+
+def test_load_ssh_config_sessions_skips_multi_pattern():
+    config = "Host foo bar\n  HostName 1.2.3.4\nHost single\n  HostName 5.6.7.8\n"
+    with patch("ssh_manager._SSH_CONFIG_FILE", _mock_ssh_config(config)):
+        sessions = _load_ssh_config_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].display_name == "single"
+
+
+def test_load_ssh_config_sessions_missing_file():
+    m = MagicMock()
+    m.read_text.side_effect = OSError("not found")
+    with patch("ssh_manager._SSH_CONFIG_FILE", m):
+        sessions = _load_ssh_config_sessions()
+    assert sessions == []
+
+
+def test_load_ssh_config_sessions_hostname_fallback():
+    config = "Host myalias\n"
+    with patch("ssh_manager._SSH_CONFIG_FILE", _mock_ssh_config(config)):
+        sessions = _load_ssh_config_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].hostname == "myalias"
+
+
+def test_build_wt_command_ssh_config_session():
+    s = Session("__sshcfg__devbox", "devbox", [_SSH_CONFIG_DEFAULT_FOLDER], "devbox", source="ssh_config")
+    cmd = build_wt_command([s], "ignored-user")
+    assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh devbox'
+
+
+def test_build_wt_command_ssh_alias_session():
+    s = Session("__sshalias__abc", "prodbox", ["Prod"], "prodbox", source="ssh_alias")
+    cmd = build_wt_command([s], "ignored-user")
+    assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh prodbox'
