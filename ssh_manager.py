@@ -104,16 +104,17 @@ def parse_session_key(key: str) -> tuple[list[str], str]:
     return folder_path, name
 
 
-def build_wt_command(sessions: list[Session], user: str) -> str:
+def build_wt_command(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None) -> str:
     """
     Erzeugt den wt.exe-Befehl, der alle Sessions als neue Tabs öffnet.
     Alle Tabs landen im selben Windows Terminal Fenster.
 
     Format:
-      wt.exe new-tab -p "Git Bash" -- ssh USER@HOST
+      wt.exe new-tab --tabColor #2d8653 -p "Git Bash" -- ssh USER@HOST
         ; new-tab -p "Git Bash" -- ssh -p PORT USER@HOST2
         ...
     """
+    colors = session_colors or {}
     parts = []
     for i, session in enumerate(sessions):
         if session.is_ssh_config_session:
@@ -123,10 +124,10 @@ def build_wt_command(sessions: list[Session], user: str) -> str:
         else:
             ssh_cmd = f"ssh {user}@{session.hostname}"
 
-        if i == 0:
-            parts.append(f'wt.exe new-tab -p "Git Bash" -- {ssh_cmd}')
-        else:
-            parts.append(f'new-tab -p "Git Bash" -- {ssh_cmd}')
+        color = colors.get(session.key)
+        color_flag = f'--tabColor "{color}" ' if color else ""
+        tab_cmd = f'new-tab {color_flag}-p "Git Bash" -- {ssh_cmd}'
+        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
 
     return " ; ".join(parts)
 
@@ -138,7 +139,7 @@ class TerminalLauncher:
     """Startet wt.exe mit mehreren SSH-Tabs."""
 
     @staticmethod
-    def launch(sessions: list[Session], user: str) -> None:
+    def launch(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None) -> None:
         """
         Öffnet alle Sessions als neue Tabs in einem Windows Terminal Fenster.
         Hinweis: Da shell=True genutzt wird, wirft Popen keine Exception wenn
@@ -146,7 +147,7 @@ class TerminalLauncher:
         """
         if not sessions:
             return
-        cmd = build_wt_command(sessions, user)
+        cmd = build_wt_command(sessions, user, session_colors)
         # shell=True nötig: wt.exe parst `;` als eigenen Subcommand-Separator,
         # cmd.exe behandelt `;` nicht als Sonderzeichen und reicht es durch.
         subprocess.Popen(cmd, shell=True)
@@ -1524,16 +1525,17 @@ class SSHManagerApp(tk.Tk):
             return  # Abbrechen gedrückt
         user = dialog.result
         try:
-            TerminalLauncher.launch(selected, user)
+            TerminalLauncher.launch(selected, user, self._tree.get_session_colors())
         except Exception as e:
             messagebox.showerror("Fehler beim Starten", str(e))
 
     def _quick_connect_session(self, session: Session) -> None:
         """Öffnet eine einzelne Session direkt (via Doppelklick oder Kontextmenü)."""
+        colors = self._tree.get_session_colors()
         if session.is_ssh_config_session:
             # SSH-Alias: kein UserDialog nötig, User kommt aus ~/.ssh/config
             try:
-                TerminalLauncher.launch([session], "")
+                TerminalLauncher.launch([session], "", colors)
             except Exception as e:
                 messagebox.showerror("Fehler beim Starten", str(e))
             return
@@ -1542,7 +1544,7 @@ class SSHManagerApp(tk.Tk):
         if dialog.result is None:
             return
         try:
-            TerminalLauncher.launch([session], dialog.result)
+            TerminalLauncher.launch([session], dialog.result, colors)
         except Exception as e:
             messagebox.showerror("Fehler beim Starten", str(e))
 
