@@ -458,6 +458,7 @@ class SessionTree(ttk.Frame):
         on_inspect_ssh_config=None,      # Callable[[Session], None] | None
         on_duplicate_app_session=None,   # Callable[[Session], None] | None
         on_move_session=None,            # Callable[[Session], None] | None
+        on_open_ssh_config_in_vscode=None,  # Callable[[], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -473,6 +474,7 @@ class SessionTree(ttk.Frame):
         self._on_inspect_ssh_config = on_inspect_ssh_config
         self._on_duplicate_app_session = on_duplicate_app_session
         self._on_move_session = on_move_session
+        self._on_open_ssh_config_in_vscode = on_open_ssh_config_in_vscode
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -483,6 +485,7 @@ class SessionTree(ttk.Frame):
         self._item_to_folder_key: dict[str, str] = {}
         # session.key → hex-Farbe
         self._session_colors: dict[str, str] = dict(initial_session_colors or {})
+        self._pre_search_open_folders: set[str] | None = None
 
         self._build()
         self.populate(sessions, open_folders=initial_open_folders or set())
@@ -569,9 +572,10 @@ class SessionTree(ttk.Frame):
                 folder_key = "/".join(session.folder_path[: depth + 1])
                 if folder_key not in folder_items:
                     was_open = folder_key in open_folders
+                    folder_label = f"  ⚙ {folder_name}" if folder_key == _SSH_CONFIG_DEFAULT_FOLDER else f"  {folder_name}"
                     folder_id = self._tv.insert(
                         parent_id, "end",
-                        text=f"  {folder_name}",
+                        text=folder_label,
                         open=was_open,
                         tags=(self.TAG_FOLDER,),
                     )
@@ -687,6 +691,12 @@ class SessionTree(ttk.Frame):
         """Kontextmenü für Ordner-Zeilen."""
         folder_key = self._item_to_folder_key.get(item_id, "")
         menu = tk.Menu(self, tearoff=False)
+        if folder_key == _SSH_CONFIG_DEFAULT_FOLDER and self._on_open_ssh_config_in_vscode:
+            menu.add_command(
+                label="In VS Code öffnen",
+                command=self._on_open_ssh_config_in_vscode,
+            )
+            menu.add_separator()
         if self._on_add_session_in_folder:
             menu.add_command(
                 label="Neue Verbindung hier…",
@@ -767,6 +777,11 @@ class SessionTree(ttk.Frame):
                     label="Konfiguration anzeigen (ssh -G)…",
                     command=lambda s=session: self._on_inspect_ssh_config(s),
                 )
+            if self._on_open_ssh_config_in_vscode:
+                menu.add_command(
+                    label="In VS Code öffnen",
+                    command=self._on_open_ssh_config_in_vscode,
+                )
             menu.add_separator()
         elif session.is_ssh_alias_copy:
             if self._on_delete_session:
@@ -784,6 +799,11 @@ class SessionTree(ttk.Frame):
                     label="Konfiguration anzeigen (ssh -G)…",
                     command=lambda s=session: self._on_inspect_ssh_config(s),
                 )
+            if self._on_open_ssh_config_in_vscode:
+                menu.add_command(
+                    label="In VS Code öffnen",
+                    command=self._on_open_ssh_config_in_vscode,
+                )
             menu.add_separator()
         menu.add_command(
             label="Hostname kopieren",
@@ -798,6 +818,8 @@ class SessionTree(ttk.Frame):
         Filtert sichtbare Sessions nach query (case-insensitive, Name + Hostname).
         Bei leerem query werden alle Sessions wieder angezeigt.
         Checkbox-Zustände bleiben beim Filtern erhalten.
+        Während einer aktiven Suche wird der Tree vollständig aufgeklappt;
+        beim Leeren wird der Zustand von vor der Suche wiederhergestellt.
         """
         q = query.strip().lower()
 
@@ -808,15 +830,28 @@ class SessionTree(ttk.Frame):
             if v
         }
 
+        # Zustand beim ersten Suchzeichen einmalig sichern
+        if q and self._pre_search_open_folders is None:
+            self._pre_search_open_folders = self.get_open_folders()
+
         if q:
             filtered = [
                 s for s in self._sessions
                 if q in s.display_name.lower() or q in s.hostname.lower()
             ]
+            # Alle Ordner der Treffer aufklappen
+            open_folders: set[str] | None = {
+                "/".join(s.folder_path[:d + 1])
+                for s in filtered
+                for d in range(len(s.folder_path))
+            }
         else:
             filtered = self._sessions
+            # Vorherigen Zustand wiederherstellen
+            open_folders = self._pre_search_open_folders
+            self._pre_search_open_folders = None
 
-        self.populate(filtered)
+        self.populate(filtered, open_folders=open_folders)
 
         # Checkbox-Zustände wiederherstellen
         for item_id, session in self._item_to_session.items():
@@ -825,6 +860,16 @@ class SessionTree(ttk.Frame):
                 self._tv.item(item_id, image=self._img_checked)
 
         self._notify_count()
+
+    def expand_all(self) -> None:
+        """Klappt alle Ordner auf."""
+        for item_id in self._item_to_folder_key:
+            self._tv.item(item_id, open=True)
+
+    def collapse_all(self) -> None:
+        """Klappt alle Ordner zu."""
+        for item_id in self._item_to_folder_key:
+            self._tv.item(item_id, open=False)
 
     def refresh(self, sessions: list[Session]) -> None:
         """Baut den Baum mit neuen Sessions neu auf, behält Ordner-Status und Checkboxen."""
@@ -1363,7 +1408,7 @@ class SSHManagerApp(tk.Tk):
         ssh_config_sessions = _load_ssh_config_sessions()
         self._sessions = sorted(
             winscp_sessions + self._app_sessions + ssh_config_sessions,
-            key=lambda s: (s.folder_key.lower(), s.display_name.lower()),
+            key=lambda s: (0 if s.folder_key == _SSH_CONFIG_DEFAULT_FOLDER else 1, s.folder_key.lower(), s.display_name.lower()),
         )
 
         # Checkbox-Images (nach Tk-Initialisierung erzeugen!)
@@ -1392,8 +1437,12 @@ class SSHManagerApp(tk.Tk):
                    command=self._select_all).grid(row=0, column=2, padx=2)
         ttk.Button(toolbar, text="Alle abwählen",
                    command=self._deselect_all).grid(row=0, column=3, padx=2)
+        ttk.Button(toolbar, text="Ausklappen",
+                   command=self._expand_all).grid(row=0, column=4, padx=2)
+        ttk.Button(toolbar, text="Einklappen",
+                   command=self._collapse_all).grid(row=0, column=5, padx=2)
         ttk.Button(toolbar, text="+ Verbindung",
-                   command=self._add_session).grid(row=0, column=4, padx=(8, 2))
+                   command=self._add_session).grid(row=0, column=6, padx=(8, 2))
 
         # SessionTree (Zeile 1)
         self._tree = SessionTree(
@@ -1413,6 +1462,7 @@ class SSHManagerApp(tk.Tk):
             on_inspect_ssh_config=self._inspect_ssh_config,
             on_duplicate_app_session=self._duplicate_app_session,
             on_move_session=self._move_session,
+            on_open_ssh_config_in_vscode=self._open_ssh_config_in_vscode,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -1450,6 +1500,12 @@ class SSHManagerApp(tk.Tk):
 
     def _deselect_all(self) -> None:
         self._tree.set_all_checked(False)
+
+    def _expand_all(self) -> None:
+        self._tree.expand_all()
+
+    def _collapse_all(self) -> None:
+        self._tree.collapse_all()
 
     def _on_connect(self) -> None:
         selected = self._tree.get_selected_sessions()
@@ -1501,7 +1557,7 @@ class SSHManagerApp(tk.Tk):
         winscp = [s for s in self._sessions if s.source == "winscp"]
         self._sessions = sorted(
             winscp + self._app_sessions + ssh_config_sessions,
-            key=lambda s: (s.folder_key.lower(), s.display_name.lower()),
+            key=lambda s: (0 if s.folder_key == _SSH_CONFIG_DEFAULT_FOLDER else 1, s.folder_key.lower(), s.display_name.lower()),
         )
         self._tree.refresh(self._sessions)
 
@@ -1611,6 +1667,13 @@ class SSHManagerApp(tk.Tk):
     def _inspect_ssh_config(self, session: Session) -> None:
         """Zeigt die effektive SSH-Konfiguration für einen Alias."""
         SshConfigInspectDialog(self, session.display_name)
+
+    def _open_ssh_config_in_vscode(self) -> None:
+        """Öffnet ~/.ssh/config in VS Code."""
+        try:
+            subprocess.Popen(f'code "{_SSH_CONFIG_FILE}"', shell=True)
+        except OSError as e:
+            messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{e}")
 
     def _on_close(self) -> None:
         _save_ui_state(self._tree.get_open_folders(), self._tree.get_session_colors())
