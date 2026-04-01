@@ -809,6 +809,13 @@ class SessionTree(ttk.Frame):
             label="Hostname kopieren",
             command=lambda h=session.hostname: (self.clipboard_clear(), self.clipboard_append(h)),
         )
+        selected = self.get_selected_sessions()
+        if len(selected) >= 2:
+            hostnames = "\n".join(s.hostname for s in selected)
+            menu.add_command(
+                label=f"Alle {len(selected)} Hostnamen kopieren",
+                command=lambda hs=hostnames: (self.clipboard_clear(), self.clipboard_append(hs)),
+            )
         menu.add_separator()
         menu.add_cascade(label="Farbe…", menu=color_menu)
         menu.tk_popup(event.x_root, event.y_root)
