@@ -719,6 +719,24 @@ class SessionTree(ttk.Frame):
                 label="Ordner löschen",
                 command=lambda ss=list(folder_sessions), fk=folder_key: self._on_delete_folder(ss, fk),
             )
+        if folder_sessions:
+            color_menu = tk.Menu(menu, tearoff=False)
+            for name, hex_color in PALETTE:
+                color_menu.add_command(
+                    label=f"  {name}",
+                    command=lambda hc=hex_color, ss=list(folder_sessions): [
+                        self.set_session_color(s.key, hc) for s in ss
+                    ],
+                )
+            color_menu.add_separator()
+            color_menu.add_command(
+                label="✕ Farbe entfernen",
+                command=lambda ss=list(folder_sessions): [
+                    self.set_session_color(s.key, None) for s in ss
+                ],
+            )
+            menu.add_separator()
+            menu.add_cascade(label="Farbe für alle…", menu=color_menu)
         menu.tk_popup(event.x_root, event.y_root)
 
     def _show_session_menu(self, item_id: str, event: tk.Event) -> None:
