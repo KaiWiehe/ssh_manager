@@ -199,6 +199,24 @@ def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, use
     return " ; ".join(parts)
 
 
+def build_ssh_tunnel_command(
+    session: Session, local_port: int, remote_host: str, remote_port: int, user: str
+) -> str:
+    """
+    Erzeugt den wt.exe-Befehl für SSH Local Port Forwarding.
+    - '-N' = kein Remote-Befehl, nur Tunnel.
+    - '&& read || read' hält den Tab offen (Fehler oder normales Ende).
+    - Kein '~', kein nested quoting nötig.
+    """
+    git_bash = _find_git_bash()
+    inner = (
+        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{session.hostname}"
+        f" && read || read"
+    )
+    bash_cmd = f'"{git_bash}" -c "{inner}"'
+    return f'wt.exe new-tab -p "Git Bash" -- {bash_cmd}'
+
+
 # ---------------------------------------------------------------------------
 # TerminalLauncher
 # ---------------------------------------------------------------------------
@@ -529,6 +547,7 @@ class SessionTree(ttk.Frame):
         on_open_ssh_config_in_vscode=None,  # Callable[[], None] | None
         on_deploy_ssh_key=None,             # Callable[[list[Session]], None] | None
         on_remove_ssh_key=None,             # Callable[[list[Session]], None] | None
+        on_open_tunnel=None,                # Callable[[Session], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -547,6 +566,7 @@ class SessionTree(ttk.Frame):
         self._on_open_ssh_config_in_vscode = on_open_ssh_config_in_vscode
         self._on_deploy_ssh_key = on_deploy_ssh_key
         self._on_remove_ssh_key = on_remove_ssh_key
+        self._on_open_tunnel = on_open_tunnel
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -845,6 +865,12 @@ class SessionTree(ttk.Frame):
                 label="Verbindung öffnen",
                 command=lambda s=session: self._on_quick_connect(s),
             )
+        if self._on_open_tunnel:
+            menu.add_command(
+                label="Tunnel öffnen…",
+                command=lambda s=session: self._on_open_tunnel(s),
+            )
+        if self._on_quick_connect or self._on_open_tunnel:
             menu.add_separator()
         if self._on_deploy_ssh_key or self._on_remove_ssh_key:
             if self._on_deploy_ssh_key:
@@ -1307,6 +1333,133 @@ class SshRemoveKeyDialog(tk.Toplevel):
             )
             return
         self.result = (key, user)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+# ---------------------------------------------------------------------------
+# SshTunnelDialog
+# ---------------------------------------------------------------------------
+class SshTunnelDialog(tk.Toplevel):
+    """
+    Modaler Dialog für SSH Local Port Forwarding (-N -L).
+    Nach Schließen: self.result = (local_port, remote_host, remote_port, user) oder None.
+    """
+
+    def __init__(self, parent: tk.Tk, session: Session):
+        super().__init__(parent)
+        self.title("Tunnel öffnen")
+        self.resizable(False, False)
+        self.result: tuple[int, str, int, str] | None = None
+        self._session = session
+
+        self.transient(parent)
+        self.grab_set()
+        self._build()
+        self._center_on_parent(parent)
+        self.bind("<Return>", lambda _: self._on_ok())
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        ttk.Label(
+            frame,
+            text=f"Tunnel über: {self._session.hostname}",
+            foreground="#555555",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        ttk.Label(frame, text="Lokaler Port:").grid(row=1, column=0, sticky="w", pady=(0, 4))
+        self._local_port_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=self._local_port_var, width=10).grid(
+            row=1, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
+        )
+
+        ttk.Label(frame, text="Remote Host:").grid(row=2, column=0, sticky="w", pady=(0, 4))
+        self._remote_host_var = tk.StringVar(value=self._session.hostname)
+        ttk.Entry(frame, textvariable=self._remote_host_var, width=30).grid(
+            row=2, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
+        )
+
+        ttk.Label(frame, text="Remote Port:").grid(row=3, column=0, sticky="w", pady=(0, 4))
+        self._remote_port_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=self._remote_port_var, width=10).grid(
+            row=3, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
+        )
+
+        ttk.Label(frame, text="Quickselect:").grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        self._user_var = tk.StringVar(value=self._session.username or DEFAULT_USER)
+        for col, username in enumerate(QUICK_USERS):
+            ttk.Button(
+                frame,
+                text=username,
+                command=lambda u=username: self._user_var.set(u),
+                width=14,
+            ).grid(row=5, column=col, padx=2, pady=(0, 8))
+
+        ttk.Label(frame, text="Benutzername:").grid(row=6, column=0, sticky="w", pady=(0, 4))
+        entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
+        entry.grid(row=7, column=0, columnspan=max(len(QUICK_USERS), 2), sticky="ew", pady=(0, 12))
+        entry.focus()
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=8, column=0, columnspan=max(len(QUICK_USERS), 2))
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+
+    def _parse_port(self, var: tk.StringVar, label: str) -> int | None:
+        try:
+            port = int(var.get().strip())
+        except ValueError:
+            messagebox.showwarning("Ungültiger Port", f"{label} muss eine Zahl sein.", parent=self)
+            return None
+        if not 1 <= port <= 65535:
+            messagebox.showwarning("Ungültiger Port", f"{label} muss zwischen 1 und 65535 liegen.", parent=self)
+            return None
+        return port
+
+    def _on_ok(self) -> None:
+        local_port = self._parse_port(self._local_port_var, "Lokaler Port")
+        if local_port is None:
+            return
+        remote_host = self._remote_host_var.get().strip()
+        if not remote_host:
+            messagebox.showwarning("Kein Remote-Host", "Bitte einen Remote-Host eingeben.", parent=self)
+            return
+        if not _HOSTNAME_RE.match(remote_host):
+            messagebox.showwarning("Ungültiger Remote-Host", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+            return
+        remote_port = self._parse_port(self._remote_port_var, "Remote Port")
+        if remote_port is None:
+            return
+        user = self._user_var.get().strip()
+        if not user:
+            return
+        if not _USERNAME_RE.match(user):
+            messagebox.showwarning(
+                "Ungültiger Benutzername",
+                "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+                parent=self,
+            )
+            return
+        self.result = (local_port, remote_host, remote_port, user)
         self.destroy()
 
     def _on_cancel(self) -> None:
@@ -1799,6 +1952,7 @@ class SSHManagerApp(tk.Tk):
             on_open_ssh_config_in_vscode=self._open_ssh_config_in_vscode,
             on_deploy_ssh_key=self._deploy_ssh_key,
             on_remove_ssh_key=self._remove_ssh_key,
+            on_open_tunnel=self._open_tunnel,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -2034,6 +2188,19 @@ class SSHManagerApp(tk.Tk):
         key_filename, user = dialog.result
         try:
             cmd = build_ssh_remove_key_command(sessions, key_filename, user)
+            subprocess.Popen(cmd, shell=True)
+        except OSError as e:
+            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+
+    def _open_tunnel(self, session: Session) -> None:
+        """Öffnet den Tunnel-Dialog und startet den SSH-Tunnel im Terminal."""
+        dialog = SshTunnelDialog(self, session=session)
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        local_port, remote_host, remote_port, user = dialog.result
+        try:
+            cmd = build_ssh_tunnel_command(session, local_port, remote_host, remote_port, user)
             subprocess.Popen(cmd, shell=True)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
