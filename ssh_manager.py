@@ -1405,7 +1405,7 @@ class SshTunnelDialog(tk.Toplevel):
         )
 
         ttk.Label(frame, text="Quickselect:").grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 4))
-        self._user_var = tk.StringVar(value=self._session.username or DEFAULT_USER)
+        self._user_var = tk.StringVar(value=DEFAULT_USER)
         for col, username in enumerate(QUICK_USERS):
             ttk.Button(
                 frame,
