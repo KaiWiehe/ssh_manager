@@ -8,12 +8,14 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import threading
 import tkinter as tk
 import uuid
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import unquote
@@ -199,18 +201,28 @@ def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, use
     return " ; ".join(parts)
 
 
+def check_host_reachable(hostname: str, port: int = 22, timeout: int = 3) -> bool:
+    """Prüft per TCP-Connect ob hostname:port erreichbar ist."""
+    try:
+        with socket.create_connection((hostname, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def build_ssh_tunnel_command(
-    jumphost: str, local_port: int, remote_host: str, remote_port: int, user: str
+    ssh_server: str, local_port: int, remote_host: str, remote_port: int, user: str
 ) -> str:
     """
     Erzeugt den wt.exe-Befehl für SSH Local Port Forwarding.
     - '-N' = kein Remote-Befehl, nur Tunnel.
     - '&& read || read' hält den Tab offen (Fehler oder normales Ende).
     - Kein '~', kein nested quoting nötig.
+    - remote_host='localhost' = direkter Tunnel zum SSH-Server selbst (kein Jumphost).
     """
     git_bash = _find_git_bash()
     inner = (
-        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{jumphost}"
+        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{ssh_server}"
         f" && read || read"
     )
     bash_cmd = f'"{git_bash}" -c "{inner}"'
@@ -539,11 +551,13 @@ class SessionTree(ttk.Frame):
         on_edit_session=None,            # Callable[[Session], None] | None
         on_delete_session=None,          # Callable[[Session], None] | None
         on_delete_folder=None,           # Callable[[list[Session], str], None] | None
+        on_rename_folder=None,           # Callable[[str, str], None] | None  (folder_key, new_name)
         on_add_session_in_folder=None,   # Callable[[str], None] | None  (folder_key)
         on_duplicate_ssh_alias=None,     # Callable[[Session], None] | None
         on_inspect_ssh_config=None,      # Callable[[Session], None] | None
         on_duplicate_app_session=None,   # Callable[[Session], None] | None
         on_move_session=None,            # Callable[[Session], None] | None
+        on_move_sessions=None,           # Callable[[list[Session]], None] | None
         on_open_ssh_config_in_vscode=None,  # Callable[[], None] | None
         on_deploy_ssh_key=None,             # Callable[[list[Session]], None] | None
         on_remove_ssh_key=None,             # Callable[[list[Session]], None] | None
@@ -558,11 +572,13 @@ class SessionTree(ttk.Frame):
         self._on_edit_session = on_edit_session
         self._on_delete_session = on_delete_session
         self._on_delete_folder = on_delete_folder
+        self._on_rename_folder = on_rename_folder
         self._on_add_session_in_folder = on_add_session_in_folder
         self._on_duplicate_ssh_alias = on_duplicate_ssh_alias
         self._on_inspect_ssh_config = on_inspect_ssh_config
         self._on_duplicate_app_session = on_duplicate_app_session
         self._on_move_session = on_move_session
+        self._on_move_sessions = on_move_sessions
         self._on_open_ssh_config_in_vscode = on_open_ssh_config_in_vscode
         self._on_deploy_ssh_key = on_deploy_ssh_key
         self._on_remove_ssh_key = on_remove_ssh_key
@@ -575,6 +591,8 @@ class SessionTree(ttk.Frame):
         self._checked: dict[str, bool] = {}
         # item_id → folder_key (z.B. "Extern/Sub")
         self._item_to_folder_key: dict[str, str] = {}
+        # item_id → Status "ok" | "fail" | "checking" | None
+        self._item_to_status: dict[str, str | None] = {}
         # session.key → hex-Farbe
         self._session_colors: dict[str, str] = dict(initial_session_colors or {})
         self._pre_search_open_folders: set[str] | None = None
@@ -595,8 +613,8 @@ class SessionTree(ttk.Frame):
         self._tv.heading("#0", text="Name", anchor="w")
         self._tv.heading("hostname", text="Hostname", anchor="w")
         self._tv.heading("port", text="Port", anchor="w")
-        self._tv.column("#0", width=260, stretch=True)
-        self._tv.column("hostname", width=200, stretch=True)
+        self._tv.column("#0", width=340, stretch=True)
+        self._tv.column("hostname", width=130, stretch=False)
         self._tv.column("port", width=60, stretch=False)
 
         vsb = ttk.Scrollbar(self, orient="vertical", command=self._tv.yview)
@@ -653,6 +671,7 @@ class SessionTree(ttk.Frame):
         self._item_to_session.clear()
         self._checked.clear()
         self._item_to_folder_key.clear()
+        self._item_to_status.clear()
 
         # Ordner-Nodes: folder_key → item_id
         folder_items: dict[str, str] = {}
@@ -679,12 +698,7 @@ class SessionTree(ttk.Frame):
             port_str = str(session.port) if session.port != 22 else ""
             _ctag = _color_tag(self._session_colors[session.key]) if session.key in self._session_colors else None
             _tags = (self.TAG_SESSION,) + ((_ctag,) if _ctag else ())
-            if session.is_ssh_config_session:
-                label = f"  ⚙ {session.display_name}"
-            elif session.is_app_session:
-                label = f"  ★ {session.display_name}"
-            else:
-                label = f"  {session.display_name}"
+            label = self._session_label(session, None)
             item_id = self._tv.insert(
                 parent_id, "end",
                 image=self._img_unchecked,
@@ -804,12 +818,31 @@ class SessionTree(ttk.Frame):
             command=lambda: self._set_folder_checked(item_id, False),
         )
         folder_sessions = self._get_folder_sessions(item_id)
-        if folder_sessions and all(s.source in ("app", "ssh_alias") for s in folder_sessions) and self._on_delete_folder:
-            menu.add_separator()
+        if folder_sessions:
+            hostnames = [s.hostname for s in folder_sessions if s.hostname]
             menu.add_command(
-                label="Ordner löschen",
-                command=lambda ss=list(folder_sessions), fk=folder_key: self._on_delete_folder(ss, fk),
+                label="Hostnames kopieren",
+                command=lambda hs=hostnames: (
+                    self.clipboard_clear(),
+                    self.clipboard_append("\n".join(hs)),
+                ),
             )
+            menu.add_command(
+                label="Hosts prüfen",
+                command=lambda fid=item_id: self.check_folder_hosts(fid),
+            )
+        if folder_sessions and all(s.source in ("app", "ssh_alias") for s in folder_sessions):
+            menu.add_separator()
+            if self._on_rename_folder:
+                menu.add_command(
+                    label="Umbenennen…",
+                    command=lambda fk=folder_key: self._on_rename_folder(fk),
+                )
+            if self._on_delete_folder:
+                menu.add_command(
+                    label="Ordner löschen",
+                    command=lambda ss=list(folder_sessions), fk=folder_key: self._on_delete_folder(ss, fk),
+                )
         if folder_sessions:
             color_menu = tk.Menu(menu, tearoff=False)
             for name, hex_color in PALETTE:
@@ -956,8 +989,47 @@ class SessionTree(ttk.Frame):
                 label=f"Alle {len(selected)} Hostnamen kopieren",
                 command=lambda hs=hostnames: (self.clipboard_clear(), self.clipboard_append(hs)),
             )
+        # Hosts prüfen
+        if len(selected) >= 2:
+            checked_pairs = [
+                (iid, s) for iid, s in self._item_to_session.items()
+                if self._checked.get(iid) and s.hostname
+            ]
+            menu.add_command(
+                label=f"Alle {len(selected)} Hosts prüfen",
+                command=lambda p=checked_pairs: self.check_hosts(p),
+            )
+        elif session.hostname:
+            menu.add_command(
+                label="Host prüfen",
+                command=lambda iid=item_id, s=session: self.check_hosts([(iid, s)]),
+            )
         menu.add_separator()
-        menu.add_cascade(label="Farbe…", menu=color_menu)
+        if len(selected) >= 2:
+            bulk_color_menu = tk.Menu(menu, tearoff=False)
+            for name, hex_color in PALETTE:
+                bulk_color_menu.add_command(
+                    label=f"  {name}",
+                    command=lambda hc=hex_color, ss=list(selected): [
+                        self.set_session_color(s.key, hc) for s in ss
+                    ],
+                )
+            bulk_color_menu.add_separator()
+            bulk_color_menu.add_command(
+                label="✕ Farbe entfernen",
+                command=lambda ss=list(selected): [
+                    self.set_session_color(s.key, None) for s in ss
+                ],
+            )
+            menu.add_cascade(label=f"Farbe für Auswahl ({len(selected)})…", menu=bulk_color_menu)
+            moveable = [s for s in selected if s.source in ("app", "ssh_alias")]
+            if moveable and self._on_move_sessions:
+                menu.add_command(
+                    label=f"Ordner für Auswahl ({len(moveable)})…",
+                    command=lambda ss=moveable: self._on_move_sessions(ss),
+                )
+        else:
+            menu.add_cascade(label="Farbe…", menu=color_menu)
         menu.tk_popup(event.x_root, event.y_root)
 
     def filter(self, query: str) -> None:
@@ -1031,6 +1103,78 @@ class SessionTree(ttk.Frame):
                 self._checked[item_id] = True
                 self._tv.item(item_id, image=self._img_checked)
         self._notify_count()
+
+    def _session_label(self, session: Session, status: str | None) -> str:
+        """Baut den Anzeigetext einer Session-Zeile inkl. Status-Symbol."""
+        symbol = {"ok": "✓", "fail": "✗", "checking": "⏳"}.get(status or "", "")
+        if session.is_ssh_config_session:
+            type_icon = "⚙ "
+        elif session.is_app_session:
+            type_icon = "★ "
+        else:
+            type_icon = ""
+        prefix = f"  {symbol + ' ' if symbol else ''}"
+        return f"{prefix}{type_icon}{session.display_name}"
+
+    def _set_item_status(self, item_id: str, status: str | None) -> None:
+        """Setzt den Status einer Session-Zeile und aktualisiert den Label-Text."""
+        self._item_to_status[item_id] = status
+        session = self._item_to_session.get(item_id)
+        if session:
+            self._tv.item(item_id, text=self._session_label(session, status))
+
+    def check_hosts(self, item_session_pairs: list[tuple[str, Session]]) -> None:
+        """Prüft TCP-Erreichbarkeit aller übergebenen Sessions asynchron."""
+        for item_id, _ in item_session_pairs:
+            self._set_item_status(item_id, "checking")
+
+        def _probe(item_id: str, hostname: str, port: int) -> None:
+            ok = check_host_reachable(hostname, port)
+            self.after(0, lambda iid=item_id, s=ok: self._set_item_status(iid, "ok" if s else "fail"))
+
+        for item_id, session in item_session_pairs:
+            if session.hostname:
+                threading.Thread(
+                    target=_probe,
+                    args=(item_id, session.hostname, session.port or 22),
+                    daemon=True,
+                ).start()
+
+    def check_selected_hosts(self) -> None:
+        """Prüft alle aktuell ausgewählten Sessions."""
+        pairs = [
+            (iid, s) for iid, s in self._item_to_session.items()
+            if self._checked.get(iid) and s.hostname
+        ]
+        if pairs:
+            self.check_hosts(pairs)
+
+    def check_folder_hosts(self, folder_item_id: str) -> None:
+        """Prüft alle Sessions eines Ordners."""
+        pairs = [
+            (iid, s)
+            for iid, s in self._item_to_session.items()
+            if s.hostname and self._tv.parent(iid) == folder_item_id
+               or self._is_in_folder(iid, folder_item_id)
+        ]
+        # eindeutige Paare (durch zwei Bedingungen oben keine Duplikate nötig)
+        seen: set[str] = set()
+        unique = []
+        for iid, s in pairs:
+            if iid not in seen and self._is_in_folder(iid, folder_item_id) and s.hostname:
+                seen.add(iid)
+                unique.append((iid, s))
+        if unique:
+            self.check_hosts(unique)
+
+    def _is_in_folder(self, item_id: str, folder_item_id: str) -> bool:
+        """Prüft rekursiv ob item_id unter folder_item_id liegt."""
+        parent = self._tv.parent(item_id)
+        if not parent:
+            return False
+        if parent == folder_item_id:
+            return True
+        return self._is_in_folder(parent, folder_item_id)
 
     def _get_folder_sessions(self, folder_item_id: str) -> list[Session]:
         """Gibt alle Sessions rekursiv unter einem Ordner-Item zurück."""
@@ -1358,7 +1502,8 @@ class SshRemoveKeyDialog(tk.Toplevel):
 class SshTunnelDialog(tk.Toplevel):
     """
     Modaler Dialog für SSH Local Port Forwarding (-N -L).
-    Nach Schließen: self.result = (jumphost, local_port, remote_host, remote_port, user) oder None.
+    Nach Schließen: self.result = (ssh_server, local_port, remote_host, remote_port, user) oder None.
+    remote_host ist 'localhost' wenn kein Jumphost-Ziel angegeben wurde (direkter Tunnel).
     """
 
     def __init__(self, parent: tk.Tk, session: Session | None = None):
@@ -1383,19 +1528,19 @@ class SshTunnelDialog(tk.Toplevel):
         # Erklärung
         ttk.Label(
             frame,
-            text="SSH verbindet sich zum Jumphost und leitet\neinen lokalen Port zum Zielserver weiter.",
+            text="SSH verbindet sich zum Server und leitet einen lokalen Port weiter.\nDirekt (kein Jumphost) oder zu einem internen Server dahinter.",
             foreground="#555555",
             justify="left",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
 
-        # Jumphost
-        ttk.Label(frame, text="Jumphost (SSH):").grid(row=1, column=0, sticky="w", pady=(0, 4))
+        # SSH-Server
+        ttk.Label(frame, text="SSH-Server:").grid(row=1, column=0, sticky="w", pady=(0, 4))
         prefill = self._session.hostname if self._session else ""
         self._jumphost_var = tk.StringVar(value=prefill)
         ttk.Entry(frame, textvariable=self._jumphost_var, width=30).grid(
             row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
         )
-        ttk.Label(frame, text="Server, zu dem die SSH-Verbindung aufgebaut wird.", foreground="#888888").grid(
+        ttk.Label(frame, text="Server, zu dem SSH sich verbindet.", foreground="#888888").grid(
             row=2, column=0, columnspan=2, sticky="w", pady=(0, 10)
         )
 
@@ -1411,8 +1556,8 @@ class SshTunnelDialog(tk.Toplevel):
             row=5, column=0, columnspan=2, sticky="w", pady=(0, 8)
         )
 
-        ttk.Label(frame, text="Zielserver:").grid(row=6, column=0, sticky="w", pady=(0, 4))
-        self._remote_host_var = tk.StringVar(value=prefill)
+        ttk.Label(frame, text="Zielserver: (optional)").grid(row=6, column=0, sticky="w", pady=(0, 4))
+        self._remote_host_var = tk.StringVar()
         ttk.Entry(frame, textvariable=self._remote_host_var, width=30).grid(
             row=6, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
         )
@@ -1422,9 +1567,11 @@ class SshTunnelDialog(tk.Toplevel):
         ttk.Entry(frame, textvariable=self._remote_port_var, width=10).grid(
             row=7, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
         )
-        ttk.Label(frame, text="Server und Port hinter dem Jumphost (z. B. db.intern / 3306).", foreground="#888888").grid(
-            row=8, column=0, columnspan=2, sticky="w", pady=(0, 10)
-        )
+        ttk.Label(
+            frame,
+            text="Leer lassen = direkter Tunnel (Port des SSH-Servers selbst).\nFür Jumphost-Tunnel: z. B. db.intern / 3306",
+            foreground="#888888",
+        ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
         ttk.Separator(frame, orient="horizontal").grid(row=9, column=0, columnspan=2, sticky="ew", pady=(0, 10))
 
@@ -1461,20 +1608,17 @@ class SshTunnelDialog(tk.Toplevel):
         return port
 
     def _on_ok(self) -> None:
-        jumphost = self._jumphost_var.get().strip()
-        if not jumphost:
-            messagebox.showwarning("Kein Jumphost", "Bitte einen Jumphost eingeben.", parent=self)
+        ssh_server = self._jumphost_var.get().strip()
+        if not ssh_server:
+            messagebox.showwarning("Kein SSH-Server", "Bitte einen SSH-Server eingeben.", parent=self)
             return
-        if not _HOSTNAME_RE.match(jumphost):
-            messagebox.showwarning("Ungültiger Jumphost", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+        if not _HOSTNAME_RE.match(ssh_server):
+            messagebox.showwarning("Ungültiger SSH-Server", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
             return
         local_port = self._parse_port(self._local_port_var, "Lokaler Port")
         if local_port is None:
             return
-        remote_host = self._remote_host_var.get().strip()
-        if not remote_host:
-            messagebox.showwarning("Kein Zielserver", "Bitte einen Zielserver eingeben.", parent=self)
-            return
+        remote_host = self._remote_host_var.get().strip() or "localhost"
         if not _HOSTNAME_RE.match(remote_host):
             messagebox.showwarning("Ungültiger Zielserver", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
             return
@@ -1491,7 +1635,7 @@ class SshTunnelDialog(tk.Toplevel):
                 parent=self,
             )
             return
-        self.result = (jumphost, local_port, remote_host, remote_port, user)
+        self.result = (ssh_server, local_port, remote_host, remote_port, user)
         self.destroy()
 
     def _on_cancel(self) -> None:
@@ -1963,7 +2107,9 @@ class SSHManagerApp(tk.Tk):
         ttk.Button(toolbar, text="+ Verbindung",
                    command=self._add_session).grid(row=0, column=6, padx=(8, 2))
         ttk.Button(toolbar, text="Tunnel öffnen…",
-                   command=self._open_tunnel).grid(row=0, column=7, padx=(2, 0))
+                   command=self._open_tunnel).grid(row=0, column=7, padx=(2, 2))
+        ttk.Button(toolbar, text="Hosts prüfen",
+                   command=lambda: self._tree.check_selected_hosts()).grid(row=0, column=8, padx=(2, 0))
 
         # SessionTree (Zeile 1)
         self._tree = SessionTree(
@@ -1978,11 +2124,13 @@ class SSHManagerApp(tk.Tk):
             on_edit_session=self._edit_session,
             on_delete_session=self._delete_session,
             on_delete_folder=self._delete_folder,
+            on_rename_folder=self._rename_folder,
             on_add_session_in_folder=self._add_session,
             on_duplicate_ssh_alias=self._duplicate_ssh_alias,
             on_inspect_ssh_config=self._inspect_ssh_config,
             on_duplicate_app_session=self._duplicate_app_session,
             on_move_session=self._move_session,
+            on_move_sessions=self._move_sessions,
             on_open_ssh_config_in_vscode=self._open_ssh_config_in_vscode,
             on_deploy_ssh_key=self._deploy_ssh_key,
             on_remove_ssh_key=self._remove_ssh_key,
@@ -2149,6 +2297,28 @@ class SSHManagerApp(tk.Tk):
         _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
+    def _move_sessions(self, sessions: list[Session]) -> None:
+        """Verschiebt mehrere App-/SSH-Alias-Sessions in denselben Ordner."""
+        dialog = MoveFolderDialog(self, self._get_all_folder_names(), sessions[0].folder_key)
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        folder_path = [p for p in dialog.result.split("/") if p]
+        keys = {s.key for s in sessions}
+        for i, s in enumerate(self._app_sessions):
+            if s.key in keys:
+                self._app_sessions[i] = Session(
+                    key=s.key,
+                    display_name=s.display_name,
+                    folder_path=folder_path,
+                    hostname=s.hostname,
+                    username=s.username,
+                    port=s.port,
+                    source=s.source,
+                )
+        _save_app_sessions(self._app_sessions)
+        self._rebuild_sessions()
+
     def _delete_session(self, session: Session) -> None:
         """Löscht eine App-Session nach Bestätigung."""
         if not messagebox.askyesno(
@@ -2171,6 +2341,33 @@ class SSHManagerApp(tk.Tk):
             return
         keys_to_delete = {s.key for s in sessions}
         self._app_sessions = [s for s in self._app_sessions if s.key not in keys_to_delete]
+        _save_app_sessions(self._app_sessions)
+        self._rebuild_sessions()
+
+    def _rename_folder(self, folder_key: str) -> None:
+        """Benennt einen Ordner um, indem folder_path aller enthaltenen Sessions angepasst wird."""
+        parts = folder_key.split("/")
+        depth = len(parts) - 1
+        old_name = parts[depth]
+        prefix = parts[:depth]
+
+        new_name = simpledialog.askstring(
+            "Ordner umbenennen",
+            f"Neuer Name für '{old_name}':",
+            initialvalue=old_name,
+            parent=self,
+        )
+        if not new_name or new_name.strip() == old_name:
+            return
+        new_name = new_name.strip()
+
+        for session in self._app_sessions:
+            fp = session.folder_path
+            if (len(fp) > depth
+                    and fp[:depth] == prefix
+                    and fp[depth] == old_name):
+                session.folder_path = fp[:depth] + [new_name] + fp[depth + 1:]
+
         _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
