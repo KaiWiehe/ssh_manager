@@ -1361,7 +1361,7 @@ class SshTunnelDialog(tk.Toplevel):
     Nach Schließen: self.result = (jumphost, local_port, remote_host, remote_port, user) oder None.
     """
 
-    def __init__(self, parent: tk.Tk, session: Session):
+    def __init__(self, parent: tk.Tk, session: Session | None = None):
         super().__init__(parent)
         self.title("Tunnel öffnen")
         self.resizable(False, False)
@@ -1390,7 +1390,8 @@ class SshTunnelDialog(tk.Toplevel):
 
         # Jumphost
         ttk.Label(frame, text="Jumphost (SSH):").grid(row=1, column=0, sticky="w", pady=(0, 4))
-        self._jumphost_var = tk.StringVar(value=self._session.hostname)
+        prefill = self._session.hostname if self._session else ""
+        self._jumphost_var = tk.StringVar(value=prefill)
         ttk.Entry(frame, textvariable=self._jumphost_var, width=30).grid(
             row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
         )
@@ -1411,7 +1412,7 @@ class SshTunnelDialog(tk.Toplevel):
         )
 
         ttk.Label(frame, text="Zielserver:").grid(row=6, column=0, sticky="w", pady=(0, 4))
-        self._remote_host_var = tk.StringVar(value=self._session.hostname)
+        self._remote_host_var = tk.StringVar(value=prefill)
         ttk.Entry(frame, textvariable=self._remote_host_var, width=30).grid(
             row=6, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
         )
@@ -1961,6 +1962,8 @@ class SSHManagerApp(tk.Tk):
                    command=self._collapse_all).grid(row=0, column=5, padx=2)
         ttk.Button(toolbar, text="+ Verbindung",
                    command=self._add_session).grid(row=0, column=6, padx=(8, 2))
+        ttk.Button(toolbar, text="Tunnel öffnen…",
+                   command=self._open_tunnel).grid(row=0, column=7, padx=(2, 0))
 
         # SessionTree (Zeile 1)
         self._tree = SessionTree(
@@ -2223,7 +2226,7 @@ class SSHManagerApp(tk.Tk):
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
 
-    def _open_tunnel(self, session: Session) -> None:
+    def _open_tunnel(self, session: Session | None = None) -> None:
         """Öffnet den Tunnel-Dialog und startet den SSH-Tunnel im Terminal."""
         dialog = SshTunnelDialog(self, session=session)
         self.wait_window(dialog)
