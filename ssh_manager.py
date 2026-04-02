@@ -134,20 +134,20 @@ def build_wt_command(sessions: list[Session], user: str, session_colors: dict[st
 
 def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: str) -> str:
     """
-    Erzeugt den wt.exe-Befehl für ssh-copy-id.
-    Einzelne Session: direkter Aufruf. Mehrere Sessions: Bash-Schleife.
-    exec bash hält den Tab offen, damit der Nutzer Ausgabe sehen kann.
+    Erzeugt den wt.exe-Befehl für ssh-copy-id. Pro Host ein eigener WT-Tab.
+    Kein Semikolon im bash-Befehl – WT parst ';' auch innerhalb von bash -c "..."
+    als Subcommand-Separator. '&&'/'||' sind davon nicht betroffen.
+    Tilde (~) darf nicht in Anführungszeichen stehen, sonst keine Expansion.
+    exec bash hält den Tab offen.
     """
     key_path = f"~/.ssh/{key_filename}"
-    targets = [f"{user}@{s.hostname}" for s in sessions]
-
-    if len(targets) == 1:
-        inner = f"ssh-copy-id -i '{key_path}' {targets[0]}; exec bash"
-    else:
-        hosts_str = " ".join(targets)
-        inner = f"for host in {hosts_str}; do ssh-copy-id -i '{key_path}' $host; done; exec bash"
-
-    return f'wt.exe new-tab -p "Git Bash" -- bash -c "{inner}"'
+    parts = []
+    for i, session in enumerate(sessions):
+        target = f"{user}@{session.hostname}"
+        bash_cmd = f'bash -c "ssh-copy-id -i {key_path} {target} && exec bash || exec bash"'
+        tab_cmd = f'new-tab -p "Git Bash" -- {bash_cmd}'
+        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
+    return " ; ".join(parts)
 
 
 # ---------------------------------------------------------------------------
