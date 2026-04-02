@@ -155,6 +155,18 @@ def _find_git_bash() -> str:
     return "bash"
 
 
+def _find_winscp() -> str | None:
+    """Sucht WinSCP.exe in üblichen Installationspfaden."""
+    for candidate in [
+        Path(r"C:\Program Files (x86)\WinSCP\WinSCP.exe"),
+        Path(r"C:\Program Files\WinSCP\WinSCP.exe"),
+    ]:
+        if candidate.exists():
+            return str(candidate)
+    found = shutil.which("WinSCP")
+    return found if found else None
+
+
 def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: str) -> str:
     """
     Erzeugt den wt.exe-Befehl für ssh-copy-id. Pro Host ein eigener WT-Tab.
@@ -562,6 +574,7 @@ class SessionTree(ttk.Frame):
         on_deploy_ssh_key=None,             # Callable[[list[Session]], None] | None
         on_remove_ssh_key=None,             # Callable[[list[Session]], None] | None
         on_open_tunnel=None,                # Callable[[Session], None] | None
+        on_open_in_winscp=None,             # Callable[[Session], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -583,6 +596,7 @@ class SessionTree(ttk.Frame):
         self._on_deploy_ssh_key = on_deploy_ssh_key
         self._on_remove_ssh_key = on_remove_ssh_key
         self._on_open_tunnel = on_open_tunnel
+        self._on_open_in_winscp = on_open_in_winscp
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -897,6 +911,11 @@ class SessionTree(ttk.Frame):
             menu.add_command(
                 label="Verbindung öffnen",
                 command=lambda s=session: self._on_quick_connect(s),
+            )
+        if self._on_open_in_winscp and session.source == "winscp":
+            menu.add_command(
+                label="In WinSCP öffnen",
+                command=lambda s=session: self._on_open_in_winscp(s),
             )
         if self._on_open_tunnel:
             menu.add_command(
@@ -2135,6 +2154,7 @@ class SSHManagerApp(tk.Tk):
             on_deploy_ssh_key=self._deploy_ssh_key,
             on_remove_ssh_key=self._remove_ssh_key,
             on_open_tunnel=self._open_tunnel,
+            on_open_in_winscp=self._open_in_winscp,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -2435,6 +2455,23 @@ class SSHManagerApp(tk.Tk):
             subprocess.Popen(cmd, shell=True)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+
+    def _open_in_winscp(self, session: Session) -> None:
+        """Öffnet eine WinSCP-Session direkt in WinSCP."""
+        winscp = _find_winscp()
+        if not winscp:
+            messagebox.showerror(
+                "WinSCP nicht gefunden",
+                "WinSCP.exe wurde nicht gefunden.\n"
+                "Bitte WinSCP installieren oder zum PATH hinzufügen.",
+                parent=self,
+            )
+            return
+        full_path = "/".join(session.folder_path + [session.display_name])
+        try:
+            subprocess.Popen([winscp, f"/open={full_path}"])
+        except OSError as e:
+            messagebox.showerror("Fehler", f"Fehler beim Starten von WinSCP:\n{e}", parent=self)
 
     def _on_close(self) -> None:
         _save_ui_state(self._tree.get_open_folders(), self._tree.get_session_colors())
