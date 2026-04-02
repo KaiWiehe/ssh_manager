@@ -200,7 +200,7 @@ def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, use
 
 
 def build_ssh_tunnel_command(
-    session: Session, local_port: int, remote_host: str, remote_port: int, user: str
+    jumphost: str, local_port: int, remote_host: str, remote_port: int, user: str
 ) -> str:
     """
     Erzeugt den wt.exe-Befehl für SSH Local Port Forwarding.
@@ -210,7 +210,7 @@ def build_ssh_tunnel_command(
     """
     git_bash = _find_git_bash()
     inner = (
-        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{session.hostname}"
+        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{jumphost}"
         f" && read || read"
     )
     bash_cmd = f'"{git_bash}" -c "{inner}"'
@@ -1358,14 +1358,14 @@ class SshRemoveKeyDialog(tk.Toplevel):
 class SshTunnelDialog(tk.Toplevel):
     """
     Modaler Dialog für SSH Local Port Forwarding (-N -L).
-    Nach Schließen: self.result = (local_port, remote_host, remote_port, user) oder None.
+    Nach Schließen: self.result = (jumphost, local_port, remote_host, remote_port, user) oder None.
     """
 
     def __init__(self, parent: tk.Tk, session: Session):
         super().__init__(parent)
         self.title("Tunnel öffnen")
         self.resizable(False, False)
-        self.result: tuple[int, str, int, str] | None = None
+        self.result: tuple[str, int, str, int, str] | None = None
         self._session = session
 
         self.transient(parent)
@@ -1380,31 +1380,55 @@ class SshTunnelDialog(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
 
+        # Erklärung
         ttk.Label(
             frame,
-            text=f"Tunnel über: {self._session.hostname}",
+            text="SSH verbindet sich zum Jumphost und leitet\neinen lokalen Port zum Zielserver weiter.",
             foreground="#555555",
-        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+            justify="left",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
 
-        ttk.Label(frame, text="Lokaler Port:").grid(row=1, column=0, sticky="w", pady=(0, 4))
+        # Jumphost
+        ttk.Label(frame, text="Jumphost (SSH):").grid(row=1, column=0, sticky="w", pady=(0, 4))
+        self._jumphost_var = tk.StringVar(value=self._session.hostname)
+        ttk.Entry(frame, textvariable=self._jumphost_var, width=30).grid(
+            row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
+        )
+        ttk.Label(frame, text="Server, zu dem die SSH-Verbindung aufgebaut wird.", foreground="#888888").grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(0, 10)
+        )
+
+        ttk.Separator(frame, orient="horizontal").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+
+        # Port Forwarding
+        ttk.Label(frame, text="Lokaler Port:").grid(row=4, column=0, sticky="w", pady=(0, 4))
         self._local_port_var = tk.StringVar()
         ttk.Entry(frame, textvariable=self._local_port_var, width=10).grid(
-            row=1, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
+            row=4, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
+        )
+        ttk.Label(frame, text="Port auf deinem PC (z. B. 3306).", foreground="#888888").grid(
+            row=5, column=0, columnspan=2, sticky="w", pady=(0, 8)
         )
 
-        ttk.Label(frame, text="Remote Host:").grid(row=2, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(frame, text="Zielserver:").grid(row=6, column=0, sticky="w", pady=(0, 4))
         self._remote_host_var = tk.StringVar(value=self._session.hostname)
         ttk.Entry(frame, textvariable=self._remote_host_var, width=30).grid(
-            row=2, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
+            row=6, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
         )
 
-        ttk.Label(frame, text="Remote Port:").grid(row=3, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(frame, text="Zielport:").grid(row=7, column=0, sticky="w", pady=(0, 4))
         self._remote_port_var = tk.StringVar()
         ttk.Entry(frame, textvariable=self._remote_port_var, width=10).grid(
-            row=3, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
+            row=7, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
+        )
+        ttk.Label(frame, text="Server und Port hinter dem Jumphost (z. B. db.intern / 3306).", foreground="#888888").grid(
+            row=8, column=0, columnspan=2, sticky="w", pady=(0, 10)
         )
 
-        ttk.Label(frame, text="Quickselect:").grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        ttk.Separator(frame, orient="horizontal").grid(row=9, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+
+        # Benutzer
+        ttk.Label(frame, text="Quickselect:").grid(row=10, column=0, columnspan=2, sticky="w", pady=(0, 4))
         self._user_var = tk.StringVar(value=DEFAULT_USER)
         for col, username in enumerate(QUICK_USERS):
             ttk.Button(
@@ -1412,15 +1436,15 @@ class SshTunnelDialog(tk.Toplevel):
                 text=username,
                 command=lambda u=username: self._user_var.set(u),
                 width=14,
-            ).grid(row=5, column=col, padx=2, pady=(0, 8))
+            ).grid(row=11, column=col, padx=2, pady=(0, 8))
 
-        ttk.Label(frame, text="Benutzername:").grid(row=6, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(frame, text="Benutzername:").grid(row=12, column=0, sticky="w", pady=(0, 4))
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
-        entry.grid(row=7, column=0, columnspan=max(len(QUICK_USERS), 2), sticky="ew", pady=(0, 12))
+        entry.grid(row=13, column=0, columnspan=max(len(QUICK_USERS), 2), sticky="ew", pady=(0, 12))
         entry.focus()
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=8, column=0, columnspan=max(len(QUICK_USERS), 2))
+        btn_frame.grid(row=14, column=0, columnspan=max(len(QUICK_USERS), 2))
         ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
         ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
 
@@ -1436,17 +1460,24 @@ class SshTunnelDialog(tk.Toplevel):
         return port
 
     def _on_ok(self) -> None:
+        jumphost = self._jumphost_var.get().strip()
+        if not jumphost:
+            messagebox.showwarning("Kein Jumphost", "Bitte einen Jumphost eingeben.", parent=self)
+            return
+        if not _HOSTNAME_RE.match(jumphost):
+            messagebox.showwarning("Ungültiger Jumphost", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+            return
         local_port = self._parse_port(self._local_port_var, "Lokaler Port")
         if local_port is None:
             return
         remote_host = self._remote_host_var.get().strip()
         if not remote_host:
-            messagebox.showwarning("Kein Remote-Host", "Bitte einen Remote-Host eingeben.", parent=self)
+            messagebox.showwarning("Kein Zielserver", "Bitte einen Zielserver eingeben.", parent=self)
             return
         if not _HOSTNAME_RE.match(remote_host):
-            messagebox.showwarning("Ungültiger Remote-Host", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+            messagebox.showwarning("Ungültiger Zielserver", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
             return
-        remote_port = self._parse_port(self._remote_port_var, "Remote Port")
+        remote_port = self._parse_port(self._remote_port_var, "Zielport")
         if remote_port is None:
             return
         user = self._user_var.get().strip()
@@ -1459,7 +1490,7 @@ class SshTunnelDialog(tk.Toplevel):
                 parent=self,
             )
             return
-        self.result = (local_port, remote_host, remote_port, user)
+        self.result = (jumphost, local_port, remote_host, remote_port, user)
         self.destroy()
 
     def _on_cancel(self) -> None:
@@ -2198,9 +2229,9 @@ class SSHManagerApp(tk.Tk):
         self.wait_window(dialog)
         if dialog.result is None:
             return
-        local_port, remote_host, remote_port, user = dialog.result
+        jumphost, local_port, remote_host, remote_port, user = dialog.result
         try:
-            cmd = build_ssh_tunnel_command(session, local_port, remote_host, remote_port, user)
+            cmd = build_ssh_tunnel_command(jumphost, local_port, remote_host, remote_port, user)
             subprocess.Popen(cmd, shell=True)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
