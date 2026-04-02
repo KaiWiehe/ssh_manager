@@ -18,7 +18,7 @@ python -m pytest tests/test_logic.py::test_build_wt_command_single_session
 python -m py_compile ssh_manager.py
 ```
 
-Keine externen Abhängigkeiten – nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `pathlib`).
+Keine externen Abhängigkeiten – nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `pathlib`, `socket`, `threading`).
 
 ## Architektur
 
@@ -42,13 +42,16 @@ app_sessions.json  ──┘
 - `build_wt_command()` – erzeugt den `wt.exe`-Befehl für SSH-Verbindungen
 - `build_ssh_copy_id_command()` – erzeugt den Befehl für `ssh-copy-id`
 - `build_ssh_remove_key_command()` – erzeugt den Befehl zum Entfernen eines Keys aus `authorized_keys`
+- `build_ssh_tunnel_command()` – erzeugt den `wt.exe`-Befehl für SSH Local Port Forwarding (`-N -L`)
+- `check_host_reachable()` – TCP-Verbindungstest (socket, kein SSH-Handshake)
 - `_find_git_bash()` – findet Git Bash (nicht WSL-Bash)
+- `_find_winscp()` – findet WinSCP.exe (`%LOCALAPPDATA%`, Program Files, PATH)
 - `_load_ui_state()` / `_save_ui_state()` – JSON-Persistenz in `%APPDATA%\SSH-Manager\`
 
 **GUI-Klassen:**
 - `SessionTree(ttk.Frame)` – der Haupt-Treeview mit Checkboxen, Farben, Kontextmenüs. Kommuniziert mit der App ausschließlich über Callback-Parameter (kein direkter App-Zugriff).
 - `SSHManagerApp(tk.Tk)` – Hauptfenster, verdrahtet alle Callbacks, besitzt den App-Zustand.
-- Dialog-Klassen: `UserDialog`, `SessionEditDialog`, `MoveSessionDialog`, `SshCopyIdDialog`, `SshRemoveKeyDialog`, `SshConfigInspectDialog`
+- Dialog-Klassen: `UserDialog`, `SessionEditDialog`, `MoveFolderDialog`, `SshCopyIdDialog`, `SshRemoveKeyDialog`, `SshConfigInspectDialog`, `SshTunnelDialog`
 
 **Datenquellen:**
 - `RegistryReader` – liest WinSCP-Sessions aus `HKCU\Software\Martin Prikryl\WinSCP 2\Sessions`
@@ -66,6 +69,9 @@ app_sessions.json  ──┘
 
 `ssh_config`- und `ssh_alias`-Sessions ignorieren den User-Dialog (`is_ssh_config_session = True`).
 
+Nur `app`- und `ssh_alias`-Sessions sind editierbar (umbenennen, verschieben, löschen, Ordner umbenennen).  
+Nur `winscp`-Sessions unterstützen "In WinSCP öffnen".
+
 ### Windows Terminal / Quoting-Regeln
 
 Kritisch für alle `build_*_command()`-Funktionen:
@@ -75,6 +81,20 @@ Kritisch für alle `build_*_command()`-Funktionen:
 - `bash` aus dem System-PATH ist unter Windows mit WSL die WSL-Bash, nicht Git Bash. Immer `_find_git_bash()` verwenden.
 - Nested double quotes in `bash -c "..."` zerschießen den Befehl. Für Remote-SSH-Befehle single quotes verwenden: `bash -c "ssh host 'remote cmd'"`.
 - `subprocess.Popen(cmd, shell=True)` ist nötig (nicht `shell=False`), da `wt.exe` und `code` keine direkten Binaries sind.
+- WinSCP wird mit `subprocess.Popen([winscp_path, session_name])` ohne `shell=True` gestartet (direkte Binary).
+
+### SSH-Tunnel (`build_ssh_tunnel_command`)
+
+- `ssh_server`: Server, zu dem SSH sich verbindet (Pflichtfeld)
+- `remote_host`: Ziel hinter dem SSH-Server – `"localhost"` = direkter Tunnel (kein Jumphost)
+- Befehl: `ssh -N -L localport:remote_host:remoteport user@ssh_server`
+
+### Hosts prüfen (`check_host_reachable`)
+
+- TCP-Connect auf Port 22 (oder Session-Port), Timeout 3s
+- Läuft in Daemon-Threads, UI-Update via `after(0, ...)`
+- Status wird als ✓/✗/⏳-Präfix im Baum-Label angezeigt (`_set_item_status`)
+- Status wird beim nächsten `populate()` zurückgesetzt
 
 ### Persistenz
 
@@ -87,3 +107,25 @@ Kritisch für alle `build_*_command()`-Funktionen:
 - `DEFAULT_USER` – vorausgewählter Benutzername
 - `PALETTE` – 8 Einträge `(Name, "#rrggbb")` für die Farbauswahl
 - `_SSH_CONFIG_DEFAULT_FOLDER` – Anzeigename des SSH-Config-Ordners (`"SSH Config"`)
+
+### SessionTree-Callbacks (Übersicht)
+
+| Callback | Signatur | Beschreibung |
+|---|---|---|
+| `on_selection_changed` | `(count: int)` | Checkbox-Änderung |
+| `on_quick_connect` | `(Session)` | Doppelklick / Verbindung öffnen |
+| `on_edit_session` | `(Session)` | Bearbeiten-Dialog |
+| `on_delete_session` | `(Session)` | Session löschen |
+| `on_delete_folder` | `(list[Session], str)` | Ordner löschen |
+| `on_rename_folder` | `(str)` | Ordner umbenennen (folder_key) |
+| `on_add_session_in_folder` | `(str)` | Neue Session in Ordner |
+| `on_duplicate_ssh_alias` | `(Session)` | SSH-Alias duplizieren |
+| `on_duplicate_app_session` | `(Session)` | App-Session duplizieren |
+| `on_move_session` | `(Session)` | Einzelne Session verschieben |
+| `on_move_sessions` | `(list[Session])` | Mehrere Sessions verschieben |
+| `on_inspect_ssh_config` | `(Session)` | `ssh -G` anzeigen |
+| `on_open_ssh_config_in_vscode` | `()` | SSH-Config in VS Code |
+| `on_deploy_ssh_key` | `(list[Session])` | ssh-copy-id |
+| `on_remove_ssh_key` | `(list[Session])` | SSH-Key entfernen |
+| `on_open_tunnel` | `(Session \| None)` | Tunnel-Dialog öffnen |
+| `on_open_in_winscp` | `(list[Session])` | WinSCP öffnen |
