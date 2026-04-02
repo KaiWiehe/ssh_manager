@@ -175,22 +175,23 @@ def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: 
 def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, user: str) -> str:
     """
     Erzeugt den wt.exe-Befehl zum Entfernen eines SSH Public Keys aus authorized_keys.
-    Pro Host ein eigener WT-Tab. Gleiche Constraints wie build_ssh_copy_id_command:
-    - Kein ';' im bash-Befehl (WT parst es als Subcommand-Separator).
-    - '~' unquoted → Tilde-Expansion funktioniert.
-    - 'read' hält den Tab offen.
+    Pro Host ein eigener WT-Tab.
+    - Stdin-Redirect (< ~/.ssh/key.pub) statt KEY-Variable → keine nested double quotes.
+    - grep -vxFf /dev/stdin: liest Muster aus stdin (Public Key), Fixed-String, ganze Zeile.
+    - Single-Quotes für den Remote-Befehl (in bash -c "..." literal, für SSH quote-delimiter).
+    - '~' unquoted außerhalb der äußeren Anführungszeichen → Tilde-Expansion.
     """
     git_bash = _find_git_bash()
     parts = []
     for i, session in enumerate(sessions):
         target = f"{user}@{session.hostname}"
-        # KEY=$(cat ...) liest den Key lokal; grep -v entfernt ihn remote.
-        # && read || read hält den Tab offen und zeigt Fehler.
+        remote_cmd = (
+            "grep -vxFf /dev/stdin ~/.ssh/authorized_keys > /tmp/ak_tmp "
+            "&& mv /tmp/ak_tmp ~/.ssh/authorized_keys"
+        )
         inner = (
-            f"KEY=$(cat ~/.ssh/{key_filename}) && "
-            f'ssh {target} "grep -vF \\"$KEY\\" ~/.ssh/authorized_keys > /tmp/ak_tmp '
-            f'&& mv /tmp/ak_tmp ~/.ssh/authorized_keys" '
-            f"&& echo OK || echo FEHLER && read"
+            f"ssh {target} '{remote_cmd}' "
+            f"< ~/.ssh/{key_filename} && echo OK || echo FEHLER && read"
         )
         bash_cmd = f'"{git_bash}" -c "{inner}"'
         tab_cmd = f'new-tab -p "Git Bash" -- {bash_cmd}'
