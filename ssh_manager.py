@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tkinter as tk
@@ -132,19 +133,40 @@ def build_wt_command(sessions: list[Session], user: str, session_colors: dict[st
     return " ; ".join(parts)
 
 
+def _find_git_bash() -> str:
+    """
+    Sucht bash.exe von Git for Windows.
+    Wichtig: 'bash' aus dem System-PATH ist unter Windows mit WSL die WSL-Bash
+    (C:\\Windows\\System32\\bash.exe), nicht Git Bash.
+    """
+    git = shutil.which("git")
+    if git:
+        bash = Path(git).parent.parent / "bin" / "bash.exe"
+        if bash.exists():
+            return str(bash)
+    for candidate in [
+        Path(r"C:\Program Files\Git\bin\bash.exe"),
+        Path(r"C:\Program Files (x86)\Git\bin\bash.exe"),
+    ]:
+        if candidate.exists():
+            return str(candidate)
+    return "bash"
+
+
 def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: str) -> str:
     """
     Erzeugt den wt.exe-Befehl für ssh-copy-id. Pro Host ein eigener WT-Tab.
-    Kein Semikolon im bash-Befehl – WT parst ';' auch innerhalb von bash -c "..."
-    als Subcommand-Separator. '&&'/'||' sind davon nicht betroffen.
-    Tilde (~) darf nicht in Anführungszeichen stehen, sonst keine Expansion.
-    exec bash hält den Tab offen.
+    - Expliziter Git-Bash-Pfad statt 'bash' (System-bash = WSL unter Windows).
+    - Kein ';' im bash-Befehl (WT parst es als Subcommand-Separator).
+    - 'read' hält den Tab offen, braucht keine Anführungszeichen.
+    - '~' unquoted → Tilde-Expansion funktioniert.
     """
-    key_path = f"~/.ssh/{key_filename}"
+    git_bash = _find_git_bash()
     parts = []
     for i, session in enumerate(sessions):
         target = f"{user}@{session.hostname}"
-        bash_cmd = f'bash -c "ssh-copy-id -i {key_path} {target} && exec bash || exec bash"'
+        inner = f"ssh-copy-id -i ~/.ssh/{key_filename} {target} && read || read"
+        bash_cmd = f'"{git_bash}" -c "{inner}"'
         tab_cmd = f'new-tab -p "Git Bash" -- {bash_cmd}'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
     return " ; ".join(parts)
