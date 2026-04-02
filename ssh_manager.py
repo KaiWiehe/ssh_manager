@@ -172,6 +172,32 @@ def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: 
     return " ; ".join(parts)
 
 
+def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, user: str) -> str:
+    """
+    Erzeugt den wt.exe-Befehl zum Entfernen eines SSH Public Keys aus authorized_keys.
+    Pro Host ein eigener WT-Tab. Gleiche Constraints wie build_ssh_copy_id_command:
+    - Kein ';' im bash-Befehl (WT parst es als Subcommand-Separator).
+    - '~' unquoted → Tilde-Expansion funktioniert.
+    - 'read' hält den Tab offen.
+    """
+    git_bash = _find_git_bash()
+    parts = []
+    for i, session in enumerate(sessions):
+        target = f"{user}@{session.hostname}"
+        # KEY=$(cat ...) liest den Key lokal; grep -v entfernt ihn remote.
+        # && read || read hält den Tab offen und zeigt Fehler.
+        inner = (
+            f"KEY=$(cat ~/.ssh/{key_filename}) && "
+            f'ssh {target} "grep -vF \\"$KEY\\" ~/.ssh/authorized_keys > /tmp/ak_tmp '
+            f'&& mv /tmp/ak_tmp ~/.ssh/authorized_keys" '
+            f"&& echo OK || echo FEHLER && read"
+        )
+        bash_cmd = f'"{git_bash}" -c "{inner}"'
+        tab_cmd = f'new-tab -p "Git Bash" -- {bash_cmd}'
+        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
+    return " ; ".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # TerminalLauncher
 # ---------------------------------------------------------------------------
@@ -501,6 +527,7 @@ class SessionTree(ttk.Frame):
         on_move_session=None,            # Callable[[Session], None] | None
         on_open_ssh_config_in_vscode=None,  # Callable[[], None] | None
         on_deploy_ssh_key=None,             # Callable[[list[Session]], None] | None
+        on_remove_ssh_key=None,             # Callable[[list[Session]], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -518,6 +545,7 @@ class SessionTree(ttk.Frame):
         self._on_move_session = on_move_session
         self._on_open_ssh_config_in_vscode = on_open_ssh_config_in_vscode
         self._on_deploy_ssh_key = on_deploy_ssh_key
+        self._on_remove_ssh_key = on_remove_ssh_key
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -779,12 +807,18 @@ class SessionTree(ttk.Frame):
             )
             menu.add_separator()
             menu.add_cascade(label="Farbe für alle…", menu=color_menu)
-        if folder_sessions and self._on_deploy_ssh_key:
+        if folder_sessions and (self._on_deploy_ssh_key or self._on_remove_ssh_key):
             menu.add_separator()
-            menu.add_command(
-                label="SSH Key übertragen…",
-                command=lambda ss=list(folder_sessions): self._on_deploy_ssh_key(ss),
-            )
+            if self._on_deploy_ssh_key:
+                menu.add_command(
+                    label="SSH Key übertragen…",
+                    command=lambda ss=list(folder_sessions): self._on_deploy_ssh_key(ss),
+                )
+            if self._on_remove_ssh_key:
+                menu.add_command(
+                    label="SSH Key entfernen…",
+                    command=lambda ss=list(folder_sessions): self._on_remove_ssh_key(ss),
+                )
         menu.tk_popup(event.x_root, event.y_root)
 
     def _show_session_menu(self, item_id: str, event: tk.Event) -> None:
@@ -811,11 +845,17 @@ class SessionTree(ttk.Frame):
                 command=lambda s=session: self._on_quick_connect(s),
             )
             menu.add_separator()
-        if self._on_deploy_ssh_key:
-            menu.add_command(
-                label="SSH Key übertragen…",
-                command=lambda s=session: self._on_deploy_ssh_key([s]),
-            )
+        if self._on_deploy_ssh_key or self._on_remove_ssh_key:
+            if self._on_deploy_ssh_key:
+                menu.add_command(
+                    label="SSH Key übertragen…",
+                    command=lambda s=session: self._on_deploy_ssh_key([s]),
+                )
+            if self._on_remove_ssh_key:
+                menu.add_command(
+                    label="SSH Key entfernen…",
+                    command=lambda s=session: self._on_remove_ssh_key([s]),
+                )
             menu.add_separator()
         if session.is_app_session:
             if self._on_edit_session:
@@ -1140,6 +1180,111 @@ class SshCopyIdDialog(tk.Toplevel):
         entry.focus()
 
         # OK / Abbrechen
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=7, column=0, columnspan=max(len(QUICK_USERS), 2))
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        key = self._key_var.get().strip()
+        if not key:
+            messagebox.showwarning("Kein Key", "Bitte einen Public Key auswählen.", parent=self)
+            return
+        user = self._user_var.get().strip()
+        if not user:
+            return
+        if not _USERNAME_RE.match(user):
+            messagebox.showwarning(
+                "Ungültiger Benutzername",
+                "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+                parent=self,
+            )
+            return
+        self.result = (key, user)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+# ---------------------------------------------------------------------------
+# SshRemoveKeyDialog
+# ---------------------------------------------------------------------------
+class SshRemoveKeyDialog(tk.Toplevel):
+    """
+    Modaler Dialog zur Auswahl von SSH Public Key und Benutzername zum Entfernen
+    des Keys aus authorized_keys auf Remote-Hosts.
+    Nach Schließen: self.result = (key_filename, user) oder None (Abbrechen).
+    """
+
+    def __init__(self, parent: tk.Tk, target_count: int = 1):
+        super().__init__(parent)
+        self.title("SSH Key entfernen")
+        self.resizable(False, False)
+        self.result: tuple[str, str] | None = None
+        self._target_count = target_count
+
+        self.transient(parent)
+        self.grab_set()
+
+        self._build()
+        self._center_on_parent(parent)
+
+        self.bind("<Return>", lambda _: self._on_ok())
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        if self._target_count > 1:
+            ttk.Label(
+                frame,
+                text=f"Key wird von {self._target_count} Host(s) entfernt.",
+                foreground="#555555",
+            ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        ttk.Label(frame, text="Public Key:").grid(row=1, column=0, sticky="w", pady=(0, 4))
+        pub_keys = sorted(p.name for p in (_SSH_CONFIG_FILE.parent).glob("*.pub"))
+        self._key_var = tk.StringVar(value=pub_keys[0] if pub_keys else "")
+        key_cb = ttk.Combobox(
+            frame, textvariable=self._key_var, values=pub_keys, width=30, state="readonly" if pub_keys else "normal"
+        )
+        key_cb.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4))
+        if not pub_keys:
+            ttk.Label(frame, text="Keine *.pub-Dateien in ~/.ssh gefunden.", foreground="red").grid(
+                row=2, column=0, columnspan=2, sticky="w"
+            )
+
+        ttk.Label(frame, text="Quickselect:").grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        self._user_var = tk.StringVar(value=DEFAULT_USER)
+        for col, username in enumerate(QUICK_USERS):
+            ttk.Button(
+                frame,
+                text=username,
+                command=lambda u=username: self._user_var.set(u),
+                width=14,
+            ).grid(row=4, column=col, padx=2, pady=(0, 8))
+
+        ttk.Label(frame, text="Benutzername:").grid(row=5, column=0, sticky="w", pady=(0, 4))
+        entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
+        entry.grid(row=6, column=0, columnspan=max(len(QUICK_USERS), 2), sticky="ew", pady=(0, 12))
+        entry.focus()
+
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=7, column=0, columnspan=max(len(QUICK_USERS), 2))
         ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
@@ -1652,6 +1797,7 @@ class SSHManagerApp(tk.Tk):
             on_move_session=self._move_session,
             on_open_ssh_config_in_vscode=self._open_ssh_config_in_vscode,
             on_deploy_ssh_key=self._deploy_ssh_key,
+            on_remove_ssh_key=self._remove_ssh_key,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -1874,6 +2020,19 @@ class SSHManagerApp(tk.Tk):
         key_filename, user = dialog.result
         try:
             cmd = build_ssh_copy_id_command(sessions, key_filename, user)
+            subprocess.Popen(cmd, shell=True)
+        except OSError as e:
+            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+
+    def _remove_ssh_key(self, sessions: list[Session]) -> None:
+        """Öffnet den Remove-Key Dialog und entfernt den Key remote via SSH."""
+        dialog = SshRemoveKeyDialog(self, target_count=len(sessions))
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        key_filename, user = dialog.result
+        try:
+            cmd = build_ssh_remove_key_command(sessions, key_filename, user)
             subprocess.Popen(cmd, shell=True)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
