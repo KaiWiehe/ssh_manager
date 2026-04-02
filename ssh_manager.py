@@ -157,7 +157,9 @@ def _find_git_bash() -> str:
 
 def _find_winscp() -> str | None:
     """Sucht WinSCP.exe in üblichen Installationspfaden."""
+    local_app = os.environ.get("LOCALAPPDATA", "")
     for candidate in [
+        Path(local_app) / "Programs" / "WinSCP" / "WinSCP.exe",
         Path(r"C:\Program Files (x86)\WinSCP\WinSCP.exe"),
         Path(r"C:\Program Files\WinSCP\WinSCP.exe"),
     ]:
@@ -574,7 +576,7 @@ class SessionTree(ttk.Frame):
         on_deploy_ssh_key=None,             # Callable[[list[Session]], None] | None
         on_remove_ssh_key=None,             # Callable[[list[Session]], None] | None
         on_open_tunnel=None,                # Callable[[Session], None] | None
-        on_open_in_winscp=None,             # Callable[[Session], None] | None
+        on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -833,6 +835,12 @@ class SessionTree(ttk.Frame):
         )
         folder_sessions = self._get_folder_sessions(item_id)
         if folder_sessions:
+            winscp_sessions = [s for s in folder_sessions if s.source == "winscp"]
+            if winscp_sessions and self._on_open_in_winscp:
+                menu.add_command(
+                    label=f"Alle in WinSCP öffnen ({len(winscp_sessions)})",
+                    command=lambda ss=winscp_sessions: self._on_open_in_winscp(ss),
+                )
             hostnames = [s.hostname for s in folder_sessions if s.hostname]
             menu.add_command(
                 label="Hostnames kopieren",
@@ -913,10 +921,17 @@ class SessionTree(ttk.Frame):
                 command=lambda s=session: self._on_quick_connect(s),
             )
         if self._on_open_in_winscp and session.source == "winscp":
-            menu.add_command(
-                label="In WinSCP öffnen",
-                command=lambda s=session: self._on_open_in_winscp(s),
-            )
+            selected_winscp = [s for s in self.get_selected_sessions() if s.source == "winscp"]
+            if len(selected_winscp) >= 2:
+                menu.add_command(
+                    label=f"Alle {len(selected_winscp)} in WinSCP öffnen",
+                    command=lambda ss=selected_winscp: self._on_open_in_winscp(ss),
+                )
+            else:
+                menu.add_command(
+                    label="In WinSCP öffnen",
+                    command=lambda s=session: self._on_open_in_winscp([s]),
+                )
         if self._on_open_tunnel:
             menu.add_command(
                 label="Tunnel öffnen…",
@@ -2456,8 +2471,8 @@ class SSHManagerApp(tk.Tk):
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
 
-    def _open_in_winscp(self, session: Session) -> None:
-        """Öffnet eine WinSCP-Session direkt in WinSCP."""
+    def _open_in_winscp(self, sessions: list[Session]) -> None:
+        """Öffnet eine oder mehrere WinSCP-Sessions direkt in WinSCP."""
         winscp = _find_winscp()
         if not winscp:
             messagebox.showerror(
@@ -2467,9 +2482,10 @@ class SSHManagerApp(tk.Tk):
                 parent=self,
             )
             return
-        full_path = "/".join(session.folder_path + [session.display_name])
         try:
-            subprocess.Popen([winscp, f"/open={full_path}"])
+            for session in sessions:
+                full_path = "/".join(session.folder_path + [session.display_name])
+                subprocess.Popen([winscp, full_path])
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten von WinSCP:\n{e}", parent=self)
 
