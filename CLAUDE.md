@@ -18,7 +18,8 @@ python -m pytest tests/test_logic.py::test_build_wt_command_single_session
 python -m py_compile ssh_manager.py
 ```
 
-Keine externen Abhängigkeiten – nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `pathlib`, `socket`, `threading`).
+Keine externen Abhängigkeiten – nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `pathlib`, `socket`, `threading`).  
+Aus tkinter genutzte Module: `tk`, `ttk`, `messagebox`, `simpledialog`.
 
 ## Architektur
 
@@ -81,13 +82,20 @@ Kritisch für alle `build_*_command()`-Funktionen:
 - `bash` aus dem System-PATH ist unter Windows mit WSL die WSL-Bash, nicht Git Bash. Immer `_find_git_bash()` verwenden.
 - Nested double quotes in `bash -c "..."` zerschießen den Befehl. Für Remote-SSH-Befehle single quotes verwenden: `bash -c "ssh host 'remote cmd'"`.
 - `subprocess.Popen(cmd, shell=True)` ist nötig (nicht `shell=False`), da `wt.exe` und `code` keine direkten Binaries sind.
-- WinSCP wird mit `subprocess.Popen([winscp_path, session_name])` ohne `shell=True` gestartet (direkte Binary).
+- WinSCP wird mit `subprocess.Popen([winscp_path, session_name])` ohne `shell=True` gestartet (direkte Binary).  
+  `session_name` = `"/".join(session.folder_path + [session.display_name])`, z.B. `"TOM/TOM Client/NBB-SVM267"`.
 
 ### SSH-Tunnel (`build_ssh_tunnel_command`)
 
 - `ssh_server`: Server, zu dem SSH sich verbindet (Pflichtfeld)
 - `remote_host`: Ziel hinter dem SSH-Server – `"localhost"` = direkter Tunnel (kein Jumphost)
 - Befehl: `ssh -N -L localport:remote_host:remoteport user@ssh_server`
+
+### Ordner umbenennen (`_rename_folder`)
+
+- Nutzt `simpledialog.askstring` für die Eingabe des neuen Namens
+- Ändert `folder_path[depth]` in allen `_app_sessions` deren Pfad-Präfix und alter Name übereinstimmen
+- Wirkt rekursiv auf Unterordner (tiefere `folder_path`-Einträge bleiben erhalten)
 
 ### Hosts prüfen (`check_host_reachable`)
 
