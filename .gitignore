@@ -1,0 +1,5 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+AGENTS.md
+.claude/settings.local.json
