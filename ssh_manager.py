@@ -2140,10 +2140,12 @@ class SSHManagerApp(tk.Tk):
                    command=self._collapse_all).grid(row=0, column=5, padx=2)
         ttk.Button(toolbar, text="+ Verbindung",
                    command=self._add_session).grid(row=0, column=6, padx=(8, 2))
+        ttk.Button(toolbar, text="Neu laden",
+                   command=self._reload_sessions).grid(row=0, column=7, padx=(2, 2))
         ttk.Button(toolbar, text="Tunnel öffnen…",
-                   command=self._open_tunnel).grid(row=0, column=7, padx=(2, 2))
+                   command=self._open_tunnel).grid(row=0, column=8, padx=(2, 2))
         ttk.Button(toolbar, text="Hosts prüfen",
-                   command=lambda: self._tree.check_selected_hosts()).grid(row=0, column=8, padx=(2, 0))
+                   command=lambda: self._tree.check_selected_hosts()).grid(row=0, column=9, padx=(2, 0))
 
         # SessionTree (Zeile 1)
         self._tree = SessionTree(
@@ -2259,15 +2261,31 @@ class SSHManagerApp(tk.Tk):
         """Gibt alle SSH-Config-Aliases zurück (für Alias-Picker im Dialog)."""
         return sorted(s.display_name for s in self._sessions if s.source == "ssh_config")
 
-    def _rebuild_sessions(self) -> None:
+    def _rebuild_sessions(self, *, reload_winscp: bool = False) -> None:
         """Merged alle Session-Quellen und aktualisiert den Baum."""
         ssh_config_sessions = _load_ssh_config_sessions()
-        winscp = [s for s in self._sessions if s.source == "winscp"]
+        if reload_winscp:
+            try:
+                winscp = RegistryReader().load_sessions()
+            except OSError as e:
+                messagebox.showerror(
+                    "Registry-Fehler",
+                    f"WinSCP-Sessions konnten nicht geladen werden:\n{e}\n\n"
+                    f"Pfad: HKCU\\{REGISTRY_PATH}",
+                    parent=self,
+                )
+                winscp = []
+        else:
+            winscp = [s for s in self._sessions if s.source == "winscp"]
         self._sessions = sorted(
             winscp + self._app_sessions + ssh_config_sessions,
             key=lambda s: (0 if s.folder_key == _SSH_CONFIG_DEFAULT_FOLDER else 1, s.folder_key.lower(), s.display_name.lower()),
         )
         self._tree.refresh(self._sessions)
+
+    def _reload_sessions(self) -> None:
+        """Lädt WinSCP- und SSH-Config-Sessions erneut ein und aktualisiert die Ansicht."""
+        self._rebuild_sessions(reload_winscp=True)
 
     def _add_session(self, folder_preset: str = "") -> None:
         """Öffnet den Dialog zum Anlegen einer neuen Session (App oder SSH-Alias)."""
