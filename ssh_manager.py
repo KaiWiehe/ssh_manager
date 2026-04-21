@@ -2073,6 +2073,34 @@ class MoveFolderDialog(tk.Toplevel):
 
 
 # ---------------------------------------------------------------------------
+# ToastNotification
+# ---------------------------------------------------------------------------
+class ToastNotification(tk.Toplevel):
+    """Kleines unauffälliges Toast oben rechts."""
+
+    def __init__(self, parent: tk.Tk, message: str, duration_ms: int = 2200):
+        super().__init__(parent)
+        self.withdraw()
+        self.overrideredirect(True)
+        self.attributes("-topmost", True)
+
+        frame = ttk.Frame(self, padding=(12, 8), style="Toast.TFrame")
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text=message, style="Toast.TLabel").pack()
+
+        self.update_idletasks()
+        parent.update_idletasks()
+
+        width = self.winfo_reqwidth()
+        height = self.winfo_reqheight()
+        x = parent.winfo_rootx() + parent.winfo_width() - width - 16
+        y = parent.winfo_rooty() + 16
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.deiconify()
+        self.after(duration_ms, self.destroy)
+
+
+# ---------------------------------------------------------------------------
 # SSHManagerApp
 # ---------------------------------------------------------------------------
 class SSHManagerApp(tk.Tk):
@@ -2087,6 +2115,8 @@ class SSHManagerApp(tk.Tk):
         # Stil
         style = ttk.Style(self)
         style.theme_use("clam")
+        style.configure("Toast.TFrame", background="#333333", relief="flat")
+        style.configure("Toast.TLabel", background="#333333", foreground="#f5f5f5")
 
         # Registry laden
         try:
@@ -2286,6 +2316,7 @@ class SSHManagerApp(tk.Tk):
     def _reload_sessions(self) -> None:
         """Lädt WinSCP- und SSH-Config-Sessions erneut ein und aktualisiert die Ansicht."""
         self._rebuild_sessions(reload_winscp=True)
+        ToastNotification(self, "Verbindungen neu geladen")
 
     def _add_session(self, folder_preset: str = "") -> None:
         """Öffnet den Dialog zum Anlegen einer neuen Session (App oder SSH-Alias)."""
