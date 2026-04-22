@@ -15,7 +15,7 @@ import threading
 import tkinter as tk
 import uuid
 from pathlib import Path
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, scrolledtext, simpledialog, ttk
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import unquote
@@ -107,6 +107,16 @@ def parse_session_key(key: str) -> tuple[list[str], str]:
     return folder_path, name
 
 
+def _build_ssh_command(session: Session, user: str | None = None) -> str:
+    """Erzeugt das passende ssh-Kommando für eine Session."""
+    if session.is_ssh_config_session:
+        return f"ssh {session.display_name}"
+    effective_user = (user or session.username).strip()
+    if session.port != 22:
+        return f"ssh -p {session.port} {effective_user}@{session.hostname}"
+    return f"ssh {effective_user}@{session.hostname}"
+
+
 def build_wt_command(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None) -> str:
     """
     Erzeugt den wt.exe-Befehl, der alle Sessions als neue Tabs öffnet.
@@ -120,18 +130,53 @@ def build_wt_command(sessions: list[Session], user: str, session_colors: dict[st
     colors = session_colors or {}
     parts = []
     for i, session in enumerate(sessions):
-        if session.is_ssh_config_session:
-            ssh_cmd = f"ssh {session.display_name}"
-        elif session.port != 22:
-            ssh_cmd = f"ssh -p {session.port} {user}@{session.hostname}"
-        else:
-            ssh_cmd = f"ssh {user}@{session.hostname}"
-
+        ssh_cmd = _build_ssh_command(session, user)
         color = colors.get(session.key)
         color_flag = f'--tabColor "{color}" ' if color else ""
         tab_cmd = f'new-tab {color_flag}-p "Git Bash" -- {ssh_cmd}'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
 
+    return " ; ".join(parts)
+
+
+def _shell_single_quote(text: str) -> str:
+    """Quoted Text für Bash in Single Quotes."""
+    return "'" + text.replace("'", "'\"'\"'") + "'"
+
+
+def build_remote_command_wt_command(
+    session_commands: list[tuple[Session, str, str]],
+    *,
+    close_on_success: bool,
+    session_colors: dict[str, str] | None = None,
+) -> str:
+    """Erzeugt WT-Tabs, die pro Host ein Remote-Script via SSH starten."""
+    git_bash = _find_git_bash()
+    colors = session_colors or {}
+    parts = []
+    for i, (session, user, remote_script) in enumerate(session_commands):
+        ssh_cmd = _build_ssh_command(session, user)
+        quoted_script = _shell_single_quote(remote_script)
+        info = (
+            f"Remote-Befehl\nHost: {session.display_name} ({session.hostname})\n"
+            f"User: {user}\nStart: {remote_script.strip() or '-'}\n"
+        )
+        quoted_info = _shell_single_quote(info)
+        if close_on_success:
+            inner = (
+                f"printf '%s\n' {quoted_info}; "
+                f"{ssh_cmd} 'bash -lc {quoted_script}' || read"
+            )
+        else:
+            inner = (
+                f"printf '%s\n' {quoted_info}; "
+                f"{ssh_cmd} -t 'bash -lc {quoted_script}; exec bash' || read"
+            )
+        bash_cmd = f'"{git_bash}" -c "{inner}"'
+        color = colors.get(session.key)
+        color_flag = f'--tabColor "{color}" ' if color else ""
+        tab_cmd = f'new-tab {color_flag}-p "Git Bash" -- {bash_cmd}'
+        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
     return " ; ".join(parts)
 
 
@@ -579,6 +624,7 @@ class SessionTree(ttk.Frame):
         on_remove_ssh_key=None,             # Callable[[list[Session]], None] | None
         on_open_tunnel=None,                # Callable[[Session], None] | None
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
+        on_run_remote_command=None,         # Callable[[list[Session]], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -601,6 +647,7 @@ class SessionTree(ttk.Frame):
         self._on_remove_ssh_key = on_remove_ssh_key
         self._on_open_tunnel = on_open_tunnel
         self._on_open_in_winscp = on_open_in_winscp
+        self._on_run_remote_command = on_run_remote_command
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -843,6 +890,11 @@ class SessionTree(ttk.Frame):
                     label=f"Alle in WinSCP öffnen ({len(winscp_sessions)})",
                     command=lambda ss=winscp_sessions: self._on_open_in_winscp(ss),
                 )
+            if self._on_run_remote_command:
+                menu.add_command(
+                    label=f"Befehl auf Ordner ausführen… ({len(folder_sessions)})",
+                    command=lambda ss=list(folder_sessions): self._on_run_remote_command(ss),
+                )
             hostnames = [s.hostname for s in folder_sessions if s.hostname]
             menu.add_command(
                 label="Hostnames kopieren",
@@ -939,7 +991,18 @@ class SessionTree(ttk.Frame):
                 label="Tunnel öffnen…",
                 command=lambda s=session: self._on_open_tunnel(s),
             )
-        if self._on_quick_connect or self._on_open_tunnel:
+        if self._on_run_remote_command:
+            menu.add_command(
+                label="Befehl ausführen…",
+                command=lambda s=session: self._on_run_remote_command([s]),
+            )
+            selected_runnable = [s for s in self.get_selected_sessions() if s.hostname]
+            if len(selected_runnable) >= 2:
+                menu.add_command(
+                    label=f"Befehl auf Auswahl ausführen… ({len(selected_runnable)})",
+                    command=lambda ss=selected_runnable: self._on_run_remote_command(ss),
+                )
+        if self._on_quick_connect or self._on_open_tunnel or self._on_run_remote_command:
             menu.add_separator()
         if self._on_deploy_ssh_key or self._on_remove_ssh_key:
             if self._on_deploy_ssh_key:
@@ -1233,9 +1296,9 @@ class UserDialog(tk.Toplevel):
     Nach Schließen: self.result = gewählter Username (str) oder None (Abbrechen).
     """
 
-    def __init__(self, parent: tk.Tk):
+    def __init__(self, parent: tk.Tk, title: str = "Benutzername auswählen"):
         super().__init__(parent)
-        self.title("Benutzername auswählen")
+        self.title(title)
         self.resizable(False, False)
         self.result: Optional[str] = None
 
@@ -1531,6 +1594,184 @@ class SshRemoveKeyDialog(tk.Toplevel):
         y = py + (ph - h) // 2
         self.geometry(f"+{x}+{y}")
 
+
+
+
+class RemoteCommandDialog(tk.Toplevel):
+    """Dialog für Remote-Befehl und Ausführungsoptionen."""
+
+    def __init__(self, parent: tk.Tk, target_count: int):
+        super().__init__(parent)
+        self.title("Befehl ausführen")
+        self.geometry("720x480")
+        self.minsize(620, 420)
+        self.result: tuple[str, str, bool] | None = None
+
+        self.transient(parent)
+        self.grab_set()
+        self._build(target_count)
+        self._center_on_parent(parent)
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self, target_count: int) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(3, weight=1)
+
+        ttk.Label(
+            frame,
+            text=f"Remote-Befehl für {target_count} Host(s)",
+            font=("Segoe UI", 11, "bold"),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(
+            frame,
+            text="Der Befehl wird als mehrzeiliges Remote-Script per SSH ausgeführt.",
+            foreground="#666666",
+        ).grid(row=1, column=0, sticky="w", pady=(0, 12))
+
+        mode_frame = ttk.LabelFrame(frame, text="Benutzer-Auswahl", padding=12)
+        mode_frame.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        self._user_mode = tk.StringVar(value="all")
+        ttk.Radiobutton(
+            mode_frame,
+            text="Ein Benutzer für alle Hosts",
+            variable=self._user_mode,
+            value="all",
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Radiobutton(
+            mode_frame,
+            text="Benutzer pro Host auswählen",
+            variable=self._user_mode,
+            value="per_host",
+        ).grid(row=1, column=0, sticky="w", pady=(4, 0))
+
+        script_frame = ttk.LabelFrame(frame, text="Remote-Befehl", padding=8)
+        script_frame.grid(row=3, column=0, sticky="nsew")
+        script_frame.columnconfigure(0, weight=1)
+        script_frame.rowconfigure(0, weight=1)
+        self._command_text = scrolledtext.ScrolledText(script_frame, wrap="word", height=12)
+        self._command_text.grid(row=0, column=0, sticky="nsew")
+        self._command_text.focus()
+
+        options = ttk.Frame(frame)
+        options.grid(row=4, column=0, sticky="ew", pady=(12, 0))
+        self._close_on_success = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            options,
+            text="Tab direkt schließen, wenn der Befehl erfolgreich war",
+            variable=self._close_on_success,
+        ).pack(anchor="w")
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=5, column=0, pady=(14, 0))
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        command = self._command_text.get("1.0", "end").strip()
+        if not command:
+            messagebox.showwarning("Kein Befehl", "Bitte einen Befehl eingeben.", parent=self)
+            return
+        self.result = (self._user_mode.get(), command, self._close_on_success.get())
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+
+class RemoteCommandConfirmDialog(tk.Toplevel):
+    """Bestätigungsdialog für Remote-Befehle."""
+
+    def __init__(self, parent: tk.Tk, command: str, session_users: list[tuple[Session, str]], close_on_success: bool):
+        super().__init__(parent)
+        self.title("Remote-Befehl bestätigen")
+        self.geometry("760x520")
+        self.minsize(680, 420)
+        self.result = False
+
+        self.transient(parent)
+        self.grab_set()
+        self._build(command, session_users, close_on_success)
+        self._center_on_parent(parent)
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self, command: str, session_users: list[tuple[Session, str]], close_on_success: bool) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(3, weight=1)
+
+        ttk.Label(
+            frame,
+            text=f"Befehl auf {len(session_users)} Host(s) ausführen?",
+            font=("Segoe UI", 11, "bold"),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        behavior = "Tabs schließen sich bei Erfolg direkt." if close_on_success else "Tabs bleiben nach dem Befehl offen."
+        ttk.Label(frame, text=behavior, foreground="#666666").grid(row=1, column=0, sticky="w", pady=(0, 12))
+
+        hosts_frame = ttk.LabelFrame(frame, text="Hosts", padding=8)
+        hosts_frame.grid(row=2, column=0, sticky="nsew", pady=(0, 12))
+        hosts_frame.columnconfigure(0, weight=1)
+        hosts_frame.rowconfigure(0, weight=1)
+        hosts_text = scrolledtext.ScrolledText(hosts_frame, wrap="word", height=10)
+        hosts_text.grid(row=0, column=0, sticky="nsew")
+        hosts_text.insert(
+            "1.0",
+            "\n".join(
+                f"- {session.display_name} ({session.hostname})  User: {user}"
+                for session, user in session_users
+            ),
+        )
+        hosts_text.configure(state="disabled")
+
+        cmd_frame = ttk.LabelFrame(frame, text="Befehl", padding=8)
+        cmd_frame.grid(row=3, column=0, sticky="nsew")
+        cmd_frame.columnconfigure(0, weight=1)
+        cmd_frame.rowconfigure(0, weight=1)
+        cmd_text = scrolledtext.ScrolledText(cmd_frame, wrap="word", height=8)
+        cmd_text.grid(row=0, column=0, sticky="nsew")
+        cmd_text.insert("1.0", command)
+        cmd_text.configure(state="disabled")
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=4, column=0, pady=(14, 0))
+        ttk.Button(btn_frame, text="Ausführen", command=self._on_ok, width=12).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        self.result = True
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = False
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
 # ---------------------------------------------------------------------------
 # SshTunnelDialog
@@ -2204,6 +2445,7 @@ class SSHManagerApp(tk.Tk):
             on_remove_ssh_key=self._remove_ssh_key,
             on_open_tunnel=self._open_tunnel,
             on_open_in_winscp=self._open_in_winscp,
+            on_run_remote_command=self._run_remote_command,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -2521,6 +2763,69 @@ class SSHManagerApp(tk.Tk):
             subprocess.Popen(cmd, shell=True)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+
+    def _resolve_users_for_sessions(self, sessions: list[Session], mode: str) -> list[tuple[Session, str]] | None:
+        """Löst Benutzernamen für Sessions auf, global oder pro Host."""
+        resolved: list[tuple[Session, str]] = []
+        if mode == "all":
+            missing = [s for s in sessions if not (s.is_ssh_config_session and s.username)]
+            shared_user = None
+            if missing:
+                dialog = UserDialog(self, title="Benutzername für alle Hosts")
+                self.wait_window(dialog)
+                if dialog.result is None:
+                    return None
+                shared_user = dialog.result
+            for session in sessions:
+                user = session.username if session.is_ssh_config_session and session.username else shared_user
+                if not user:
+                    messagebox.showwarning("Fehlender Benutzer", f"Für '{session.display_name}' konnte kein Benutzer bestimmt werden.", parent=self)
+                    return None
+                resolved.append((session, user))
+            return resolved
+
+        for session in sessions:
+            if session.is_ssh_config_session and session.username:
+                resolved.append((session, session.username))
+                continue
+            dialog = UserDialog(self, title=f"Benutzername für {session.display_name}")
+            self.wait_window(dialog)
+            if dialog.result is None:
+                return None
+            resolved.append((session, dialog.result))
+        return resolved
+
+    def _run_remote_command(self, sessions: list[Session]) -> None:
+        """Führt einen Remote-Befehl auf einem oder mehreren Hosts aus."""
+        runnable = [s for s in sessions if s.hostname]
+        if not runnable:
+            messagebox.showwarning("Keine Hosts", "Keine ausführbaren Hosts ausgewählt.", parent=self)
+            return
+
+        dialog = RemoteCommandDialog(self, target_count=len(runnable))
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        user_mode, command, close_on_success = dialog.result
+
+        session_users = self._resolve_users_for_sessions(runnable, user_mode)
+        if session_users is None:
+            return
+
+        confirm = RemoteCommandConfirmDialog(self, command, session_users, close_on_success)
+        self.wait_window(confirm)
+        if not confirm.result:
+            return
+
+        cmd = build_remote_command_wt_command(
+            [(session, user, command) for session, user in session_users],
+            close_on_success=close_on_success,
+            session_colors=self._tree.get_session_colors(),
+        )
+        try:
+            subprocess.Popen(cmd, shell=True)
+        except OSError as e:
+            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}", parent=self)
 
     def _open_in_winscp(self, sessions: list[Session]) -> None:
         """Öffnet eine oder mehrere WinSCP-Sessions direkt in WinSCP."""
