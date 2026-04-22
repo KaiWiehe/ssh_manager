@@ -156,22 +156,27 @@ def build_remote_command_wt_command(
     parts = []
     for i, (session, user, remote_script) in enumerate(session_commands):
         ssh_cmd = _build_ssh_command(session, user)
-        quoted_script = _shell_single_quote(remote_script)
+        remote_script_hex = remote_script.encode("utf-8").hex()
+        remote_exec = (
+            "python3 - <<'PY'\n"
+            "import binascii, subprocess\n"
+            f"script = binascii.unhexlify('{remote_script_hex}').decode('utf-8')\n"
+            "raise SystemExit(subprocess.run(['bash', '-lc', script]).returncode)\n"
+            "PY"
+        )
+        if not close_on_success:
+            remote_exec += "\nexec bash"
+        quoted_remote_exec = _shell_single_quote(remote_exec)
         info = (
             f"Remote-Befehl\nHost: {session.display_name} ({session.hostname})\n"
             f"User: {user}\nStart: {remote_script.strip() or '-'}\n"
         )
         quoted_info = _shell_single_quote(info)
-        if close_on_success:
-            inner = (
-                f"printf '%s\n' {quoted_info}; "
-                f"{ssh_cmd} 'bash -lc {quoted_script}' || read"
-            )
-        else:
-            inner = (
-                f"printf '%s\n' {quoted_info}; "
-                f"{ssh_cmd} -t 'bash -lc {quoted_script}; exec bash' || read"
-            )
+        ssh_flags = "" if close_on_success else "-t "
+        inner = (
+            f"printf '%s\\n' {quoted_info}; "
+            f"{ssh_cmd} {ssh_flags}bash -lc {quoted_remote_exec} || read"
+        )
         bash_cmd = f'"{git_bash}" -c "{inner}"'
         color = colors.get(session.key)
         color_flag = f'--tabColor "{color}" ' if color else ""
