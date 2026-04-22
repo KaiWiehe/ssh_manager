@@ -11,6 +11,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
 import uuid
@@ -150,44 +151,49 @@ def build_remote_command_wt_command(
     close_on_success: bool,
     session_colors: dict[str, str] | None = None,
 ) -> str:
-    """Erzeugt WT-Tabs, die pro Host ein Remote-Script via SSH starten."""
+    """Erzeugt WT-Tabs, die pro Host ein lokales Bash-Skript starten."""
     git_bash = _find_git_bash()
     colors = session_colors or {}
     parts = []
     for i, (session, user, remote_script) in enumerate(session_commands):
         ssh_cmd = _build_ssh_command(session, user)
-        remote_script_hex = remote_script.encode("utf-8").hex()
-        remote_exec = (
-            "python3 - <<'PY'\n"
-            "import binascii, subprocess\n"
-            f"script = binascii.unhexlify('{remote_script_hex}').decode('utf-8')\n"
-            "raise SystemExit(subprocess.run(['bash', '-lc', script]).returncode)\n"
-            "PY"
-        )
-        if not close_on_success:
-            remote_exec += "\nexec bash"
-        quoted_remote_exec = _shell_single_quote(remote_exec)
-        info = (
-            f"Remote-Befehl\nHost: {session.display_name} ({session.hostname})\n"
-            f"User: {user}\nStart: {remote_script.strip() or '-'}\n"
-        )
-        quoted_info = _shell_single_quote(info)
-        ssh_flags = "-t " if not close_on_success else ""
-        inner = (
-            f"printf '%s\\n' {quoted_info}; "
-            f"{ssh_cmd} {ssh_flags}python3 -c \"import binascii,subprocess; script=binascii.unhexlify('{remote_script_hex}').decode('utf-8'); raise SystemExit(subprocess.run(['bash','-lc',script]).returncode)\""
-        )
-        if not close_on_success:
-            inner += " || read"
+        start_label = f"Start: {remote_script.strip() or '-'}"
+        script_lines = [
+            "#!/usr/bin/env bash",
+            f"printf '%s\\n' {_shell_single_quote('Remote-Befehl')}",
+            f"printf '%s\\n' {_shell_single_quote(f'Host: {session.display_name} ({session.hostname})')}",
+            f"printf '%s\\n' {_shell_single_quote(f'User: {user}')}",
+            f"printf '%s\\n\\n' {_shell_single_quote(start_label)}",
+        ]
+        if close_on_success:
+            script_lines.append(f"{ssh_cmd} <<'__REMOTE_CMD__'")
         else:
-            inner += " || read"
-        bash_cmd = f'"{git_bash}" -c "{inner}"'
+            script_lines.append(f"{ssh_cmd} -t <<'__REMOTE_CMD__'")
+        script_lines.append(remote_script)
+        script_lines.append("__REMOTE_CMD__")
+        script_lines.append("status=$?")
+        if not close_on_success:
+            script_lines.append("if [ $status -eq 0 ]; then exec bash; fi")
+        script_lines.append("if [ $status -ne 0 ]; then read; fi")
+        script_lines.append("exit $status")
+        script_path = _write_temp_bash_script("remote_cmd_", "\n".join(script_lines) + "\n")
         color = colors.get(session.key)
         color_flag = f'--tabColor "{color}" ' if color else ""
-        tab_cmd = f'new-tab {color_flag}-p "Git Bash" -- {bash_cmd}'
+        tab_cmd = f'new-tab {color_flag}-p "Git Bash" -- "{git_bash}" "{script_path}"'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
     return " ; ".join(parts)
 
+
+
+
+def _write_temp_bash_script(prefix: str, content: str) -> str:
+    """Schreibt ein temporäres Bash-Skript für WT/Git Bash und gibt den Windows-Pfad zurück."""
+    script_dir = _STATE_FILE.parent / "tmp"
+    script_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".sh", prefix=prefix, dir=script_dir, delete=False) as f:
+        f.write(content)
+        script_path = Path(f.name)
+    return str(script_path)
 
 def _find_git_bash() -> str:
     """
@@ -284,12 +290,15 @@ def build_ssh_tunnel_command(
     """Erzeugt den wt.exe-Aufruf für SSH Local Port Forwarding."""
     git_bash = _find_git_bash()
     tunnel_target = f"{local_port} -> {remote_host}:{remote_port} via {user}@{ssh_server}"
-    inner = (
-        f"printf '%s\\n%s\\n\\n' 'SSH-Tunnel aktiv' {_shell_single_quote(tunnel_target)}; "
-        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{ssh_server}; "
-        f"read"
-    )
-    return ["wt.exe", "new-tab", "-p", "Git Bash", "--", git_bash, "-c", inner]
+    script = "\n".join([
+        "#!/usr/bin/env bash",
+        f"printf '%s\\n' {_shell_single_quote('SSH-Tunnel aktiv')}",
+        f"printf '%s\\n\\n' {_shell_single_quote(tunnel_target)}",
+        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{ssh_server}",
+        "read",
+    ]) + "\n"
+    script_path = _write_temp_bash_script("ssh_tunnel_", script)
+    return ["wt.exe", "new-tab", "-p", "Git Bash", "--", git_bash, script_path]
 
 
 # ---------------------------------------------------------------------------
