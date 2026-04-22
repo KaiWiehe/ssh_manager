@@ -282,7 +282,7 @@ def build_ssh_tunnel_command(
     git_bash = _find_git_bash()
     tunnel_target = f"{local_port} -> {remote_host}:{remote_port} via {user}@{ssh_server}"
     inner = (
-        f"printf 'SSH-Tunnel aktiv\\n%s\\n\\n' '{tunnel_target}'; "
+        f"printf '%s\\n%s\\n\\n' 'SSH-Tunnel aktiv' {_shell_single_quote(tunnel_target)}; "
         f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{ssh_server}"
         f" && read || read"
     )
