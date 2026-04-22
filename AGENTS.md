@@ -43,7 +43,9 @@ app_sessions.json  ──┘
 - `build_wt_command()` – erzeugt den `wt.exe`-Befehl für SSH-Verbindungen
 - `build_ssh_copy_id_command()` – erzeugt den Befehl für `ssh-copy-id`
 - `build_ssh_remove_key_command()` – erzeugt den Befehl zum Entfernen eines Keys aus `authorized_keys`
-- `build_ssh_tunnel_command()` – erzeugt den `wt.exe`-Befehl für SSH Local Port Forwarding (`-N -L`)
+- `build_ssh_tunnel_command()` – erzeugt den Start für SSH Local Port Forwarding (`-N -L`)
+- `build_remote_command_wt_command()` – erzeugt WT-Tabs für Remote-Befehle auf einem oder mehreren Hosts
+- `_write_temp_bash_script()` – schreibt temporäre lokale Bash-Skripte für robuste WT/Git-Bash-Starts
 - `check_host_reachable()` – TCP-Verbindungstest (socket, kein SSH-Handshake)
 - `_find_git_bash()` – findet Git Bash (nicht WSL-Bash)
 - `_find_winscp()` – findet WinSCP.exe (`%LOCALAPPDATA%`, Program Files, PATH)
@@ -52,7 +54,7 @@ app_sessions.json  ──┘
 **GUI-Klassen:**
 - `SessionTree(ttk.Frame)` – der Haupt-Treeview mit Checkboxen, Farben, Kontextmenüs. Kommuniziert mit der App ausschließlich über Callback-Parameter (kein direkter App-Zugriff).
 - `SSHManagerApp(tk.Tk)` – Hauptfenster, verdrahtet alle Callbacks, besitzt den App-Zustand.
-- Dialog-Klassen: `UserDialog`, `SessionEditDialog`, `MoveFolderDialog`, `SshCopyIdDialog`, `SshRemoveKeyDialog`, `SshConfigInspectDialog`, `SshTunnelDialog`
+- Dialog-Klassen: `UserDialog`, `SessionEditDialog`, `MoveFolderDialog`, `SshCopyIdDialog`, `SshRemoveKeyDialog`, `SshConfigInspectDialog`, `SshTunnelDialog`, `RemoteCommandDialog`, `RemoteCommandConfirmDialog`
 
 **Datenquellen:**
 - `RegistryReader` – liest WinSCP-Sessions aus `HKCU\Software\Martin Prikryl\WinSCP 2\Sessions`
@@ -77,19 +79,21 @@ Nur `winscp`-Sessions unterstützen "In WinSCP öffnen".
 
 Kritisch für alle `build_*_command()`-Funktionen:
 
-- WT parst `;` als eigenen Subcommand-Separator – auch innerhalb von `bash -c "..."`. Daher `&&`/`||` statt `;` verwenden.
-- `~` muss **unquoted** bleiben – in single oder double quotes findet keine Tilde-Expansion statt.
+- WT parst `;` als eigenen Subcommand-Separator, auch innerhalb von `bash -c "..."`. Daher komplexe Kommandos nicht leichtfertig als verschachtelte Shell-Strings bauen.
+- `~` muss **unquoted** bleiben, in single oder double quotes findet keine Tilde-Expansion statt.
 - `bash` aus dem System-PATH ist unter Windows mit WSL die WSL-Bash, nicht Git Bash. Immer `_find_git_bash()` verwenden.
-- Nested double quotes in `bash -c "..."` zerschießen den Befehl. Für Remote-SSH-Befehle single quotes verwenden: `bash -c "ssh host 'remote cmd'"`.
-- `subprocess.Popen(cmd, shell=True)` ist nötig (nicht `shell=False`), da `wt.exe` und `code` keine direkten Binaries sind.
+- Für einfache Fälle können `bash -c`-Strings funktionieren, aber sobald WT, Git Bash, `ssh`, Here-Docs oder Remote-Shell kombiniert werden, lieber früh auf **temporäre lokale Skriptdateien** wechseln.
+- `wt.exe` kann als zusammengesetzter String mit `shell=True` gestartet werden, aber für einzelne direkte Starts ist eine Argumentliste robuster, wenn kein WT-Subcommand-String benötigt wird.
 - WinSCP wird mit `subprocess.Popen([winscp_path, session_name])` ohne `shell=True` gestartet (direkte Binary).  
   `session_name` = `"/".join(session.folder_path + [session.display_name])`, z.B. `"TOM/TOM Client/NBB-SVM267"`.
+- Bei neuen Features mit Terminal-Startpfaden den kompletten Ausführungspfad Ende-zu-Ende mitdenken: Windows → wt.exe → Git Bash → ssh → Remote-Shell.
 
 ### SSH-Tunnel (`build_ssh_tunnel_command`)
 
 - `ssh_server`: Server, zu dem SSH sich verbindet (Pflichtfeld)
-- `remote_host`: Ziel hinter dem SSH-Server – `"localhost"` = direkter Tunnel (kein Jumphost)
+- `remote_host`: Ziel hinter dem SSH-Server, `"localhost"` = direkter Tunnel (kein Jumphost)
 - Befehl: `ssh -N -L localport:remote_host:remoteport user@ssh_server`
+- Für Tunnel-Start plus Zusatzinfos im Terminal ist eine **temporäre lokale Bash-Datei** robuster als ein verschachtelter `bash -c`-String.
 
 ### Ordner umbenennen (`_rename_folder`)
 
@@ -137,3 +141,4 @@ Kritisch für alle `build_*_command()`-Funktionen:
 | `on_remove_ssh_key` | `(list[Session])` | SSH-Key entfernen |
 | `on_open_tunnel` | `(Session \| None)` | Tunnel-Dialog öffnen |
 | `on_open_in_winscp` | `(list[Session])` | WinSCP öffnen |
+| `on_run_remote_command` | `(list[Session])` | Remote-Befehl auf Hosts ausführen |
