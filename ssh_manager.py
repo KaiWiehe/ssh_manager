@@ -172,11 +172,15 @@ def build_remote_command_wt_command(
             f"User: {user}\nStart: {remote_script.strip() or '-'}\n"
         )
         quoted_info = _shell_single_quote(info)
-        ssh_flags = "" if close_on_success else "-t "
+        ssh_flags = "-t " if not close_on_success else ""
         inner = (
             f"printf '%s\\n' {quoted_info}; "
-            f"{ssh_cmd} {ssh_flags}bash -lc {quoted_remote_exec} || read"
+            f"{ssh_cmd} {ssh_flags}python3 -c \"import binascii,subprocess; script=binascii.unhexlify('{remote_script_hex}').decode('utf-8'); raise SystemExit(subprocess.run(['bash','-lc',script]).returncode)\""
         )
+        if not close_on_success:
+            inner += " || read"
+        else:
+            inner += " || read"
         bash_cmd = f'"{git_bash}" -c "{inner}"'
         color = colors.get(session.key)
         color_flag = f'--tabColor "{color}" ' if color else ""
@@ -276,23 +280,16 @@ def check_host_reachable(hostname: str, port: int = 22, timeout: int = 3) -> boo
 
 def build_ssh_tunnel_command(
     ssh_server: str, local_port: int, remote_host: str, remote_port: int, user: str
-) -> str:
-    """
-    Erzeugt den wt.exe-Befehl für SSH Local Port Forwarding.
-    - '-N' = kein Remote-Befehl, nur Tunnel.
-    - '&& read || read' hält den Tab offen (Fehler oder normales Ende).
-    - Kein '~', kein nested quoting nötig.
-    - remote_host='localhost' = direkter Tunnel zum SSH-Server selbst (kein Jumphost).
-    """
+) -> list[str]:
+    """Erzeugt den wt.exe-Aufruf für SSH Local Port Forwarding."""
     git_bash = _find_git_bash()
     tunnel_target = f"{local_port} -> {remote_host}:{remote_port} via {user}@{ssh_server}"
     inner = (
         f"printf '%s\\n%s\\n\\n' 'SSH-Tunnel aktiv' {_shell_single_quote(tunnel_target)}; "
-        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{ssh_server}"
-        f" && read || read"
+        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{ssh_server}; "
+        f"read"
     )
-    bash_cmd = f'"{git_bash}" -c "{inner}"'
-    return f'wt.exe new-tab -p "Git Bash" -- {bash_cmd}'
+    return ["wt.exe", "new-tab", "-p", "Git Bash", "--", git_bash, "-c", inner]
 
 
 # ---------------------------------------------------------------------------
@@ -2765,7 +2762,7 @@ class SSHManagerApp(tk.Tk):
         jumphost, local_port, remote_host, remote_port, user = dialog.result
         try:
             cmd = build_ssh_tunnel_command(jumphost, local_port, remote_host, remote_port, user)
-            subprocess.Popen(cmd, shell=True)
+            subprocess.Popen(cmd)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
 
