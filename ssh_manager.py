@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from tkinter import messagebox, scrolledtext, simpledialog, ttk
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Callable
 from urllib.parse import unquote
 import winreg
 
@@ -143,6 +143,77 @@ def build_wt_command(sessions: list[Session], user: str, session_colors: dict[st
 def _shell_single_quote(text: str) -> str:
     """Quoted Text für Bash in Single Quotes."""
     return "'" + text.replace("'", "'\"'\"'") + "'"
+
+def _ssh_target(hostname: str, user: str | None = None, port: int = 22) -> str:
+    """Erzeugt ein ssh-Ziel inklusive optionalem User und Port."""
+    target = hostname
+    if user and user.strip():
+        target = f"{user.strip()}@{target}"
+    if port and port != 22:
+        return f"-p {port} {target}"
+    return target
+
+
+def _build_jump_ssh_command(session: Session, target_user: str, jump_host: str, jump_user: str | None = None, jump_port: int = 22) -> str:
+    """Erzeugt ein ssh-Kommando mit ProxyJump für eine Session."""
+    jump_target = _ssh_target(jump_host, jump_user, jump_port)
+    if session.is_ssh_config_session:
+        return f"ssh -J {jump_target} {session.display_name}"
+    effective_user = (target_user or session.username).strip()
+    if session.port != 22:
+        return f"ssh -J {jump_target} -p {session.port} {effective_user}@{session.hostname}"
+    return f"ssh -J {jump_target} {effective_user}@{session.hostname}"
+
+
+def build_jump_wt_command(
+    session: Session,
+    target_user: str,
+    jump_host: str,
+    jump_user: str | None = None,
+    jump_port: int = 22,
+    session_color: str | None = None,
+) -> str:
+    """Erzeugt den WT-Befehl für eine einzelne Session über ProxyJump."""
+    ssh_cmd = _build_jump_ssh_command(session, target_user, jump_host, jump_user, jump_port)
+    color_flag = f'--tabColor "{session_color}" ' if session_color else ""
+    return f'wt.exe new-tab {color_flag}-p "Git Bash" -- {ssh_cmd}'
+
+
+def _append_ssh_config_alias(alias: str, target: Session, target_user: str, jump_host: str, jump_user: str | None = None, jump_port: int = 22) -> None:
+    """Hängt einen neuen Host-Alias mit ProxyJump an ~/.ssh/config an."""
+    alias = alias.strip()
+    if not alias or ' ' in alias or '*' in alias or '?' in alias:
+        raise ValueError('Alias darf keine Leerzeichen oder Wildcards enthalten.')
+
+    existing = {s.display_name.lower() for s in _load_ssh_config_sessions()}
+    if alias.lower() in existing:
+        raise ValueError(f"Alias '{alias}' existiert bereits in ~/.ssh/config.")
+
+    lines = [
+        f'Host {alias}',
+        f'    HostName {target.hostname or target.display_name}',
+        f'    User {target_user}',
+    ]
+    if target.port and target.port != 22:
+        lines.append(f'    Port {target.port}')
+    proxy_jump = jump_host
+    if jump_user and jump_user.strip():
+        proxy_jump = f"{jump_user.strip()}@{proxy_jump}"
+    if jump_port and jump_port != 22:
+        proxy_jump = f"{proxy_jump}:{jump_port}"
+    lines.append(f'    ProxyJump {proxy_jump}')
+
+    _SSH_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    prefix = "\n"
+    if _SSH_CONFIG_FILE.exists():
+        existing_text = _SSH_CONFIG_FILE.read_text(encoding='utf-8')
+        if existing_text and not existing_text.endswith("\n"):
+            prefix = "\n\n"
+        elif existing_text:
+            prefix = "\n"
+    with _SSH_CONFIG_FILE.open('a', encoding='utf-8') as f:
+        f.write(prefix + "\n".join(lines) + "\n")
+
 
 
 def build_remote_command_wt_command(
@@ -636,6 +707,7 @@ class SessionTree(ttk.Frame):
         on_open_tunnel=None,                # Callable[[Session], None] | None
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
+        on_open_via_jumphost=None,          # Callable[[Session], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -659,6 +731,7 @@ class SessionTree(ttk.Frame):
         self._on_open_tunnel = on_open_tunnel
         self._on_open_in_winscp = on_open_in_winscp
         self._on_run_remote_command = on_run_remote_command
+        self._on_open_via_jumphost = on_open_via_jumphost
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -1002,6 +1075,11 @@ class SessionTree(ttk.Frame):
                 label="Tunnel öffnen…",
                 command=lambda s=session: self._on_open_tunnel(s),
             )
+        if self._on_open_via_jumphost:
+            menu.add_command(
+                label="Über Jumphost öffnen…",
+                command=lambda s=session: self._on_open_via_jumphost(s),
+            )
         if self._on_run_remote_command:
             menu.add_command(
                 label="Befehl ausführen…",
@@ -1013,7 +1091,7 @@ class SessionTree(ttk.Frame):
                     label=f"Befehl auf Auswahl ausführen… ({len(selected_runnable)})",
                     command=lambda ss=selected_runnable: self._on_run_remote_command(ss),
                 )
-        if self._on_quick_connect or self._on_open_tunnel or self._on_run_remote_command:
+        if self._on_quick_connect or self._on_open_tunnel or self._on_open_via_jumphost or self._on_run_remote_command:
             menu.add_separator()
         if self._on_deploy_ssh_key or self._on_remove_ssh_key:
             if self._on_deploy_ssh_key:
@@ -1391,6 +1469,205 @@ class UserDialog(tk.Toplevel):
         x = px + (pw - w) // 2
         y = py + (ph - h) // 2
         self.geometry(f"+{x}+{y}")
+
+
+class JumpHostDialog(tk.Toplevel):
+    """Dialog zum temporären Öffnen einer Session über ProxyJump."""
+
+    def __init__(self, parent: tk.Tk, target_session: Session, sessions: list[Session], open_folders_getter: Callable[[], set[str]] | None = None):
+        super().__init__(parent)
+        self.title("Über Jumphost öffnen")
+        self.resizable(True, True)
+        self.minsize(760, 520)
+        self.result: tuple[str, str, int, str | None] | None = None
+        self.save_result: tuple[str, str, int, str, str] | None = None
+        self._target_session = target_session
+        self._sessions = sessions
+        self._open_folders_getter = open_folders_getter
+
+        self.transient(parent)
+        self.grab_set()
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        self._build()
+        self._center_on_parent(parent)
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self) -> None:
+        frame = ttk.Frame(self, padding=12)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(4, weight=1)
+
+        target_label = f"Ziel: {self._target_session.display_name} ({self._target_session.hostname})"
+        ttk.Label(frame, text=target_label, font=("TkDefaultFont", 10, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        help_text = (
+            "Jumphost frei eingeben oder unten im Baum eine bestehende Verbindung auswählen.\n"
+            "Aus einer Verbindung werden Host, User und Port übernommen, wenn vorhanden."
+        )
+        ttk.Label(frame, text=help_text, foreground="#555555", justify="left").grid(row=1, column=0, sticky="w", pady=(0, 10))
+
+        form = ttk.Frame(frame)
+        form.grid(row=2, column=0, sticky="ew")
+        form.columnconfigure(1, weight=1)
+
+        self._jump_host_var = tk.StringVar()
+        self._jump_user_var = tk.StringVar()
+        self._jump_port_var = tk.StringVar(value="22")
+        self._filter_var = tk.StringVar()
+
+        ttk.Label(form, text="Jumphost:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
+        host_entry = ttk.Entry(form, textvariable=self._jump_host_var)
+        host_entry.grid(row=0, column=1, sticky="ew", pady=4)
+        host_entry.focus()
+
+        ttk.Label(form, text="Jumphost-User:").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 8))
+        ttk.Entry(form, textvariable=self._jump_user_var).grid(row=1, column=1, sticky="ew", pady=4)
+
+        ttk.Label(form, text="Jumphost-Port:").grid(row=2, column=0, sticky="w", pady=4, padx=(0, 8))
+        ttk.Entry(form, textvariable=self._jump_port_var, width=8).grid(row=2, column=1, sticky="w", pady=4)
+
+        ttk.Label(form, text="Filter:").grid(row=3, column=0, sticky="w", pady=(10, 4), padx=(0, 8))
+        filter_entry = ttk.Entry(form, textvariable=self._filter_var)
+        filter_entry.grid(row=3, column=1, sticky="ew", pady=(10, 4))
+        self._filter_var.trace_add("write", lambda *_: self._rebuild_tree())
+
+        tree_frame = ttk.Frame(frame)
+        tree_frame.grid(row=4, column=0, sticky="nsew", pady=(8, 8))
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
+
+        self._tree = ttk.Treeview(tree_frame, columns=("host",), show="tree headings", selectmode="browse")
+        self._tree.heading("#0", text="Verbindungen")
+        self._tree.heading("host", text="Host")
+        self._tree.column("#0", width=320, stretch=True)
+        self._tree.column("host", width=280, stretch=True)
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+        self._tree.bind("<Double-Button-1>", lambda _: self._on_open())
+
+        scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self._tree.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
+        self._tree.configure(yscrollcommand=scroll.set)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=5, column=0, sticky="e", pady=(6, 0))
+        ttk.Button(btn_frame, text="Als SSH-Config speichern…", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Öffnen", command=self._on_open).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel).pack(side="left", padx=4)
+
+        self._session_by_item: dict[str, Session] = {}
+        self._rebuild_tree()
+
+    def _matches_filter(self, session: Session, query: str) -> bool:
+        if not query:
+            return True
+        hay = f"{session.folder_key} {session.display_name} {session.hostname}".lower()
+        return query in hay
+
+    def _ensure_folder(self, folder_key: str, folder_map: dict[str, str]) -> str:
+        if not folder_key:
+            return ""
+        parts = folder_key.split("/")
+        current = ""
+        parent = ""
+        for part in parts:
+            current = part if not current else f"{current}/{part}"
+            if current not in folder_map:
+                folder_map[current] = self._tree.insert(parent, "end", text=part, values=("",), open=False)
+            parent = folder_map[current]
+        return folder_map[current]
+
+    def _rebuild_tree(self) -> None:
+        query = self._filter_var.get().strip().lower()
+        open_folders = self._open_folders_getter() if self._open_folders_getter else set()
+        self._tree.delete(*self._tree.get_children())
+        self._session_by_item.clear()
+        folder_map: dict[str, str] = {}
+        for session in sorted(self._sessions, key=lambda s: (s.folder_key.lower(), s.display_name.lower())):
+            if session.key == self._target_session.key:
+                continue
+            if not self._matches_filter(session, query):
+                continue
+            parent = self._ensure_folder(session.folder_key, folder_map)
+            item = self._tree.insert(parent, "end", text=session.display_name, values=(session.hostname,))
+            self._session_by_item[item] = session
+        for folder_key, iid in folder_map.items():
+            self._tree.item(iid, open=(folder_key in open_folders) or not query)
+
+    def _on_tree_select(self, _event=None) -> None:
+        selected = self._tree.selection()
+        if not selected:
+            return
+        session = self._session_by_item.get(selected[0])
+        if not session:
+            return
+        self._jump_host_var.set(session.hostname or session.display_name)
+        self._jump_user_var.set(session.username or "")
+        self._jump_port_var.set(str(session.port or 22))
+
+    def _validate(self) -> tuple[str, str, int] | None:
+        jump_host = self._jump_host_var.get().strip()
+        if not jump_host:
+            messagebox.showwarning("Kein Jumphost", "Bitte einen Jumphost eingeben oder auswählen.", parent=self)
+            return None
+        if not _HOSTNAME_RE.match(jump_host):
+            messagebox.showwarning("Ungültiger Jumphost", "Nur Buchstaben, Ziffern, Punkte, Doppelpunkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+            return None
+        jump_user = self._jump_user_var.get().strip()
+        if jump_user and not _USERNAME_RE.match(jump_user):
+            messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+            return None
+        try:
+            jump_port = int(self._jump_port_var.get().strip() or "22")
+        except ValueError:
+            messagebox.showwarning("Ungültiger Port", "Jumphost-Port muss eine Zahl sein.", parent=self)
+            return None
+        if not 1 <= jump_port <= 65535:
+            messagebox.showwarning("Ungültiger Port", "Jumphost-Port muss zwischen 1 und 65535 liegen.", parent=self)
+            return None
+        return jump_host, jump_user, jump_port
+
+    def _on_open(self) -> None:
+        validated = self._validate()
+        if not validated:
+            return
+        self.result = validated
+        self.destroy()
+
+    def _on_save(self) -> None:
+        validated = self._validate()
+        if not validated:
+            return
+        alias = simpledialog.askstring("SSH-Config speichern", "Name für den neuen SSH-Config-Host:", parent=self)
+        if alias is None:
+            return
+        alias = alias.strip()
+        if not alias:
+            messagebox.showwarning("Kein Name", "Bitte einen Namen für den SSH-Config-Host eingeben.", parent=self)
+            return
+        jump_host, jump_user, jump_port = validated
+        self.save_result = (alias, jump_host, jump_port, jump_user, self._target_session.key)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.save_result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = min(max(self.winfo_reqwidth(), 760), max(pw - 40, 760))
+        h = min(max(self.winfo_reqheight(), 520), max(ph - 40, 520))
+        x = px + max((pw - w) // 2, 0)
+        y = py + max((ph - h) // 2, 0)
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
 
 # ---------------------------------------------------------------------------
@@ -2457,6 +2734,7 @@ class SSHManagerApp(tk.Tk):
             on_open_tunnel=self._open_tunnel,
             on_open_in_winscp=self._open_in_winscp,
             on_run_remote_command=self._run_remote_command,
+            on_open_via_jumphost=self._open_via_jumphost,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -2515,22 +2793,22 @@ class SSHManagerApp(tk.Tk):
         except Exception as e:
             messagebox.showerror("Fehler beim Starten", str(e))
 
+    def _resolve_single_session_user(self, session: Session, title: str = "Benutzername auswählen") -> str | None:
+        """Löst den Benutzernamen für genau eine Session auf."""
+        if session.is_ssh_config_session and session.username:
+            return session.username
+        dialog = UserDialog(self, title=title)
+        self.wait_window(dialog)
+        return dialog.result
+
     def _quick_connect_session(self, session: Session) -> None:
         """Öffnet eine einzelne Session direkt (via Doppelklick oder Kontextmenü)."""
         colors = self._tree.get_session_colors()
-        if session.is_ssh_config_session:
-            # SSH-Alias: kein UserDialog nötig, User kommt aus ~/.ssh/config
-            try:
-                TerminalLauncher.launch([session], "", colors)
-            except Exception as e:
-                messagebox.showerror("Fehler beim Starten", str(e))
-            return
-        dialog = UserDialog(self)
-        self.wait_window(dialog)
-        if dialog.result is None:
+        user = self._resolve_single_session_user(session)
+        if user is None and not (session.is_ssh_config_session and session.username):
             return
         try:
-            TerminalLauncher.launch([session], dialog.result, colors)
+            TerminalLauncher.launch([session], user or "", colors)
         except Exception as e:
             messagebox.showerror("Fehler beim Starten", str(e))
 
@@ -2774,6 +3052,48 @@ class SSHManagerApp(tk.Tk):
             subprocess.Popen(cmd)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+
+    def _open_via_jumphost(self, session: Session) -> None:
+        """Öffnet eine einzelne Verbindung temporär über einen Jumphost."""
+        dialog = JumpHostDialog(self, session, self._sessions, open_folders_getter=self._tree.get_open_folders)
+        self.wait_window(dialog)
+
+        if dialog.save_result is not None:
+            alias, jump_host, jump_port, jump_user, _target_key = dialog.save_result
+            target_user = self._resolve_single_session_user(session, title=f"Benutzername für {session.display_name}")
+            if target_user is None:
+                return
+            try:
+                _append_ssh_config_alias(alias, session, target_user, jump_host, jump_user, jump_port)
+            except ValueError as e:
+                messagebox.showwarning("SSH-Config", str(e), parent=self)
+                return
+            except OSError as e:
+                messagebox.showerror("SSH-Config", f"Fehler beim Schreiben von ~/.ssh/config:\n{e}", parent=self)
+                return
+            self._rebuild_sessions(reload_winscp=True)
+            ToastNotification(self, f"SSH-Config '{alias}' gespeichert")
+            return
+
+        if dialog.result is None:
+            return
+
+        jump_host, jump_user, jump_port = dialog.result
+        target_user = self._resolve_single_session_user(session, title=f"Benutzername für {session.display_name}")
+        if target_user is None:
+            return
+        try:
+            cmd = build_jump_wt_command(
+                session,
+                target_user,
+                jump_host,
+                jump_user or None,
+                jump_port,
+                self._tree.get_session_colors().get(session.key),
+            )
+            subprocess.Popen(cmd, shell=True)
+        except OSError as e:
+            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}", parent=self)
 
     def _resolve_users_for_sessions(self, sessions: list[Session], mode: str) -> list[tuple[Session, str]] | None:
         """Löst Benutzernamen für Sessions auf, global oder pro Host."""
