@@ -4,52 +4,34 @@ Benötigt: Python 3.8+, Windows, Windows Terminal (wt.exe), Git Bash-Profil.
 """
 from __future__ import annotations
 
-import os
-import re
-import shutil
-import socket
-import subprocess
-import sys
-import tempfile
-import threading
-import tkinter as tk
-import uuid
-from pathlib import Path
-from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
-from typing import Optional, Callable
-from urllib.parse import unquote
-import winreg
-
 import json
+import subprocess
+import tkinter as tk
+from pathlib import Path
+from tkinter import messagebox, ttk
+
 from ssh_manager_app import (
     AppSettings,
-    DEFAULT_USER,
-    PALETTE,
-    QUICK_USERS,
     REGISTRY_PATH,
-    SKIP_SESSIONS,
     ToolbarSettings,
     WindowsTerminalSettings,
     SourceVisibilitySettings,
     Session,
     WINDOW_MIN_SIZE,
     WINDOW_TITLE,
-    color_tag,
     default_settings,
     load_app_sessions,
     load_filezilla_config_sessions,
     load_notes,
     load_settings,
-    load_settings_from_path,
     load_ssh_config_sessions,
     load_ui_state,
     save_app_sessions,
     save_notes,
     save_settings,
     save_ui_state,
-    settings_to_dict,
 )
-from ssh_manager_app.constants import _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_DEFAULT_FOLDER, _SSH_CONFIG_FILE, _STATE_FILE
+from ssh_manager_app.constants import _SSH_CONFIG_DEFAULT_FOLDER, _SSH_CONFIG_FILE
 
 from ssh_manager_app.core import (
     RegistryReader,
@@ -57,9 +39,6 @@ from ssh_manager_app.core import (
     build_jump_wt_command,
     build_remote_command_wt_command,
     build_ssh_tunnel_command,
-    build_wt_command,
-    check_host_reachable,
-    parse_session_key,
 )
 
 from ssh_manager_app.tree import SessionTree
