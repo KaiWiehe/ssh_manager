@@ -769,7 +769,7 @@ class SessionTree(ttk.Frame):
                 folder_key = "/".join(session.folder_path[: depth + 1])
                 if folder_key not in folder_items:
                     was_open = folder_key in open_folders
-                    folder_label = f"  ⚙ {folder_name}" if folder_key == _SSH_CONFIG_DEFAULT_FOLDER else f"  {folder_name}"
+                    folder_label = f"  ⚙ {folder_name}" if folder_key == SSH_CONFIG_DEFAULT_FOLDER else f"  {folder_name}"
                     folder_id = self._tv.insert(
                         parent_id, "end",
                         text=folder_label,
@@ -897,7 +897,7 @@ class SessionTree(ttk.Frame):
         """Kontextmenü für Ordner-Zeilen."""
         folder_key = self._item_to_folder_key.get(item_id, "")
         menu = tk.Menu(self, tearoff=False)
-        if folder_key == _SSH_CONFIG_DEFAULT_FOLDER and self._on_open_ssh_config_in_vscode:
+        if folder_key == SSH_CONFIG_DEFAULT_FOLDER and self._on_open_ssh_config_in_vscode:
             menu.add_command(
                 label="In VS Code öffnen",
                 command=self._on_open_ssh_config_in_vscode,
@@ -3271,7 +3271,7 @@ class SSHManagerApp(tk.Tk):
             visible.extend(self._filezilla_sessions)
         return sorted(
             visible,
-            key=lambda s: (0 if s.folder_key == _SSH_CONFIG_DEFAULT_FOLDER else 1, s.folder_key.lower(), s.display_name.lower()),
+            key=lambda s: (0 if s.folder_key == SSH_CONFIG_DEFAULT_FOLDER else 1, s.folder_key.lower(), s.display_name.lower()),
         )
 
     def _layout_toolbar_buttons(self) -> None:
