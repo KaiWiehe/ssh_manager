@@ -36,6 +36,7 @@ _APPDATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager"
 _STATE_FILE = _APPDATA_DIR / "ui_state.json"
 _SETTINGS_FILE = _APPDATA_DIR / "settings.json"
 _APP_SESSIONS_FILE = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager" / "app_sessions.json"
+_NOTES_FILE = _APPDATA_DIR / "notes.json"
 _APP_PREFIX = "__app__"
 _SSH_CONFIG_FILE = Path.home() / ".ssh" / "config"
 _SSH_CONFIG_PREFIX = "__sshcfg__"
@@ -601,6 +602,9 @@ class ToolbarSettings:
     show_reload: bool = True
     show_open_tunnel: bool = True
     show_check_hosts: bool = True
+    show_hostname_column: bool = True
+    show_port_column: bool = True
+    show_notes_column: bool = True
 
 
 @dataclass
@@ -690,6 +694,9 @@ def _load_settings_from_path(path: Path) -> AppSettings:
             show_reload=bool(toolbar_raw.get("show_reload", defaults.toolbar.show_reload)),
             show_open_tunnel=bool(toolbar_raw.get("show_open_tunnel", defaults.toolbar.show_open_tunnel)),
             show_check_hosts=bool(toolbar_raw.get("show_check_hosts", defaults.toolbar.show_check_hosts)),
+            show_hostname_column=bool(toolbar_raw.get("show_hostname_column", defaults.toolbar.show_hostname_column)),
+            show_port_column=bool(toolbar_raw.get("show_port_column", defaults.toolbar.show_port_column)),
+            show_notes_column=bool(toolbar_raw.get("show_notes_column", defaults.toolbar.show_notes_column)),
         ),
         host_check_timeout_seconds=host_timeout,
         startup_expand_mode=startup_expand_mode,
@@ -738,6 +745,25 @@ def _save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], t
             ensure_ascii=False,
             indent=2,
         ),
+        encoding="utf-8",
+    )
+
+
+def _load_notes() -> dict[str, str]:
+    try:
+        data = json.loads(_NOTES_FILE.read_text(encoding="utf-8"))
+        notes = data.get("notes", {})
+        if not isinstance(notes, dict):
+            return {}
+        return {str(k): str(v) for k, v in notes.items() if str(v).strip()}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _save_notes(notes: dict[str, str]) -> None:
+    _NOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _NOTES_FILE.write_text(
+        json.dumps({"notes": notes}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -944,6 +970,9 @@ class SessionTree(ttk.Frame):
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
         on_open_via_jumphost=None,          # Callable[[Session], None] | None
         on_ui_state_changed=None,           # Callable[[], None] | None
+        notes_getter=None,                  # Callable[[str], str] | None
+        on_edit_note=None,                  # Callable[[Session], None] | None
+        toolbar_settings: ToolbarSettings | None = None,
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -969,6 +998,12 @@ class SessionTree(ttk.Frame):
         self._on_run_remote_command = on_run_remote_command
         self._on_open_via_jumphost = on_open_via_jumphost
         self._on_ui_state_changed = on_ui_state_changed
+        self._notes_getter = notes_getter or (lambda _key: "")
+        self._on_edit_note = on_edit_note
+        self._toolbar_settings = toolbar_settings or ToolbarSettings()
+        self._tooltip: tk.Toplevel | None = None
+        self._tooltip_after_id = None
+        self._last_tooltip_item: str | None = None
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -993,15 +1028,17 @@ class SessionTree(ttk.Frame):
 
         self._tv = ttk.Treeview(
             self,
-            columns=("hostname", "port"),
+            columns=("hostname", "port", "notes"),
             selectmode="none",  # Selektion via Checkboxen, nicht Highlight
         )
         self._tv.heading("#0", text="Name", anchor="w")
         self._tv.heading("hostname", text="Hostname", anchor="w")
         self._tv.heading("port", text="Port", anchor="w")
+        self._tv.heading("notes", text="Notizen", anchor="w")
         self._tv.column("#0", width=340, stretch=True)
         self._tv.column("hostname", width=130, stretch=False)
         self._tv.column("port", width=60, stretch=False)
+        self._tv.column("notes", width=220, stretch=True)
 
         vsb = ttk.Scrollbar(self, orient="vertical", command=self._tv.yview)
         self._tv.configure(yscrollcommand=vsb.set)
@@ -1015,13 +1052,61 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<ButtonRelease-3>", self._on_right_click)
         self._tv.bind("<<TreeviewOpen>>", lambda _e: self._notify_ui_state_changed())
         self._tv.bind("<<TreeviewClose>>", lambda _e: self._notify_ui_state_changed())
+        self._tv.bind("<Motion>", self._on_tree_motion)
+        self._tv.bind("<Leave>", lambda _e: self._hide_tooltip())
 
         self._configure_color_tags()
+        self._apply_column_visibility()
 
     def _configure_color_tags(self) -> None:
         """Registriert für jede Palettenfarbe einen Treeview-Tag."""
         for _, hex_color in PALETTE:
             self._tv.tag_configure(_color_tag(hex_color), foreground=hex_color)
+
+    def _apply_column_visibility(self) -> None:
+        display = ["tree"]
+        if self._toolbar_settings.show_hostname_column:
+            display.append("hostname")
+        if self._toolbar_settings.show_port_column:
+            display.append("port")
+        if self._toolbar_settings.show_notes_column:
+            display.append("notes")
+        self._tv.configure(displaycolumns=display)
+
+    def update_toolbar_settings(self, toolbar_settings: ToolbarSettings) -> None:
+        self._toolbar_settings = toolbar_settings
+        self._apply_column_visibility()
+
+    def _on_tree_motion(self, event: tk.Event) -> None:
+        item_id = self._tv.identify_row(event.y)
+        if not item_id or item_id == self._last_tooltip_item or item_id not in self._item_to_session:
+            return
+        self._last_tooltip_item = item_id
+        self._hide_tooltip()
+        note = self._notes_getter(self._item_to_session[item_id].key).strip()
+        if not note:
+            return
+        self._tooltip_after_id = self.after(450, lambda iid=item_id, x=event.x_root, y=event.y_root, text=note: self._show_tooltip(iid, x, y, text))
+
+    def _show_tooltip(self, item_id: str, x: int, y: int, text: str) -> None:
+        if item_id != self._last_tooltip_item:
+            return
+        self._hide_tooltip()
+        self._tooltip = tk.Toplevel(self)
+        self._tooltip.wm_overrideredirect(True)
+        self._tooltip.attributes("-topmost", True)
+        label = tk.Label(self._tooltip, text=text, justify="left", background="#fff8dc", relief="solid", borderwidth=1, padx=8, pady=6, wraplength=420)
+        label.pack()
+        self._tooltip.geometry(f"+{x + 12}+{y + 12}")
+
+    def _hide_tooltip(self) -> None:
+        if self._tooltip_after_id:
+            self.after_cancel(self._tooltip_after_id)
+            self._tooltip_after_id = None
+        if self._tooltip is not None:
+            self._tooltip.destroy()
+            self._tooltip = None
+        self._last_tooltip_item = None
 
     def get_open_folders(self) -> set[str]:
         """Gibt folder_keys aller aktuell geöffneten Ordner zurück."""
@@ -1090,6 +1175,8 @@ class SessionTree(ttk.Frame):
 
             # Session-Zeile
             port_str = str(session.port) if session.port != 22 else ""
+            note_text = self._notes_getter(session.key)
+            note_short = (note_text[:57] + "...") if len(note_text) > 60 else note_text
             _ctag = _color_tag(self._session_colors[session.key]) if session.key in self._session_colors else None
             _tags = (self.TAG_SESSION,) + ((_ctag,) if _ctag else ())
             label = self._session_label(session, None)
@@ -1097,7 +1184,7 @@ class SessionTree(ttk.Frame):
                 parent_id, "end",
                 image=self._img_unchecked,
                 text=label,
-                values=(session.hostname, port_str),
+                values=(session.hostname, port_str, note_short),
                 tags=_tags,
             )
             self._item_to_session[item_id] = session
@@ -1322,6 +1409,11 @@ class SessionTree(ttk.Frame):
             menu.add_command(
                 label="Verbindung öffnen",
                 command=lambda s=session: self._on_quick_connect(s),
+            )
+        if self._on_edit_note:
+            menu.add_command(
+                label="Notiz bearbeiten…",
+                command=lambda s=session: self._on_edit_note(s),
             )
         if self._on_open_in_winscp and session.source == "winscp":
             selected_winscp = [s for s in self.get_selected_sessions() if s.source == "winscp"]
@@ -1553,6 +1645,7 @@ class SessionTree(ttk.Frame):
         }
         self._sessions = sessions
         self.populate(sessions, open_folders=open_folders)
+        self._apply_column_visibility()
         for item_id, session in self._item_to_session.items():
             if session.key in checked_keys:
                 self._checked[item_id] = True
@@ -3105,6 +3198,9 @@ class SettingsView(ttk.Frame):
             ("show_reload", "Neu laden"),
             ("show_open_tunnel", "Tunnel öffnen…"),
             ("show_check_hosts", "Hosts prüfen"),
+            ("show_hostname_column", "Spalte Hostname"),
+            ("show_port_column", "Spalte Port"),
+            ("show_notes_column", "Spalte Notizen"),
         ]
         for idx, (key, label) in enumerate(toolbar_items):
             var = tk.BooleanVar()
@@ -3309,6 +3405,7 @@ class SSHManagerApp(tk.Tk):
 
         # App-eigene Sessions und SSH-Config-Sessions laden und mergen
         self._app_sessions: list[Session] = _load_app_sessions()
+        self._notes = _load_notes()
         self._ssh_config_sessions = _load_ssh_config_sessions()
         self._sessions = self._build_visible_sessions()
 
@@ -3431,6 +3528,9 @@ class SSHManagerApp(tk.Tk):
             on_run_remote_command=self._run_remote_command,
             on_open_via_jumphost=self._open_via_jumphost,
             on_ui_state_changed=self._persist_ui_state,
+            notes_getter=lambda key: self._notes.get(key, ""),
+            on_edit_note=self._edit_session_note,
+            toolbar_settings=self.settings.toolbar,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -3535,10 +3635,25 @@ class SSHManagerApp(tk.Tk):
     def preview_toolbar_visibility(self, toolbar_settings: ToolbarSettings) -> None:
         self.settings.toolbar = toolbar_settings
         self._layout_toolbar_buttons()
+        self._tree.update_toolbar_settings(toolbar_settings)
 
     def preview_source_visibility(self, source_visibility: SourceVisibilitySettings) -> None:
         self.settings.source_visibility = source_visibility
         self._sessions = self._build_visible_sessions()
+        self._tree.refresh(self._sessions)
+        self._persist_ui_state()
+
+    def _edit_session_note(self, session: Session) -> None:
+        current = self._notes.get(session.key, "")
+        note = simpledialog.askstring("Notiz bearbeiten", f"Notiz für {session.display_name}:", initialvalue=current, parent=self)
+        if note is None:
+            return
+        note = note.strip()
+        if note:
+            self._notes[session.key] = note
+        else:
+            self._notes.pop(session.key, None)
+        _save_notes(self._notes)
         self._tree.refresh(self._sessions)
         self._persist_ui_state()
 
