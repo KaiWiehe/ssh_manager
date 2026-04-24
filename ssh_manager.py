@@ -866,6 +866,7 @@ class SessionTree(ttk.Frame):
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
         on_open_via_jumphost=None,          # Callable[[Session], None] | None
+        on_ui_state_changed=None,           # Callable[[], None] | None
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -890,6 +891,7 @@ class SessionTree(ttk.Frame):
         self._on_open_in_winscp = on_open_in_winscp
         self._on_run_remote_command = on_run_remote_command
         self._on_open_via_jumphost = on_open_via_jumphost
+        self._on_ui_state_changed = on_ui_state_changed
         self._suppress_next_click = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
@@ -934,6 +936,8 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<ButtonRelease-1>", self._on_left_click)
         self._tv.bind("<Double-Button-1>", self._on_double_click)
         self._tv.bind("<ButtonRelease-3>", self._on_right_click)
+        self._tv.bind("<<TreeviewOpen>>", lambda _e: self._notify_ui_state_changed())
+        self._tv.bind("<<TreeviewClose>>", lambda _e: self._notify_ui_state_changed())
 
         self._configure_color_tags()
 
@@ -954,6 +958,10 @@ class SessionTree(ttk.Frame):
         """Gibt eine Kopie des aktuellen session_key → hex Mappings zurück."""
         return dict(self._session_colors)
 
+    def _notify_ui_state_changed(self) -> None:
+        if self._on_ui_state_changed:
+            self._on_ui_state_changed()
+
     def set_session_color(self, session_key: str, hex_color: str | None) -> None:
         """Setzt oder entfernt die Textfarbe einer Session sofort im Tree."""
         if hex_color:
@@ -966,6 +974,7 @@ class SessionTree(ttk.Frame):
                 tags = (self.TAG_SESSION,) + ((color_tag,) if color_tag else ())
                 self._tv.item(item_id, tags=tags)
                 break
+        self._notify_ui_state_changed()
 
     def populate(self, sessions: list[Session], open_folders: set[str] | None = None) -> None:
         """Füllt den Baum mit Sessions. Löscht vorherige Inhalte."""
@@ -997,6 +1006,7 @@ class SessionTree(ttk.Frame):
                         open=was_open,
                         tags=(self.TAG_FOLDER,),
                     )
+                    self._tv.tag_bind(folder_id, "<<TreeviewOpen>>", lambda e: None)
                     folder_items[folder_key] = folder_id
                     self._item_to_folder_key[folder_id] = folder_key
                 parent_id = folder_items[folder_key]
@@ -1048,6 +1058,7 @@ class SessionTree(ttk.Frame):
             image=self._img_checked if new_state else self._img_unchecked,
         )
         self._notify_count()
+        self._notify_ui_state_changed()
 
     def _notify_count(self) -> None:
         count = sum(1 for v in self._checked.values() if v)
@@ -1070,11 +1081,13 @@ class SessionTree(ttk.Frame):
                 image=self._img_checked if state else self._img_unchecked,
             )
         self._notify_count()
+        self._notify_ui_state_changed()
 
     def _set_folder_checked(self, folder_item_id: str, state: bool) -> None:
         """Alle Session-Zeilen unter einem Ordner an-/abhaken (rekursiv)."""
         self._set_folder_checked_inner(folder_item_id, state)
         self._notify_count()
+        self._notify_ui_state_changed()
 
     def _set_folder_checked_inner(self, folder_item_id: str, state: bool) -> None:
         """Rekursiver Kern ohne Notification – nur von _set_folder_checked aufrufen."""
@@ -1430,11 +1443,13 @@ class SessionTree(ttk.Frame):
         """Klappt alle Ordner auf."""
         for item_id in self._item_to_folder_key:
             self._tv.item(item_id, open=True)
+        self._notify_ui_state_changed()
 
     def collapse_all(self) -> None:
         """Klappt alle Ordner zu."""
         for item_id in self._item_to_folder_key:
             self._tv.item(item_id, open=False)
+        self._notify_ui_state_changed()
 
     def refresh(self, sessions: list[Session]) -> None:
         """Baut den Baum mit neuen Sessions neu auf, behält Ordner-Status und Checkboxen."""
@@ -3285,6 +3300,7 @@ class SSHManagerApp(tk.Tk):
             on_open_in_winscp=self._open_in_winscp,
             on_run_remote_command=self._run_remote_command,
             on_open_via_jumphost=self._open_via_jumphost,
+            on_ui_state_changed=self._persist_ui_state,
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
@@ -3305,6 +3321,16 @@ class SSHManagerApp(tk.Tk):
         self._search_var.trace_add("write", lambda *_: self._on_search_changed())
 
         self._settings_view = SettingsView(self, self)
+
+    def _persist_ui_state(self) -> None:
+        _save_ui_state(
+            self._tree.get_open_folders(),
+            self._tree.get_session_colors(),
+            {
+                "main": self._search_var.get(),
+                "last_remote_command": self._initial_toolbar_search_texts.get("last_remote_command", ""),
+            },
+        )
 
     def _layout_toolbar_buttons(self) -> None:
         col = 2
@@ -3406,6 +3432,7 @@ class SSHManagerApp(tk.Tk):
 
     def _on_search_changed(self) -> None:
         self._tree.filter(self._search_var.get())
+        self._persist_ui_state()
 
     def _select_all(self) -> None:
         self._tree.set_all_checked(True)
@@ -3831,7 +3858,7 @@ class SSHManagerApp(tk.Tk):
             messagebox.showerror("Fehler", f"Fehler beim Starten von WinSCP:\n{e}", parent=self)
 
     def _on_close(self) -> None:
-        _save_ui_state(self._tree.get_open_folders(), self._tree.get_session_colors(), {"main": self._search_var.get(), "last_remote_command": self._initial_toolbar_search_texts.get("last_remote_command", "")})
+        self._persist_ui_state()
         self.destroy()
 
 
