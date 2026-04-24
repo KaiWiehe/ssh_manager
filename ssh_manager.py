@@ -262,6 +262,17 @@ class SSHManagerApp(tk.Tk):
             return
         self._settings_view._import_settings()
 
+    def _persist_ui_state(self) -> None:
+        save_ui_state(
+            self._tree.get_open_folders(),
+            self._tree.get_session_colors(),
+            {
+                "main": self._search_var.get(),
+                "last_remote_command": self._initial_toolbar_search_texts.get("last_remote_command", ""),
+                "search_history": list(self._search_history),
+            },
+        )
+
     def show_settings_view(self) -> None:
         if self._settings_view is None or self._main_frame is None:
             return
