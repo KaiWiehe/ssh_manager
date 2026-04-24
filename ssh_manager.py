@@ -2049,13 +2049,15 @@ class SshRemoveKeyDialog(tk.Toplevel):
 class RemoteCommandDialog(tk.Toplevel):
     """Dialog für Remote-Befehl und Ausführungsoptionen."""
 
-    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = ""):
+    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
         super().__init__(parent)
         self.title("Befehl ausführen")
         self.geometry("720x480")
         self.minsize(620, 420)
         self.result: tuple[str, str, bool] | None = None
         self._last_command = last_command
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
 
         self.transient(parent)
         self.grab_set()
@@ -2082,6 +2084,7 @@ class RemoteCommandDialog(tk.Toplevel):
 
         mode_frame = ttk.LabelFrame(frame, text="Benutzer-Auswahl", padding=12)
         mode_frame.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        mode_frame.columnconfigure(0, weight=1)
         self._user_mode = tk.StringVar(value="all")
         ttk.Radiobutton(
             mode_frame,
@@ -2094,7 +2097,25 @@ class RemoteCommandDialog(tk.Toplevel):
             text="Benutzer pro Host auswählen",
             variable=self._user_mode,
             value="per_host",
-        ).grid(row=1, column=0, sticky="w", pady=(4, 0))
+        ).grid(row=1, column=0, sticky="w", pady=(4, 8))
+
+        ttk.Label(mode_frame, text="Quickselect:").grid(row=2, column=0, sticky="w", pady=(0, 4))
+        quick_frame = ttk.Frame(mode_frame)
+        quick_frame.grid(row=3, column=0, sticky="w")
+        self._user_var = tk.StringVar(value=self._default_user)
+        for col, username in enumerate(self._quick_users):
+            ttk.Button(
+                quick_frame,
+                text=username,
+                command=lambda u=username: self._user_var.set(u),
+                width=14,
+            ).grid(row=0, column=col, padx=2, pady=(0, 6))
+
+        user_entry_frame = ttk.Frame(mode_frame)
+        user_entry_frame.grid(row=4, column=0, sticky="ew")
+        user_entry_frame.columnconfigure(1, weight=1)
+        ttk.Label(user_entry_frame, text="Benutzername:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        ttk.Entry(user_entry_frame, textvariable=self._user_var).grid(row=0, column=1, sticky="ew")
 
         script_frame = ttk.LabelFrame(frame, text="Remote-Befehl", padding=8)
         script_frame.grid(row=3, column=0, sticky="nsew")
@@ -2125,6 +2146,14 @@ class RemoteCommandDialog(tk.Toplevel):
         if not command:
             messagebox.showwarning("Kein Befehl", "Bitte einen Befehl eingeben.", parent=self)
             return
+        user_value = self._user_var.get().strip()
+        if self._user_mode.get() == "all":
+            if not user_value:
+                messagebox.showwarning("Kein Benutzername", "Bitte einen Benutzernamen eingeben oder per Quickselect wählen.", parent=self)
+                return
+            if not _USERNAME_RE.match(user_value):
+                messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+                return
         self.result = (self._user_mode.get(), command, self._close_on_success.get())
         self.destroy()
 
@@ -2235,12 +2264,14 @@ class SshTunnelDialog(tk.Toplevel):
     remote_host ist 'localhost' wenn kein Jumphost-Ziel angegeben wurde (direkter Tunnel).
     """
 
-    def __init__(self, parent: tk.Tk, session: Session | None = None):
+    def __init__(self, parent: tk.Tk, session: Session | None = None, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
         super().__init__(parent)
         self.title("Tunnel öffnen")
         self.resizable(False, False)
         self.result: tuple[str, int, str, int, str] | None = None
         self._session = session
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
 
         self.transient(parent)
         self.grab_set()
@@ -2306,8 +2337,9 @@ class SshTunnelDialog(tk.Toplevel):
 
         # Benutzer
         ttk.Label(frame, text="Quickselect:").grid(row=10, column=0, columnspan=2, sticky="w", pady=(0, 4))
-        self._user_var = tk.StringVar(value=DEFAULT_USER)
-        for col, username in enumerate(QUICK_USERS):
+        self._user_var = tk.StringVar(value=self._default_user)
+        quick_count = max(len(self._quick_users), 2)
+        for col, username in enumerate(self._quick_users):
             ttk.Button(
                 frame,
                 text=username,
@@ -2317,11 +2349,11 @@ class SshTunnelDialog(tk.Toplevel):
 
         ttk.Label(frame, text="Benutzername:").grid(row=12, column=0, sticky="w", pady=(0, 4))
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
-        entry.grid(row=13, column=0, columnspan=max(len(QUICK_USERS), 2), sticky="ew", pady=(0, 12))
+        entry.grid(row=13, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
         entry.focus()
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=14, column=0, columnspan=max(len(QUICK_USERS), 2))
+        btn_frame.grid(row=14, column=0, columnspan=quick_count)
         ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
         ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
 
@@ -2833,15 +2865,18 @@ class SettingsView(ttk.Frame):
         self.load_from_app()
 
     def _build(self) -> None:
-        canvas = tk.Canvas(self, highlightthickness=0)
+        self.configure(style="Settings.TFrame")
+        canvas = tk.Canvas(self, highlightthickness=0, bd=0, background="#e9e7e3")
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
-        content = ttk.Frame(canvas, padding=(0, 0, 8, 0))
+        content = ttk.Frame(canvas, padding=(16, 16, 24, 16), style="Settings.TFrame")
         content.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=content, anchor="nw")
+        self._canvas_window_id = canvas.create_window((0, 0), window=content, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
-        self.bind("<Configure>", lambda e: canvas.itemconfigure(1, width=max(e.width - 20, 200)))
+        self._canvas = canvas
+        self._content = content
+        self.bind("<Configure>", self._on_resize)
 
         row = 0
         general = ttk.LabelFrame(content, text="Allgemein", padding=12)
@@ -2902,10 +2937,16 @@ class SettingsView(ttk.Frame):
         ttk.Button(reset, text="Einstellungen zurücksetzen", command=self._reset_settings).grid(row=0, column=0, sticky="w", pady=(0, 6))
         ttk.Button(reset, text="Farben und Ordner auf Startzustand zurücksetzen", command=self._reset_view_state).grid(row=1, column=0, sticky="w")
 
-        actions = ttk.Frame(content, padding=(0, 12, 0, 0))
+        actions = ttk.Frame(content, padding=(0, 12, 0, 0), style="Settings.TFrame")
         actions.grid(row=row + 1, column=0, sticky="ew")
         ttk.Button(actions, text="Speichern", command=self._save).pack(side="left")
         ttk.Button(actions, text="Zurück", command=self._app.show_main_view).pack(side="left", padx=(8, 0))
+
+    def _on_resize(self, _event=None) -> None:
+        if hasattr(self, "_canvas") and hasattr(self, "_canvas_window_id"):
+            width = max(self.winfo_width() - 28, 320)
+            self._canvas.itemconfigure(self._canvas_window_id, width=width)
+            self._canvas.configure(scrollregion=self._canvas.bbox("all"))
 
     def load_from_app(self) -> None:
         settings = self._app.settings
@@ -2984,6 +3025,9 @@ class SSHManagerApp(tk.Tk):
         style.theme_use("clam")
         style.configure("Toast.TFrame", background="#333333", relief="flat")
         style.configure("Toast.TLabel", background="#333333", foreground="#f5f5f5")
+        style.configure("Settings.TFrame", background="#e9e7e3")
+        style.configure("Settings.TLabelframe", background="#e9e7e3")
+        style.configure("Settings.TLabelframe.Label", background="#e9e7e3")
 
         # Registry laden
         try:
@@ -3503,7 +3547,12 @@ class SSHManagerApp(tk.Tk):
 
     def _open_tunnel(self, session: Session | None = None) -> None:
         """Öffnet den Tunnel-Dialog und startet den SSH-Tunnel im Terminal."""
-        dialog = SshTunnelDialog(self, session=session)
+        dialog = SshTunnelDialog(
+            self,
+            session=session,
+            quick_users=self.get_quick_users(),
+            default_user=self.get_default_user(),
+        )
         self.wait_window(dialog)
         if dialog.result is None:
             return
@@ -3595,7 +3644,13 @@ class SSHManagerApp(tk.Tk):
             messagebox.showwarning("Keine Hosts", "Keine ausführbaren Hosts ausgewählt.", parent=self)
             return
 
-        dialog = RemoteCommandDialog(self, target_count=len(runnable), last_command=self._initial_toolbar_search_texts.get("last_remote_command", ""))
+        dialog = RemoteCommandDialog(
+            self,
+            target_count=len(runnable),
+            last_command=self._initial_toolbar_search_texts.get("last_remote_command", ""),
+            quick_users=self.get_quick_users(),
+            default_user=self.get_default_user(),
+        )
         self.wait_window(dialog)
         if dialog.result is None:
             return
