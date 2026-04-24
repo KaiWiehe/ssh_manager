@@ -18,8 +18,8 @@ python -m pytest tests/test_logic.py::test_build_wt_command_single_session
 python -m py_compile ssh_manager.py
 ```
 
-Keine externen Abhängigkeiten – nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `pathlib`, `socket`, `threading`).  
-Aus tkinter genutzte Module: `tk`, `ttk`, `messagebox`, `simpledialog`.
+Keine externen Abhängigkeiten – nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `pathlib`, `socket`, `threading`, `xml.etree.ElementTree`).  
+Aus tkinter genutzte Module: `tk`, `ttk`, `messagebox`, `simpledialog`, `filedialog`.
 
 ## Architektur
 
@@ -28,12 +28,14 @@ Die gesamte App lebt in einer einzigen Datei: `ssh_manager.py`.
 ### Datenfluss
 
 ```
-Registry (WinSCP)  ──┐
-~/.ssh/config      ──┼──► SSHManagerApp._rebuild_sessions() ──► SessionTree.populate()
-app_sessions.json  ──┘
+Registry (WinSCP)      ──┐
+~/.ssh/config          ──┼──► SSHManagerApp._build_visible_sessions() ──► SessionTree.populate()
+FileZilla sitemanager  ──┤
+app_sessions.json      ──┤
+notes.json / settings  ──┘
 ```
 
-`SSHManagerApp` lädt beim Start alle drei Quellen, mischt sie und gibt sie an `SessionTree` weiter. Der "SSH Config"-Ordner wird immer oben sortiert.
+`SSHManagerApp` lädt beim Start WinSCP, SSH Config, FileZilla und eigene App-Sessions, filtert sie anhand der Anzeige-Einstellungen und gibt die sichtbaren Sessions an `SessionTree` weiter. Der "SSH Config"-Ordner wird immer oben sortiert, FileZilla landet unter `FileZilla Config`.
 
 ### Schichten
 
@@ -50,16 +52,21 @@ app_sessions.json  ──┘
 - `_find_git_bash()` – findet Git Bash (nicht WSL-Bash)
 - `_find_winscp()` – findet WinSCP.exe (`%LOCALAPPDATA%`, Program Files, PATH)
 - `_load_ui_state()` / `_save_ui_state()` – JSON-Persistenz in `%APPDATA%\SSH-Manager\`
+- `_load_settings()` / `_save_settings()` – Einstellungsmodell inkl. Toolbar, Quellenfilter, Spaltensichtbarkeit und Spaltenreihenfolge
+- `_load_notes()` / `_save_notes()` – lokale Session-Notizen in eigener JSON-Datei
 
 **GUI-Klassen:**
 - `SessionTree(ttk.Frame)` – der Haupt-Treeview mit Checkboxen, Farben, Kontextmenüs. Kommuniziert mit der App ausschließlich über Callback-Parameter (kein direkter App-Zugriff).
 - `SSHManagerApp(tk.Tk)` – Hauptfenster, verdrahtet alle Callbacks, besitzt den App-Zustand.
+- `SettingsView(ttk.Frame)` – Einstellungsansicht direkt im Hauptfenster, mit Bereichen für Toolbar, Quellen, Windows Terminal, Export/Import und Reset
 - Dialog-Klassen: `UserDialog`, `SessionEditDialog`, `MoveFolderDialog`, `SshCopyIdDialog`, `SshRemoveKeyDialog`, `SshConfigInspectDialog`, `SshTunnelDialog`, `RemoteCommandDialog`, `RemoteCommandConfirmDialog`
 
 **Datenquellen:**
 - `RegistryReader` – liest WinSCP-Sessions aus `HKCU\Software\Martin Prikryl\WinSCP 2\Sessions`
 - `_load_ssh_config_sessions()` – parst `~/.ssh/config` manuell (kein Parser-Import)
+- `_load_filezilla_config_sessions()` – liest FileZilla-Sites aus `%APPDATA%\FileZilla\sitemanager.xml`
 - `app_sessions.json` – eigene Sessions (source=`app`) und SSH-Alias-Kopien (source=`ssh_alias`)
+- `notes.json` – Session-Notizen für alle Quellen, nur app-intern gespeichert
 
 ### Session-Typen (`source`-Feld)
 
@@ -69,8 +76,9 @@ app_sessions.json  ──┘
 | `app` | app_sessions.json | `ssh USER@HOST` |
 | `ssh_config` | ~/.ssh/config (live) | `ssh ALIAS` |
 | `ssh_alias` | app_sessions.json (Kopie) | `ssh ALIAS` |
+| `filezilla_config` | FileZilla `sitemanager.xml` | `ssh USER@HOST` |
 
-`ssh_config`- und `ssh_alias`-Sessions ignorieren den User-Dialog (`is_ssh_config_session = True`).
+`ssh_config`- und `ssh_alias`-Sessions ignorieren den User-Dialog (`is_ssh_config_session = True`). FileZilla-Sessions verhalten sich wie normale Host-basierte Sessions.
 
 Nur `app`- und `ssh_alias`-Sessions sind editierbar (umbenennen, verschieben, löschen, Ordner umbenennen).  
 Nur `winscp`-Sessions unterstützen "In WinSCP öffnen".
@@ -110,15 +118,28 @@ Kritisch für alle `build_*_command()`-Funktionen:
 
 ### Persistenz
 
-`%APPDATA%\SSH-Manager\ui_state.json` speichert geöffnete Ordner und Session-Farben (Hex-Strings).  
-`%APPDATA%\SSH-Manager\app_sessions.json` speichert eigene Sessions und SSH-Alias-Kopien.
+`%APPDATA%\SSH-Manager\ui_state.json` speichert geöffnete Ordner, Session-Farben, Suche und Suchverlauf. Änderungen am Baumzustand werden möglichst sofort weggeschrieben, nicht erst beim Beenden.  
+`%APPDATA%\SSH-Manager\app_sessions.json` speichert eigene Sessions und SSH-Alias-Kopien.  
+`%APPDATA%\SSH-Manager\settings.json` speichert Benutzer-Einstellungen, Toolbar-Sichtbarkeit, Quellenfilter, Windows-Terminal-Optik und Spaltenreihenfolge.  
+`%APPDATA%\SSH-Manager\notes.json` speichert Notizen für Sessions aller Quellen.
 
-### Konfigurierbare Konstanten (oben in der Datei)
+### Einstellungen / konfigurierbares Verhalten
 
-- `QUICK_USERS` – Schnellauswahl-Buttons in User-Dialogen
-- `DEFAULT_USER` – vorausgewählter Benutzername
+Früher kamen viele Defaults direkt aus Konstanten. Inzwischen ist das meiste in `settings.json` konfigurierbar und wird in `AppSettings` geladen:
+
+- Quick-Users und Default-User
+- Sichtbarkeit der Toolbar-Buttons
+- Sichtbarkeit der Quellen in der Hauptansicht (`WinSCP`, `SSH Config`, `FileZilla Config`, `Eigene App-Verbindungen`)
+- Sichtbarkeit der Spalten `Hostname`, `Port`, `Notizen`
+- Reihenfolge der zuschaltbaren Spalten, Default: `Name | Notiz | Hostname | Port`
+- Windows-Terminal-Optik (Profilname, Farben, Titelmodus)
+
+Weiterhin als Konstanten relevant:
+- `QUICK_USERS` – Fallback-Defaults für Schnellauswahl
+- `DEFAULT_USER` – Fallback-Default
 - `PALETTE` – 8 Einträge `(Name, "#rrggbb")` für die Farbauswahl
 - `_SSH_CONFIG_DEFAULT_FOLDER` – Anzeigename des SSH-Config-Ordners (`"SSH Config"`)
+- `_FILEZILLA_CONFIG_DEFAULT_FOLDER` – Anzeigename des FileZilla-Ordners (`"FileZilla Config"`)
 
 ### SessionTree-Callbacks (Übersicht)
 
@@ -142,3 +163,15 @@ Kritisch für alle `build_*_command()`-Funktionen:
 | `on_open_tunnel` | `(Session \| None)` | Tunnel-Dialog öffnen |
 | `on_open_in_winscp` | `(list[Session])` | WinSCP öffnen |
 | `on_run_remote_command` | `(list[Session])` | Remote-Befehl auf Hosts ausführen |
+| `on_ui_state_changed` | `()` | UI-State sofort persistieren |
+| `notes_getter` | `(session_key: str) -> str` | Notizen für Tooltip / Spalte |
+| `on_edit_note` | `(Session)` | Notiz bearbeiten |
+
+### Neuere Features / Dinge, die leicht kaputtgehen können
+
+- `SettingsView` wirkt live auf Toolbar, Quellen und Spalten. Bei Änderungen an `ToolbarSettings` immer prüfen, ob `SessionTree.update_toolbar_settings()` weiter korrekt verdrahtet ist.
+- `displaycolumns` darf **nicht** `"tree"` enthalten. Die Baumspalte bleibt automatisch links, `displaycolumns` enthält nur echte Datenspalten.
+- Notizen dürfen **nie** in WinSCP, FileZilla oder `~/.ssh/config` zurückgeschrieben werden. Nur `notes.json` verwenden.
+- FileZilla wird nur gelesen, nie geschrieben. Quelle ist `%APPDATA%\FileZilla\sitemanager.xml`.
+- Suchverlauf wird live gespeichert. Änderungen an der Suche betreffen auch `ui_state.json`.
+- Tooltip für Notizen hängt am `Treeview`-Hover und ist empfindlich. Bei Änderungen an Motion-/Leave-Events vorsichtig sein.
