@@ -107,6 +107,33 @@ class SSHManagerApp(tk.Tk):
         build_main_ui(self)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def _add_search_history_entry(self, value: str) -> None:
+        query = value.strip()
+        if len(query) < 2:
+            return
+        self._search_history = [item for item in self._search_history if item != query]
+        self._search_history.insert(0, query)
+        self._search_history = self._search_history[:10]
+        self._persist_ui_state()
+
+    def _apply_search_history_entry(self, value: str) -> None:
+        self._search_var.set(value)
+        self._search_entry.icursor("end")
+        self._search_entry.focus_set()
+
+    def _show_search_history_menu(self) -> None:
+        menu = tk.Menu(self, tearoff=False)
+        if self._search_history:
+            for item in self._search_history:
+                menu.add_command(label=item, command=lambda v=item: self._apply_search_history_entry(v))
+            menu.add_separator()
+            menu.add_command(label="Verlauf leeren", command=self._clear_search_history)
+        else:
+            menu.add_command(label="Kein Suchverlauf", state=tk.DISABLED)
+        x = self._search_history_btn.winfo_rootx()
+        y = self._search_history_btn.winfo_rooty() + self._search_history_btn.winfo_height()
+        menu.tk_popup(x, y)
+
     def _clear_search_history(self) -> None:
         self._search_history = []
         self._persist_ui_state()
