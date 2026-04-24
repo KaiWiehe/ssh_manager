@@ -2874,12 +2874,12 @@ class SettingsView(ttk.Frame):
         root.rowconfigure(0, weight=1)
         self._root = root
 
-        nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(12, 16))
+        nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(16, 20))
         nav.grid(row=0, column=0, sticky="nsw")
         nav.columnconfigure(0, weight=1)
         self._nav = nav
 
-        content_wrap = ttk.Frame(root, style="SettingsContent.TFrame", padding=(18, 16, 18, 12))
+        content_wrap = ttk.Frame(root, style="SettingsContent.TFrame", padding=(28, 22, 28, 16))
         content_wrap.grid(row=0, column=1, sticky="nsew")
         content_wrap.columnconfigure(0, weight=1)
         content_wrap.rowconfigure(1, weight=1)
@@ -2895,8 +2895,9 @@ class SettingsView(ttk.Frame):
         self._content_host.columnconfigure(0, weight=1)
         self._content_host.rowconfigure(0, weight=1)
 
-        actions = ttk.Frame(content_wrap, style="SettingsContent.TFrame", padding=(0, 12, 0, 0))
+        actions = ttk.Frame(content_wrap, style="SettingsActions.TFrame", padding=(0, 16, 0, 0))
         actions.grid(row=2, column=0, sticky="ew")
+        ttk.Separator(actions, orient="horizontal").pack(fill="x", pady=(0, 14))
         ttk.Button(actions, text="Speichern", command=self._save).pack(side="left")
         ttk.Button(actions, text="Zurück", command=self._app.show_main_view).pack(side="left", padx=(8, 0))
 
@@ -2909,8 +2910,8 @@ class SettingsView(ttk.Frame):
         ]
         ttk.Label(nav, text="Bereiche", style="SettingsNavTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 10))
         for idx, (key, label) in enumerate(sections, start=1):
-            btn = ttk.Button(nav, text=label, command=lambda k=key: self._show_section(k), style="SettingsNav.TButton")
-            btn.grid(row=idx, column=0, sticky="ew", pady=3)
+            btn = ttk.Button(nav, text=f"  {label}", command=lambda k=key: self._show_section(k), style="SettingsNav.TButton")
+            btn.grid(row=idx, column=0, sticky="ew", pady=4)
             self._nav_buttons[key] = btn
 
         self._section_frames["general"] = self._build_general_section()
@@ -2921,17 +2922,18 @@ class SettingsView(ttk.Frame):
         self._show_section(self._active_section)
 
     def _build_section_frame(self, title: str, description: str) -> ttk.Frame:
-        frame = ttk.Frame(self._content_host, style="SettingsPanel.TFrame", padding=18)
+        frame = ttk.Frame(self._content_host, style="SettingsPanel.TFrame", padding=22)
         frame.grid(row=0, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
         ttk.Label(frame, text=title, style="SettingsSectionTitle.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(frame, text=description, style="SettingsHint.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 14))
+        ttk.Label(frame, text=description, style="SettingsHint.TLabel").grid(row=1, column=0, sticky="w", pady=(6, 18))
         return frame
 
     def _build_general_section(self) -> ttk.Frame:
         frame = self._build_section_frame("Allgemein", "Globale Vorgaben für Auswahl, Host-Checks und Baumzustand.")
         form = ttk.Frame(frame, style="SettingsPanel.TFrame")
         form.grid(row=2, column=0, sticky="nw")
+        form.columnconfigure(0, minsize=220)
         form.columnconfigure(1, weight=1)
         ttk.Label(form, text="Standardbenutzer:").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
         self._default_user_combo = ttk.Combobox(form, textvariable=self._default_user_var, state="readonly", width=32)
@@ -2945,7 +2947,7 @@ class SettingsView(ttk.Frame):
 
     def _build_users_section(self) -> ttk.Frame:
         frame = self._build_section_frame("Schnellauswahl-Benutzer", "Ein Benutzer pro Zeile. Reihenfolge bleibt erhalten und wird in den Dialogen genutzt.")
-        self._quick_users_text = scrolledtext.ScrolledText(frame, wrap="word", height=14)
+        self._quick_users_text = scrolledtext.ScrolledText(frame, wrap="word", height=18)
         self._quick_users_text.grid(row=2, column=0, sticky="nsew")
         frame.rowconfigure(2, weight=1)
         return frame
@@ -2954,6 +2956,8 @@ class SettingsView(ttk.Frame):
         frame = self._build_section_frame("Toolbar", "Lege fest, welche Buttons oben sichtbar sind. Änderungen wirken direkt.")
         grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
         grid.grid(row=2, column=0, sticky="nw")
+        grid.columnconfigure(0, minsize=260)
+        grid.columnconfigure(1, minsize=260)
         toolbar_items = [
             ("show_select_all", "Alle auswählen"),
             ("show_deselect_all", "Alle abwählen"),
@@ -2974,6 +2978,7 @@ class SettingsView(ttk.Frame):
         frame = self._build_section_frame("Windows Terminal", "Nur optische Übergaben an Windows Terminal, keine SSH-Logik.")
         form = ttk.Frame(frame, style="SettingsPanel.TFrame")
         form.grid(row=2, column=0, sticky="nw")
+        form.columnconfigure(0, minsize=220)
         form.columnconfigure(1, weight=1)
         ttk.Label(form, text="Profilname:").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
         ttk.Entry(form, textvariable=self._profile_name_var, width=32).grid(row=0, column=1, sticky="ew", pady=6)
@@ -2991,11 +2996,19 @@ class SettingsView(ttk.Frame):
 
     def _show_section(self, key: str) -> None:
         self._active_section = key
+        labels = {
+            "general": "Allgemein",
+            "users": "Schnellauswahl-Benutzer",
+            "toolbar": "Toolbar",
+            "terminal": "Windows Terminal",
+            "reset": "Zurücksetzen",
+        }
         for section_key, frame in self._section_frames.items():
             if section_key == key:
                 frame.tkraise()
         for section_key, button in self._nav_buttons.items():
-            button.state(["pressed"] if section_key == key else ["!pressed"])
+            prefix = "▸" if section_key == key else " "
+            button.configure(text=f"{prefix} {labels[section_key]}")
 
     def load_from_app(self) -> None:
         settings = self._app.settings
@@ -3074,16 +3087,18 @@ class SSHManagerApp(tk.Tk):
         style.theme_use("clam")
         style.configure("Toast.TFrame", background="#333333", relief="flat")
         style.configure("Toast.TLabel", background="#333333", foreground="#f5f5f5")
-        style.configure("SettingsRoot.TFrame", background="#dfdbd4")
-        style.configure("SettingsNav.TFrame", background="#d7d2ca")
-        style.configure("SettingsContent.TFrame", background="#ebe8e2")
-        style.configure("SettingsPanel.TFrame", background="#f4f1eb")
-        style.configure("SettingsTitle.TLabel", background="#ebe8e2", font=("Segoe UI", 16, "bold"))
-        style.configure("SettingsSubtitle.TLabel", background="#ebe8e2", foreground="#5f5a52")
-        style.configure("SettingsNavTitle.TLabel", background="#d7d2ca", font=("Segoe UI", 10, "bold"))
-        style.configure("SettingsSectionTitle.TLabel", background="#f4f1eb", font=("Segoe UI", 12, "bold"))
-        style.configure("SettingsHint.TLabel", background="#f4f1eb", foreground="#6b655c")
-        style.configure("SettingsNav.TButton", padding=(10, 8))
+        style.configure("SettingsRoot.TFrame", background="#dcd7cf")
+        style.configure("SettingsNav.TFrame", background="#d3cdc4")
+        style.configure("SettingsContent.TFrame", background="#ebe7df")
+        style.configure("SettingsPanel.TFrame", background="#f6f2eb")
+        style.configure("SettingsActions.TFrame", background="#ebe7df")
+        style.configure("SettingsTitle.TLabel", background="#ebe7df", font=("Segoe UI", 17, "bold"))
+        style.configure("SettingsSubtitle.TLabel", background="#ebe7df", foreground="#5f5a52")
+        style.configure("SettingsNavTitle.TLabel", background="#d3cdc4", font=("Segoe UI", 10, "bold"))
+        style.configure("SettingsSectionTitle.TLabel", background="#f6f2eb", font=("Segoe UI", 13, "bold"))
+        style.configure("SettingsHint.TLabel", background="#f6f2eb", foreground="#6b655c")
+        style.configure("SettingsValue.TLabel", background="#f6f2eb")
+        style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w")
 
         # Registry laden
         try:
