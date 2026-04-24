@@ -1113,6 +1113,14 @@ class SessionTree(ttk.Frame):
         elif self.TAG_SESSION in tags:
             self._show_session_menu(item_id, event)
 
+    def _set_folder_open_recursive(self, folder_item_id: str, state: bool) -> None:
+        """Klappt einen Ordner rekursiv auf oder zu."""
+        self._tv.item(folder_item_id, open=state)
+        for child_id in self._tv.get_children(folder_item_id):
+            if self.TAG_FOLDER in self._tv.item(child_id, "tags"):
+                self._set_folder_open_recursive(child_id, state)
+        self._notify_ui_state_changed()
+
     def _show_folder_menu(self, item_id: str, event: tk.Event) -> None:
         """Kontextmenü für Ordner-Zeilen."""
         folder_key = self._item_to_folder_key.get(item_id, "")
@@ -1136,6 +1144,15 @@ class SessionTree(ttk.Frame):
         menu.add_command(
             label="Alle im Ordner abwählen",
             command=lambda: self._set_folder_checked(item_id, False),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Alle Unterordner ausklappen",
+            command=lambda: self._set_folder_open_recursive(item_id, True),
+        )
+        menu.add_command(
+            label="Alle Unterordner einklappen",
+            command=lambda: self._set_folder_open_recursive(item_id, False),
         )
         folder_sessions = self._get_folder_sessions(item_id)
         if folder_sessions:
