@@ -1059,6 +1059,7 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<<TreeviewClose>>", lambda _e: self._notify_ui_state_changed())
         self._tv.bind("<Motion>", self._on_tree_motion)
         self._tv.bind("<Leave>", lambda _e: self._hide_tooltip())
+        self._tv.bind("<ButtonPress>", lambda _e: self._hide_tooltip())
 
         self._configure_color_tags()
         self._apply_column_visibility()
@@ -1089,10 +1090,11 @@ class SessionTree(ttk.Frame):
 
     def _on_tree_motion(self, event: tk.Event) -> None:
         item_id = self._tv.identify_row(event.y)
-        if not item_id or item_id not in self._item_to_session:
+        column_id = self._tv.identify_column(event.x)
+        if not item_id or item_id not in self._item_to_session or column_id not in {"#0", "#3"}:
             self._hide_tooltip()
             return
-        if item_id == self._last_tooltip_item:
+        if item_id == self._last_tooltip_item and self._tooltip is not None:
             return
         self._hide_tooltip()
         self._last_tooltip_item = item_id
@@ -1108,6 +1110,11 @@ class SessionTree(ttk.Frame):
             self._tooltip.destroy()
             self._tooltip = None
         self._tooltip_after_id = None
+        session = self._item_to_session.get(item_id)
+        if session is not None:
+            root = self.winfo_toplevel()
+            if hasattr(root, "_update_notes_info"):
+                root._update_notes_info(session)
         self._tooltip = tk.Toplevel(self)
         self._tooltip.wm_overrideredirect(True)
         self._tooltip.attributes("-topmost", True)
@@ -1123,6 +1130,9 @@ class SessionTree(ttk.Frame):
             self._tooltip.destroy()
             self._tooltip = None
         self._last_tooltip_item = None
+        root = self.winfo_toplevel()
+        if hasattr(root, "_update_notes_info"):
+            root._update_notes_info(None)
 
     def get_open_folders(self) -> set[str]:
         """Gibt folder_keys aller aktuell geöffneten Ordner zurück."""
@@ -3602,9 +3612,13 @@ class SSHManagerApp(tk.Tk):
         )
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
-        # Verbinden-Button (Zeile 2)
+        self._notes_info_var = tk.StringVar(value="Notizinfo: Zeige den Mauszeiger auf Name oder Notiz, oder nutze Rechtsklick → Notiz bearbeiten…")
+        notes_info = ttk.Label(self._main_frame, textvariable=self._notes_info_var, anchor="w", relief="sunken", padding=(8, 4))
+        notes_info.grid(row=2, column=0, sticky="ew", padx=8, pady=(4, 0))
+
+        # Verbinden-Button (Zeile 3)
         bottom = ttk.Frame(self._main_frame, padding=(8, 6))
-        bottom.grid(row=2, column=0, sticky="ew")
+        bottom.grid(row=3, column=0, sticky="ew")
         bottom.columnconfigure(0, weight=1)
 
         self._connect_btn = ttk.Button(
@@ -3765,6 +3779,7 @@ class SSHManagerApp(tk.Tk):
         self.wait_window(dialog)
         if result["saved"]:
             self._tree.refresh(self._sessions)
+            self._update_notes_info(session)
             self._persist_ui_state()
 
     def get_default_user(self) -> str:
@@ -3828,6 +3843,18 @@ class SSHManagerApp(tk.Tk):
 
     def _invert_selection(self) -> None:
         self._tree.invert_checked()
+
+    def _update_notes_info(self, session: Session | None = None) -> None:
+        if not hasattr(self, "_notes_info_var"):
+            return
+        if session is None:
+            self._notes_info_var.set("Notizinfo: Zeige den Mauszeiger auf Name oder Notiz, oder nutze Rechtsklick → Notiz bearbeiten…")
+            return
+        note = self._notes.get(session.key, "").strip()
+        if note:
+            self._notes_info_var.set(f"Notiz für {session.display_name}: {note}")
+        else:
+            self._notes_info_var.set(f"Notiz für {session.display_name}: Keine Notiz hinterlegt")
 
     def _on_selection_changed(self, count: int) -> None:
         """Callback vom SessionTree – aktualisiert den Verbinden-Button."""
@@ -3944,9 +3971,6 @@ class SSHManagerApp(tk.Tk):
         self._app_sessions.append(dialog.result)
         if dialog.note_result:
             self._notes[dialog.result.key] = dialog.note_result
-            _save_notes(self._notes)
-        if dialog.note_result:
-            self._notes[dialog.result.key] = dialog.note_result
         else:
             self._notes.pop(dialog.result.key, None)
         _save_notes(self._notes)
@@ -3964,6 +3988,11 @@ class SSHManagerApp(tk.Tk):
                 # Farbe auf neuen Key übertragen falls Key sich geändert hat (sollte nicht passieren)
                 self._app_sessions[i] = dialog.result
                 break
+        if dialog.note_result:
+            self._notes[dialog.result.key] = dialog.note_result
+        else:
+            self._notes.pop(dialog.result.key, None)
+        _save_notes(self._notes)
         _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 

@@ -356,3 +356,127 @@ def test_build_wt_command_ssh_alias_session():
     s = Session("__sshalias__abc", "prodbox", ["Prod"], "prodbox", source="ssh_alias")
     cmd = build_wt_command([s], "ignored-user")
     assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh prodbox'
+
+
+from ssh_manager import (
+    _default_settings,
+    _load_settings_from_path,
+    _save_notes,
+    _load_notes,
+    _load_filezilla_config_sessions,
+    ToolbarSettings,
+)
+
+
+def test_load_settings_from_path_reads_column_order_and_visibility():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(json.dumps({
+            "toolbar": {
+                "show_hostname_column": True,
+                "show_port_column": False,
+                "show_notes_column": True,
+                "column_order": ["hostname", "notes", "port"],
+            }
+        }), encoding="utf-8")
+        settings = _load_settings_from_path(path)
+    assert settings.toolbar.show_hostname_column is True
+    assert settings.toolbar.show_port_column is False
+    assert settings.toolbar.show_notes_column is True
+    assert settings.toolbar.column_order == ["hostname", "notes", "port"]
+
+
+def test_load_settings_from_path_filters_invalid_column_order_entries():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(json.dumps({
+            "toolbar": {
+                "column_order": ["foo", "notes", "hostname", "bar"]
+            }
+        }), encoding="utf-8")
+        settings = _load_settings_from_path(path)
+    assert settings.toolbar.column_order == ["notes", "hostname"]
+
+
+def test_default_column_order_matches_ui_expectation():
+    settings = _default_settings()
+    assert settings.toolbar.column_order == ["notes", "hostname", "port"]
+
+
+def test_save_and_load_notes_roundtrip():
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_path = Path(tmp) / "notes.json"
+        with patch("ssh_manager._NOTES_FILE", fake_path):
+            _save_notes({"session-1": "Wichtige Notiz", "session-2": "  bleibt  "})
+            notes = _load_notes()
+    assert notes == {"session-1": "Wichtige Notiz", "session-2": "  bleibt  "}
+
+
+def test_load_notes_ignores_blank_entries():
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_path = Path(tmp) / "notes.json"
+        fake_path.write_text(json.dumps({"notes": {"a": "", "b": "   ", "c": "ok"}}), encoding="utf-8")
+        with patch("ssh_manager._NOTES_FILE", fake_path):
+            notes = _load_notes()
+    assert notes == {"c": "ok"}
+
+
+def test_load_filezilla_config_sessions_reads_nested_sites():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<FileZilla3>
+  <Servers>
+    <Folder Name="Kunden">
+      <Server>
+        <Name>app-01</Name>
+        <Host>10.10.10.10</Host>
+        <Port>2222</Port>
+        <User>deploy</User>
+        <Protocol>1</Protocol>
+      </Server>
+    </Folder>
+    <Server>
+      <Name>rootbox</Name>
+      <Host>192.168.0.20</Host>
+      <Protocol>0</Protocol>
+    </Server>
+  </Servers>
+</FileZilla3>
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        appdata = Path(tmp)
+        fz_dir = appdata / "FileZilla"
+        fz_dir.mkdir(parents=True)
+        (fz_dir / "sitemanager.xml").write_text(xml, encoding="utf-8")
+        with patch.dict("os.environ", {"APPDATA": str(appdata)}):
+            sessions = _load_filezilla_config_sessions()
+    assert len(sessions) == 2
+    nested = next(s for s in sessions if s.display_name == "app-01")
+    assert nested.hostname == "10.10.10.10"
+    assert nested.username == "deploy"
+    assert nested.port == 2222
+    assert nested.folder_path == ["FileZilla Config", "Kunden"]
+    assert nested.source == "filezilla_config"
+    root = next(s for s in sessions if s.display_name == "rootbox")
+    assert root.port == 22
+
+
+def test_load_filezilla_config_sessions_skips_non_ssh_protocols():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<FileZilla3>
+  <Servers>
+    <Server>
+      <Name>ftp-only</Name>
+      <Host>ftp.example.org</Host>
+      <Protocol>3</Protocol>
+    </Server>
+  </Servers>
+</FileZilla3>
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        appdata = Path(tmp)
+        fz_dir = appdata / "FileZilla"
+        fz_dir.mkdir(parents=True)
+        (fz_dir / "sitemanager.xml").write_text(xml, encoding="utf-8")
+        with patch.dict("os.environ", {"APPDATA": str(appdata)}):
+            sessions = _load_filezilla_config_sessions()
+    assert sessions == []
