@@ -17,7 +17,7 @@ import tkinter as tk
 import uuid
 from pathlib import Path
 from tkinter import messagebox, scrolledtext, simpledialog, ttk
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Optional, Callable
 from urllib.parse import unquote
 import winreg
@@ -31,7 +31,9 @@ QUICK_USERS = ["tool-admin", "dev-sys", "de-nb-statist"]
 DEFAULT_USER = "tool-admin"
 WINDOW_TITLE = "SSH-Manager"
 WINDOW_MIN_SIZE = (600, 450)
-_STATE_FILE = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager" / "ui_state.json"
+_APPDATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager"
+_STATE_FILE = _APPDATA_DIR / "ui_state.json"
+_SETTINGS_FILE = _APPDATA_DIR / "settings.json"
 _APP_SESSIONS_FILE = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager" / "app_sessions.json"
 _APP_PREFIX = "__app__"
 _SSH_CONFIG_FILE = Path.home() / ".ssh" / "config"
@@ -118,7 +120,32 @@ def _build_ssh_command(session: Session, user: str | None = None) -> str:
     return f"ssh {effective_user}@{session.hostname}"
 
 
-def build_wt_command(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None) -> str:
+def _terminal_profile_flag(profile_name: str) -> str:
+    profile = (profile_name or "Git Bash").strip() or "Git Bash"
+    return f'-p "{profile}" '
+
+
+def _terminal_title_flag(session: Session, user: str, title_mode: str) -> str:
+    mode = (title_mode or "default").strip()
+    if mode == "default":
+        return ""
+    if mode == "name":
+        title = session.display_name
+    elif mode == "host":
+        title = session.hostname or session.display_name
+    elif mode == "user_host":
+        effective_user = (user or session.username).strip()
+        host = session.hostname or session.display_name
+        title = f"{effective_user}@{host}" if effective_user else host
+    elif mode == "name_host":
+        host = session.hostname or session.display_name
+        title = f"{session.display_name} ({host})"
+    else:
+        return ""
+    return f'--title "{title}" ' if title else ""
+
+
+def build_wt_command(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None, terminal_settings: WindowsTerminalSettings | None = None) -> str:
     """
     Erzeugt den wt.exe-Befehl, der alle Sessions als neue Tabs öffnet.
     Alle Tabs landen im selben Windows Terminal Fenster.
@@ -129,12 +156,15 @@ def build_wt_command(sessions: list[Session], user: str, session_colors: dict[st
         ...
     """
     colors = session_colors or {}
+    settings = terminal_settings or WindowsTerminalSettings()
+    profile_flag = _terminal_profile_flag(settings.profile_name)
     parts = []
     for i, session in enumerate(sessions):
         ssh_cmd = _build_ssh_command(session, user)
-        color = colors.get(session.key)
+        color = colors.get(session.key) if settings.use_tab_color else None
         color_flag = f'--tabColor "{color}" ' if color else ""
-        tab_cmd = f'new-tab {color_flag}-p "Git Bash" -- {ssh_cmd}'
+        title_flag = _terminal_title_flag(session, user, settings.title_mode)
+        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- {ssh_cmd}'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
 
     return " ; ".join(parts)
@@ -172,11 +202,16 @@ def build_jump_wt_command(
     jump_user: str | None = None,
     jump_port: int = 22,
     session_color: str | None = None,
+    terminal_settings: WindowsTerminalSettings | None = None,
 ) -> str:
     """Erzeugt den WT-Befehl für eine einzelne Session über ProxyJump."""
+    settings = terminal_settings or WindowsTerminalSettings()
     ssh_cmd = _build_jump_ssh_command(session, target_user, jump_host, jump_user, jump_port)
-    color_flag = f'--tabColor "{session_color}" ' if session_color else ""
-    return f'wt.exe new-tab {color_flag}-p "Git Bash" -- {ssh_cmd}'
+    color = session_color if settings.use_tab_color else None
+    color_flag = f'--tabColor "{color}" ' if color else ""
+    title_flag = _terminal_title_flag(session, target_user, settings.title_mode)
+    profile_flag = _terminal_profile_flag(settings.profile_name)
+    return f'wt.exe new-tab {color_flag}{title_flag}{profile_flag}-- {ssh_cmd}'
 
 
 def _append_ssh_config_alias(alias: str, target: Session, target_user: str, jump_host: str, jump_user: str | None = None, jump_port: int = 22) -> None:
@@ -221,10 +256,14 @@ def build_remote_command_wt_command(
     *,
     close_on_success: bool,
     session_colors: dict[str, str] | None = None,
+    terminal_settings: WindowsTerminalSettings | None = None,
 ) -> str:
     """Erzeugt WT-Tabs, die pro Host ein lokales Bash-Skript starten."""
+    settings = terminal_settings or WindowsTerminalSettings()
+    settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
     colors = session_colors or {}
+    profile_flag = _terminal_profile_flag(settings.profile_name)
     parts = []
     for i, (session, user, remote_script) in enumerate(session_commands):
         ssh_cmd = _build_ssh_command(session, user)
@@ -248,9 +287,10 @@ def build_remote_command_wt_command(
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
         script_path = _write_temp_bash_script("remote_cmd_", "\n".join(script_lines) + "\n")
-        color = colors.get(session.key)
+        color = colors.get(session.key) if settings.use_tab_color else None
         color_flag = f'--tabColor "{color}" ' if color else ""
-        tab_cmd = f'new-tab {color_flag}-p "Git Bash" -- "{git_bash}" "{script_path}"'
+        title_flag = _terminal_title_flag(session, user, settings.title_mode)
+        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
     return " ; ".join(parts)
 
@@ -300,7 +340,7 @@ def _find_winscp() -> str | None:
     return found if found else None
 
 
-def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: str) -> str:
+def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: str, terminal_settings: WindowsTerminalSettings | None = None) -> str:
     """
     Erzeugt den wt.exe-Befehl für ssh-copy-id. Pro Host ein eigener WT-Tab.
     - Expliziter Git-Bash-Pfad statt 'bash' (System-bash = WSL unter Windows).
@@ -308,18 +348,21 @@ def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: 
     - 'read' hält den Tab offen, braucht keine Anführungszeichen.
     - '~' unquoted → Tilde-Expansion funktioniert.
     """
+    settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
+    profile_flag = _terminal_profile_flag(settings.profile_name)
     parts = []
     for i, session in enumerate(sessions):
         target = f"{user}@{session.hostname}"
         inner = f"ssh-copy-id -i ~/.ssh/{key_filename} {target} && read || read"
         bash_cmd = f'"{git_bash}" -c "{inner}"'
-        tab_cmd = f'new-tab -p "Git Bash" -- {bash_cmd}'
+        title_flag = _terminal_title_flag(session, user, settings.title_mode)
+        tab_cmd = f'new-tab {title_flag}{profile_flag}-- {bash_cmd}'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
     return " ; ".join(parts)
 
 
-def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, user: str) -> str:
+def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, user: str, terminal_settings: WindowsTerminalSettings | None = None) -> str:
     """
     Erzeugt den wt.exe-Befehl zum Entfernen eines SSH Public Keys aus authorized_keys.
     Pro Host ein eigener WT-Tab.
@@ -328,7 +371,9 @@ def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, use
     - Single-Quotes für den Remote-Befehl (in bash -c "..." literal, für SSH quote-delimiter).
     - '~' unquoted außerhalb der äußeren Anführungszeichen → Tilde-Expansion.
     """
+    settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
+    profile_flag = _terminal_profile_flag(settings.profile_name)
     parts = []
     for i, session in enumerate(sessions):
         target = f"{user}@{session.hostname}"
@@ -341,7 +386,8 @@ def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, use
             f"< ~/.ssh/{key_filename} && echo OK || echo FEHLER && read"
         )
         bash_cmd = f'"{git_bash}" -c "{inner}"'
-        tab_cmd = f'new-tab -p "Git Bash" -- {bash_cmd}'
+        title_flag = _terminal_title_flag(session, user, settings.title_mode)
+        tab_cmd = f'new-tab {title_flag}{profile_flag}-- {bash_cmd}'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
     return " ; ".join(parts)
 
@@ -356,7 +402,7 @@ def check_host_reachable(hostname: str, port: int = 22, timeout: int = 3) -> boo
 
 
 def build_ssh_tunnel_command(
-    ssh_server: str, local_port: int, remote_host: str, remote_port: int, user: str
+    ssh_server: str, local_port: int, remote_host: str, remote_port: int, user: str, terminal_settings: WindowsTerminalSettings | None = None
 ) -> list[str]:
     """Erzeugt den wt.exe-Aufruf für SSH Local Port Forwarding."""
     git_bash = _find_git_bash()
@@ -369,7 +415,11 @@ def build_ssh_tunnel_command(
         "read",
     ]) + "\n"
     script_path = _write_temp_bash_script("ssh_tunnel_", script)
-    return ["wt.exe", "new-tab", "-p", "Git Bash", "--", git_bash, script_path]
+    cmd = ["wt.exe", "new-tab"]
+    if settings.title_mode != "default":
+        cmd.extend(["--title", f"{user}@{ssh_server}"])
+    cmd.extend(["-p", settings.profile_name or "Git Bash", "--", git_bash, script_path])
+    return cmd
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +429,7 @@ class TerminalLauncher:
     """Startet wt.exe mit mehreren SSH-Tabs."""
 
     @staticmethod
-    def launch(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None) -> None:
+    def launch(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None, terminal_settings: WindowsTerminalSettings | None = None) -> None:
         """
         Öffnet alle Sessions als neue Tabs in einem Windows Terminal Fenster.
         Hinweis: Da shell=True genutzt wird, wirft Popen keine Exception wenn
@@ -387,7 +437,7 @@ class TerminalLauncher:
         """
         if not sessions:
             return
-        cmd = build_wt_command(sessions, user, session_colors)
+        cmd = build_wt_command(sessions, user, session_colors, terminal_settings=terminal_settings)
         # shell=True nötig: wt.exe parst `;` als eigenen Subcommand-Separator,
         # cmd.exe behandelt `;` nicht als Sonderzeichen und reicht es durch.
         subprocess.Popen(cmd, shell=True)
@@ -539,13 +589,114 @@ def _create_checkbox_images(root: tk.Tk) -> tuple[tk.PhotoImage, tk.PhotoImage]:
 # ---------------------------------------------------------------------------
 # UI-State Persistenz
 # ---------------------------------------------------------------------------
-def _load_ui_state() -> tuple[set[str], dict[str, str]]:
+@dataclass
+class ToolbarSettings:
+    show_select_all: bool = True
+    show_deselect_all: bool = True
+    show_expand_all: bool = True
+    show_collapse_all: bool = True
+    show_add_connection: bool = True
+    show_reload: bool = True
+    show_open_tunnel: bool = True
+    show_check_hosts: bool = True
+
+
+@dataclass
+class WindowsTerminalSettings:
+    profile_name: str = "Git Bash"
+    use_tab_color: bool = True
+    title_mode: str = "default"
+
+
+@dataclass
+class AppSettings:
+    quick_users: list[str] = field(default_factory=lambda: list(QUICK_USERS))
+    default_user: str = DEFAULT_USER
+    toolbar: ToolbarSettings = field(default_factory=ToolbarSettings)
+    host_check_timeout_seconds: int = 3
+    startup_expand_mode: str = "remember"
+    windows_terminal: WindowsTerminalSettings = field(default_factory=WindowsTerminalSettings)
+
+
+def _default_settings() -> AppSettings:
+    return AppSettings()
+
+
+def _settings_to_dict(settings: AppSettings) -> dict:
+    return asdict(settings)
+
+
+def _load_settings() -> AppSettings:
+    defaults = _default_settings()
+    try:
+        raw = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return defaults
+
+    toolbar_raw = raw.get("toolbar", {}) if isinstance(raw, dict) else {}
+    wt_raw = raw.get("windows_terminal", {}) if isinstance(raw, dict) else {}
+
+    quick_users = raw.get("quick_users", defaults.quick_users)
+    if not isinstance(quick_users, list):
+        quick_users = defaults.quick_users
+    quick_users = [str(user).strip() for user in quick_users if str(user).strip()] or list(defaults.quick_users)
+
+    default_user = str(raw.get("default_user", defaults.default_user)).strip() or quick_users[0]
+    if default_user not in quick_users:
+        quick_users.insert(0, default_user)
+
+    host_timeout = raw.get("host_check_timeout_seconds", defaults.host_check_timeout_seconds)
+    try:
+        host_timeout = max(1, int(host_timeout))
+    except (TypeError, ValueError):
+        host_timeout = defaults.host_check_timeout_seconds
+
+    startup_expand_mode = str(raw.get("startup_expand_mode", defaults.startup_expand_mode))
+    if startup_expand_mode not in {"remember", "expanded", "collapsed"}:
+        startup_expand_mode = defaults.startup_expand_mode
+
+    return AppSettings(
+        quick_users=quick_users,
+        default_user=default_user,
+        toolbar=ToolbarSettings(
+            show_select_all=bool(toolbar_raw.get("show_select_all", defaults.toolbar.show_select_all)),
+            show_deselect_all=bool(toolbar_raw.get("show_deselect_all", defaults.toolbar.show_deselect_all)),
+            show_expand_all=bool(toolbar_raw.get("show_expand_all", defaults.toolbar.show_expand_all)),
+            show_collapse_all=bool(toolbar_raw.get("show_collapse_all", defaults.toolbar.show_collapse_all)),
+            show_add_connection=bool(toolbar_raw.get("show_add_connection", defaults.toolbar.show_add_connection)),
+            show_reload=bool(toolbar_raw.get("show_reload", defaults.toolbar.show_reload)),
+            show_open_tunnel=bool(toolbar_raw.get("show_open_tunnel", defaults.toolbar.show_open_tunnel)),
+            show_check_hosts=bool(toolbar_raw.get("show_check_hosts", defaults.toolbar.show_check_hosts)),
+        ),
+        host_check_timeout_seconds=host_timeout,
+        startup_expand_mode=startup_expand_mode,
+        windows_terminal=WindowsTerminalSettings(
+            profile_name=str(wt_raw.get("profile_name", defaults.windows_terminal.profile_name)).strip() or defaults.windows_terminal.profile_name,
+            use_tab_color=bool(wt_raw.get("use_tab_color", defaults.windows_terminal.use_tab_color)),
+            title_mode=str(wt_raw.get("title_mode", defaults.windows_terminal.title_mode)),
+        ),
+    )
+
+
+def _save_settings(settings: AppSettings) -> None:
+    _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _SETTINGS_FILE.write_text(
+        json.dumps(_settings_to_dict(settings), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
     """Lädt UI-Zustand aus JSON. Gibt leere Defaults zurück wenn nicht vorhanden."""
     try:
         data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
-        return set(data.get("expanded_folders", [])), dict(data.get("session_colors", {}))
+        return (
+            set(data.get("expanded_folders", [])),
+            dict(data.get("session_colors", {})),
+            dict(data.get("toolbar_search_texts", {})),
+        )
     except (OSError, json.JSONDecodeError, ValueError):
-        return set(), {}
+        return set(), {}, {}
 
 
 def _save_ui_state(expanded_folders: set[str], session_colors: dict[str, str]) -> None:
@@ -1328,7 +1479,7 @@ class SessionTree(ttk.Frame):
                     daemon=True,
                 ).start()
 
-    def check_selected_hosts(self) -> None:
+    def check_selected_hosts(self, timeout: int = 3) -> None:
         """Prüft alle aktuell ausgewählten Sessions."""
         pairs = [
             (iid, s) for iid, s in self._item_to_session.items()
@@ -1385,11 +1536,13 @@ class UserDialog(tk.Toplevel):
     Nach Schließen: self.result = gewählter Username (str) oder None (Abbrechen).
     """
 
-    def __init__(self, parent: tk.Tk, title: str = "Benutzername auswählen"):
+    def __init__(self, parent: tk.Tk, title: str = "Benutzername auswählen", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
         super().__init__(parent)
         self.title(title)
         self.resizable(False, False)
         self.result: Optional[str] = None
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
 
         # Modal machen
         self.transient(parent)
@@ -1406,14 +1559,15 @@ class UserDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=16)
         frame.pack(fill="both", expand=True)
 
+        quick_count = max(len(self._quick_users), 1)
         ttk.Label(frame, text="Quickselect:").grid(
-            row=0, column=0, columnspan=len(QUICK_USERS), sticky="w", pady=(0, 4)
+            row=0, column=0, columnspan=quick_count, sticky="w", pady=(0, 4)
         )
 
-        self._user_var = tk.StringVar(value=DEFAULT_USER)
+        self._user_var = tk.StringVar(value=self._default_user)
 
         # Quickselect-Buttons
-        for col, username in enumerate(QUICK_USERS):
+        for col, username in enumerate(self._quick_users):
             ttk.Button(
                 frame,
                 text=username,
@@ -1426,13 +1580,13 @@ class UserDialog(tk.Toplevel):
             row=2, column=0, sticky="w", pady=(0, 4)
         )
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
-        entry.grid(row=3, column=0, columnspan=len(QUICK_USERS), sticky="ew", pady=(0, 12))
+        entry.grid(row=3, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
         entry.select_range(0, "end")
         entry.focus()
 
         # OK / Abbrechen
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=4, column=0, columnspan=len(QUICK_USERS))
+        btn_frame.grid(row=4, column=0, columnspan=quick_count)
         ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(
             side="left", padx=4
         )
@@ -1514,7 +1668,8 @@ class JumpHostDialog(tk.Toplevel):
         form.columnconfigure(1, weight=1)
 
         self._jump_host_var = tk.StringVar()
-        self._jump_user_var = tk.StringVar()
+        default_user = getattr(parent, "get_default_user", lambda: DEFAULT_USER)()
+        self._jump_user_var = tk.StringVar(value=default_user)
         self._jump_port_var = tk.StringVar(value="22")
         self._filter_var = tk.StringVar()
 
@@ -1679,12 +1834,14 @@ class SshCopyIdDialog(tk.Toplevel):
     Nach Schließen: self.result = (key_filename, user) oder None (Abbrechen).
     """
 
-    def __init__(self, parent: tk.Tk, target_count: int = 1):
+    def __init__(self, parent: tk.Tk, target_count: int = 1, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
         super().__init__(parent)
         self.title("SSH Key übertragen")
         self.resizable(False, False)
         self.result: tuple[str, str] | None = None
         self._target_count = target_count
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
 
         self.transient(parent)
         self.grab_set()
@@ -1723,8 +1880,9 @@ class SshCopyIdDialog(tk.Toplevel):
 
         # Benutzer
         ttk.Label(frame, text="Quickselect:").grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 4))
-        self._user_var = tk.StringVar(value=DEFAULT_USER)
-        for col, username in enumerate(QUICK_USERS):
+        self._user_var = tk.StringVar(value=self._default_user)
+        quick_count = max(len(self._quick_users), 2)
+        for col, username in enumerate(self._quick_users):
             ttk.Button(
                 frame,
                 text=username,
@@ -1734,12 +1892,12 @@ class SshCopyIdDialog(tk.Toplevel):
 
         ttk.Label(frame, text="Benutzername:").grid(row=5, column=0, sticky="w", pady=(0, 4))
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
-        entry.grid(row=6, column=0, columnspan=max(len(QUICK_USERS), 2), sticky="ew", pady=(0, 12))
+        entry.grid(row=6, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
         entry.focus()
 
         # OK / Abbrechen
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=7, column=0, columnspan=max(len(QUICK_USERS), 2))
+        btn_frame.grid(row=7, column=0, columnspan=quick_count)
         ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
         ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
 
@@ -1788,12 +1946,14 @@ class SshRemoveKeyDialog(tk.Toplevel):
     Nach Schließen: self.result = (key_filename, user) oder None (Abbrechen).
     """
 
-    def __init__(self, parent: tk.Tk, target_count: int = 1):
+    def __init__(self, parent: tk.Tk, target_count: int = 1, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
         super().__init__(parent)
         self.title("SSH Key entfernen")
         self.resizable(False, False)
         self.result: tuple[str, str] | None = None
         self._target_count = target_count
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
 
         self.transient(parent)
         self.grab_set()
@@ -1829,8 +1989,9 @@ class SshRemoveKeyDialog(tk.Toplevel):
             )
 
         ttk.Label(frame, text="Quickselect:").grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 4))
-        self._user_var = tk.StringVar(value=DEFAULT_USER)
-        for col, username in enumerate(QUICK_USERS):
+        self._user_var = tk.StringVar(value=self._default_user)
+        quick_count = max(len(self._quick_users), 2)
+        for col, username in enumerate(self._quick_users):
             ttk.Button(
                 frame,
                 text=username,
@@ -1840,11 +2001,11 @@ class SshRemoveKeyDialog(tk.Toplevel):
 
         ttk.Label(frame, text="Benutzername:").grid(row=5, column=0, sticky="w", pady=(0, 4))
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
-        entry.grid(row=6, column=0, columnspan=max(len(QUICK_USERS), 2), sticky="ew", pady=(0, 12))
+        entry.grid(row=6, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
         entry.focus()
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=7, column=0, columnspan=max(len(QUICK_USERS), 2))
+        btn_frame.grid(row=7, column=0, columnspan=quick_count)
         ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
         ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
 
@@ -1888,12 +2049,13 @@ class SshRemoveKeyDialog(tk.Toplevel):
 class RemoteCommandDialog(tk.Toplevel):
     """Dialog für Remote-Befehl und Ausführungsoptionen."""
 
-    def __init__(self, parent: tk.Tk, target_count: int):
+    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = ""):
         super().__init__(parent)
         self.title("Befehl ausführen")
         self.geometry("720x480")
         self.minsize(620, 420)
         self.result: tuple[str, str, bool] | None = None
+        self._last_command = last_command
 
         self.transient(parent)
         self.grab_set()
@@ -1940,6 +2102,8 @@ class RemoteCommandDialog(tk.Toplevel):
         script_frame.rowconfigure(0, weight=1)
         self._command_text = scrolledtext.ScrolledText(script_frame, wrap="word", height=12)
         self._command_text.grid(row=0, column=0, sticky="nsew")
+        if self._last_command:
+            self._command_text.insert("1.0", self._last_command)
         self._command_text.focus()
 
         options = ttk.Frame(frame)
@@ -2554,6 +2718,8 @@ class MoveFolderDialog(tk.Toplevel):
         self.title("In Ordner verschieben")
         self.resizable(False, False)
         self.result: Optional[str] = None
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
         self.transient(parent)
         self.grab_set()
         self._build(existing_folders, current_folder)
@@ -2634,6 +2800,176 @@ class ToastNotification(tk.Toplevel):
 # ---------------------------------------------------------------------------
 # SSHManagerApp
 # ---------------------------------------------------------------------------
+class SettingsView(ttk.Frame):
+    """Einstellungsansicht im Hauptfenster."""
+
+    STARTUP_LABELS = {
+        "remember": "Letzten Ordnerzustand merken",
+        "expanded": "Alle Ordner ausgeklappt starten",
+        "collapsed": "Alle Ordner eingeklappt starten",
+    }
+    TITLE_MODE_LABELS = {
+        "default": "Wie bisher",
+        "name": "Nur Session-Name",
+        "host": "Nur Hostname",
+        "user_host": "Benutzer@Host",
+        "name_host": "Name (Host)",
+    }
+
+    def __init__(self, parent: tk.Widget, app: "SSHManagerApp"):
+        super().__init__(parent, padding=12)
+        self._app = app
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+        self._quick_users_var = tk.StringVar()
+        self._default_user_var = tk.StringVar()
+        self._host_timeout_var = tk.StringVar()
+        self._startup_expand_var = tk.StringVar()
+        self._profile_name_var = tk.StringVar()
+        self._title_mode_var = tk.StringVar()
+        self._toolbar_vars: dict[str, tk.BooleanVar] = {}
+        self._use_tab_color_var = tk.BooleanVar()
+        self._build()
+        self.load_from_app()
+
+    def _build(self) -> None:
+        canvas = tk.Canvas(self, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        content = ttk.Frame(canvas, padding=(0, 0, 8, 0))
+        content.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=content, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.bind("<Configure>", lambda e: canvas.itemconfigure(1, width=max(e.width - 20, 200)))
+
+        row = 0
+        general = ttk.LabelFrame(content, text="Allgemein", padding=12)
+        general.grid(row=row, column=0, sticky="ew", pady=(0, 12))
+        general.columnconfigure(1, weight=1)
+        ttk.Label(general, text="Standardbenutzer:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
+        self._default_user_combo = ttk.Combobox(general, textvariable=self._default_user_var, state="readonly")
+        self._default_user_combo.grid(row=0, column=1, sticky="ew", pady=4)
+        ttk.Label(general, text="Hosts prüfen Timeout (s):").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 8))
+        ttk.Entry(general, textvariable=self._host_timeout_var, width=12).grid(row=1, column=1, sticky="w", pady=4)
+        ttk.Label(general, text="Ordner beim Start:").grid(row=2, column=0, sticky="w", pady=4, padx=(0, 8))
+        startup_values = list(self.STARTUP_LABELS.values())
+        self._startup_expand_combo = ttk.Combobox(general, textvariable=self._startup_expand_var, values=startup_values, state="readonly")
+        self._startup_expand_combo.grid(row=2, column=1, sticky="ew", pady=4)
+
+        row += 1
+        users = ttk.LabelFrame(content, text="Schnellauswahl-Benutzer", padding=12)
+        users.grid(row=row, column=0, sticky="ew", pady=(0, 12))
+        users.columnconfigure(0, weight=1)
+        ttk.Label(users, text="Ein Benutzer pro Zeile.").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self._quick_users_text = scrolledtext.ScrolledText(users, wrap="word", height=6)
+        self._quick_users_text.grid(row=1, column=0, sticky="ew")
+
+        row += 1
+        toolbar = ttk.LabelFrame(content, text="Toolbar", padding=12)
+        toolbar.grid(row=row, column=0, sticky="ew", pady=(0, 12))
+        toolbar.columnconfigure(0, weight=1)
+        toolbar_items = [
+            ("show_select_all", "Alle auswählen"),
+            ("show_deselect_all", "Alle abwählen"),
+            ("show_expand_all", "Ausklappen"),
+            ("show_collapse_all", "Einklappen"),
+            ("show_add_connection", "+ Verbindung"),
+            ("show_reload", "Neu laden"),
+            ("show_open_tunnel", "Tunnel öffnen…"),
+            ("show_check_hosts", "Hosts prüfen"),
+        ]
+        for idx, (key, label) in enumerate(toolbar_items):
+            var = tk.BooleanVar()
+            self._toolbar_vars[key] = var
+            ttk.Checkbutton(toolbar, text=label, variable=var, command=self._on_toolbar_changed).grid(row=idx // 2, column=idx % 2, sticky="w", padx=(0, 18), pady=3)
+
+        row += 1
+        wt = ttk.LabelFrame(content, text="Windows Terminal", padding=12)
+        wt.grid(row=row, column=0, sticky="ew", pady=(0, 12))
+        wt.columnconfigure(1, weight=1)
+        ttk.Label(wt, text="Profilname:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
+        ttk.Entry(wt, textvariable=self._profile_name_var).grid(row=0, column=1, sticky="ew", pady=4)
+        ttk.Checkbutton(wt, text="Tab-Farben an Windows Terminal übergeben", variable=self._use_tab_color_var).grid(row=1, column=0, columnspan=2, sticky="w", pady=4)
+        ttk.Label(wt, text="Tab-Titel:").grid(row=2, column=0, sticky="w", pady=4, padx=(0, 8))
+        title_values = list(self.TITLE_MODE_LABELS.values())
+        self._title_mode_combo = ttk.Combobox(wt, textvariable=self._title_mode_var, values=title_values, state="readonly")
+        self._title_mode_combo.grid(row=2, column=1, sticky="ew", pady=4)
+
+        row += 1
+        reset = ttk.LabelFrame(content, text="Zurücksetzen", padding=12)
+        reset.grid(row=row, column=0, sticky="ew")
+        ttk.Button(reset, text="Einstellungen zurücksetzen", command=self._reset_settings).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Button(reset, text="Farben und Ordner auf Startzustand zurücksetzen", command=self._reset_view_state).grid(row=1, column=0, sticky="w")
+
+        actions = ttk.Frame(content, padding=(0, 12, 0, 0))
+        actions.grid(row=row + 1, column=0, sticky="ew")
+        ttk.Button(actions, text="Speichern", command=self._save).pack(side="left")
+        ttk.Button(actions, text="Zurück", command=self._app.show_main_view).pack(side="left", padx=(8, 0))
+
+    def load_from_app(self) -> None:
+        settings = self._app.settings
+        self._quick_users_text.delete("1.0", "end")
+        self._quick_users_text.insert("1.0", "\n".join(settings.quick_users))
+        self._default_user_combo.configure(values=settings.quick_users)
+        self._default_user_var.set(settings.default_user)
+        self._host_timeout_var.set(str(settings.host_check_timeout_seconds))
+        self._startup_expand_var.set(self.STARTUP_LABELS.get(settings.startup_expand_mode, self.STARTUP_LABELS["remember"]))
+        for key, var in self._toolbar_vars.items():
+            var.set(bool(getattr(settings.toolbar, key)))
+        self._profile_name_var.set(settings.windows_terminal.profile_name)
+        self._use_tab_color_var.set(settings.windows_terminal.use_tab_color)
+        self._title_mode_var.set(self.TITLE_MODE_LABELS.get(settings.windows_terminal.title_mode, self.TITLE_MODE_LABELS["default"]))
+
+    def _on_toolbar_changed(self) -> None:
+        self._app.preview_toolbar_visibility(self._collect_toolbar_settings())
+
+    def _collect_toolbar_settings(self) -> ToolbarSettings:
+        return ToolbarSettings(**{key: var.get() for key, var in self._toolbar_vars.items()})
+
+    def _collect_settings(self) -> AppSettings:
+        quick_users = [line.strip() for line in self._quick_users_text.get("1.0", "end").splitlines() if line.strip()]
+        if not quick_users:
+            raise ValueError("Mindestens ein Quick-User ist erforderlich.")
+        default_user = self._default_user_var.get().strip() or quick_users[0]
+        if default_user not in quick_users:
+            default_user = quick_users[0]
+        try:
+            timeout = max(1, int(self._host_timeout_var.get().strip()))
+        except ValueError as e:
+            raise ValueError("Timeout muss eine ganze Zahl >= 1 sein.") from e
+        startup_expand_mode = next((key for key, label in self.STARTUP_LABELS.items() if label == self._startup_expand_var.get()), "remember")
+        title_mode = next((key for key, label in self.TITLE_MODE_LABELS.items() if label == self._title_mode_var.get()), "default")
+        return AppSettings(
+            quick_users=quick_users,
+            default_user=default_user,
+            toolbar=self._collect_toolbar_settings(),
+            host_check_timeout_seconds=timeout,
+            startup_expand_mode=startup_expand_mode,
+            windows_terminal=WindowsTerminalSettings(
+                profile_name=self._profile_name_var.get().strip() or "Git Bash",
+                use_tab_color=self._use_tab_color_var.get(),
+                title_mode=title_mode,
+            ),
+        )
+
+    def _save(self) -> None:
+        try:
+            settings = self._collect_settings()
+        except ValueError as e:
+            messagebox.showwarning("Einstellungen", str(e), parent=self)
+            return
+        self._app.apply_settings(settings)
+        self._app.show_main_view()
+
+    def _reset_settings(self) -> None:
+        self._app.reset_settings()
+        self.load_from_app()
+
+    def _reset_view_state(self) -> None:
+        self._app.reset_view_state()
+
+
 class SSHManagerApp(tk.Tk):
     """Hauptfenster der SSH-Manager Applikation."""
 
@@ -2661,6 +2997,9 @@ class SSHManagerApp(tk.Tk):
             )
             winscp_sessions = []
 
+        self.settings = _load_settings()
+        self._startup_settings = _load_settings()
+
         # App-eigene Sessions und SSH-Config-Sessions laden und mergen
         self._app_sessions: list[Session] = _load_app_sessions()
         ssh_config_sessions = _load_ssh_config_sessions()
@@ -2672,45 +3011,87 @@ class SSHManagerApp(tk.Tk):
         # Checkbox-Images (nach Tk-Initialisierung erzeugen!)
         self._img_unchecked, self._img_checked = _create_checkbox_images(self)
 
-        self._initial_open_folders, self._initial_session_colors = _load_ui_state()
+        self._initial_open_folders, self._initial_session_colors, self._initial_toolbar_search_texts = _load_ui_state()
+        if self.settings.startup_expand_mode == "expanded":
+            self._initial_open_folders = {s.folder_key for s in self._sessions if s.folder_key}
+        elif self.settings.startup_expand_mode == "collapsed":
+            self._initial_open_folders = set()
+        self._toolbar_buttons: dict[str, ttk.Button] = {}
+        self._main_frame: ttk.Frame | None = None
+        self._settings_view: SettingsView | None = None
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self) -> None:
         """Erstellt alle UI-Elemente."""
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
 
-        # Toolbar (Zeile 0)
-        toolbar = ttk.Frame(self, padding=(8, 6))
+        menubar = tk.Menu(self)
+        self.config(menu=menubar)
+
+        file_menu = tk.Menu(menubar, tearoff=False)
+        file_menu.add_command(label="Neue Verbindung", command=self._add_session)
+        file_menu.add_command(label="Neu laden", command=self._reload_sessions)
+        file_menu.add_separator()
+        file_menu.add_command(label="Einstellungen", command=self.show_settings_view)
+        file_menu.add_separator()
+        file_menu.add_command(label="Beenden", command=self._on_close)
+        menubar.add_cascade(label="Datei", menu=file_menu)
+
+        selection_menu = tk.Menu(menubar, tearoff=False)
+        selection_menu.add_command(label="Alle auswählen", command=self._select_all)
+        selection_menu.add_command(label="Alle abwählen", command=self._deselect_all)
+        selection_menu.add_command(label="Auswahl umkehren", command=self._invert_selection)
+        menubar.add_cascade(label="Auswahl", menu=selection_menu)
+
+        view_menu = tk.Menu(menubar, tearoff=False)
+        view_menu.add_command(label="Ausklappen", command=self._expand_all)
+        view_menu.add_command(label="Einklappen", command=self._collapse_all)
+        view_menu.add_separator()
+        view_menu.add_command(label="Farben zurücksetzen", command=self._reset_session_colors)
+        view_menu.add_command(label="Ansicht auf Startzustand zurücksetzen", command=self.reset_view_state)
+        menubar.add_cascade(label="Ansicht", menu=view_menu)
+
+        actions_menu = tk.Menu(menubar, tearoff=False)
+        actions_menu.add_command(label="Verbinden", command=self._on_connect)
+        actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
+        actions_menu.add_command(label="Tunnel öffnen", command=self._open_tunnel)
+        actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: self._run_remote_command(self._tree.get_selected_sessions()))
+        menubar.add_cascade(label="Aktionen", menu=actions_menu)
+
+        settings_menu = tk.Menu(menubar, tearoff=False)
+        settings_menu.add_command(label="Einstellungen öffnen", command=self.show_settings_view)
+        settings_menu.add_command(label="Einstellungen zurücksetzen", command=self.reset_settings)
+        menubar.add_cascade(label="Einstellungen", menu=settings_menu)
+
+        self._main_frame = ttk.Frame(self)
+        self._main_frame.grid(row=0, column=0, sticky="nsew")
+        self._main_frame.columnconfigure(0, weight=1)
+        self._main_frame.rowconfigure(1, weight=1)
+
+        toolbar = ttk.Frame(self._main_frame, padding=(8, 6))
         toolbar.grid(row=0, column=0, sticky="ew")
         toolbar.columnconfigure(1, weight=1)
 
         ttk.Label(toolbar, text="Suche:").grid(row=0, column=0, padx=(0, 4))
-        self._search_var = tk.StringVar()
-        search_entry = ttk.Entry(toolbar, textvariable=self._search_var)
-        search_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        self._search_var = tk.StringVar(value=self._initial_toolbar_search_texts.get("main", ""))
+        self._search_entry = ttk.Entry(toolbar, textvariable=self._search_var)
+        self._search_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
-        ttk.Button(toolbar, text="Alle auswählen",
-                   command=self._select_all).grid(row=0, column=2, padx=2)
-        ttk.Button(toolbar, text="Alle abwählen",
-                   command=self._deselect_all).grid(row=0, column=3, padx=2)
-        ttk.Button(toolbar, text="Ausklappen",
-                   command=self._expand_all).grid(row=0, column=4, padx=2)
-        ttk.Button(toolbar, text="Einklappen",
-                   command=self._collapse_all).grid(row=0, column=5, padx=2)
-        ttk.Button(toolbar, text="+ Verbindung",
-                   command=self._add_session).grid(row=0, column=6, padx=(8, 2))
-        ttk.Button(toolbar, text="Neu laden",
-                   command=self._reload_sessions).grid(row=0, column=7, padx=(2, 2))
-        ttk.Button(toolbar, text="Tunnel öffnen…",
-                   command=self._open_tunnel).grid(row=0, column=8, padx=(2, 2))
-        ttk.Button(toolbar, text="Hosts prüfen",
-                   command=lambda: self._tree.check_selected_hosts()).grid(row=0, column=9, padx=(2, 0))
+        self._toolbar_buttons["show_select_all"] = ttk.Button(toolbar, text="Alle auswählen", command=self._select_all)
+        self._toolbar_buttons["show_deselect_all"] = ttk.Button(toolbar, text="Alle abwählen", command=self._deselect_all)
+        self._toolbar_buttons["show_expand_all"] = ttk.Button(toolbar, text="Ausklappen", command=self._expand_all)
+        self._toolbar_buttons["show_collapse_all"] = ttk.Button(toolbar, text="Einklappen", command=self._collapse_all)
+        self._toolbar_buttons["show_add_connection"] = ttk.Button(toolbar, text="+ Verbindung", command=self._add_session)
+        self._toolbar_buttons["show_reload"] = ttk.Button(toolbar, text="Neu laden", command=self._reload_sessions)
+        self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=self._open_tunnel)
+        self._toolbar_buttons["show_check_hosts"] = ttk.Button(toolbar, text="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
+        self._layout_toolbar_buttons()
 
         # SessionTree (Zeile 1)
         self._tree = SessionTree(
-            self,
+            self._main_frame,
             sessions=self._sessions,
             img_unchecked=self._img_unchecked,
             img_checked=self._img_checked,
@@ -2739,7 +3120,7 @@ class SSHManagerApp(tk.Tk):
         self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
         # Verbinden-Button (Zeile 2)
-        bottom = ttk.Frame(self, padding=(8, 6))
+        bottom = ttk.Frame(self._main_frame, padding=(8, 6))
         bottom.grid(row=2, column=0, sticky="ew")
         bottom.columnconfigure(0, weight=1)
 
@@ -2753,6 +3134,86 @@ class SSHManagerApp(tk.Tk):
 
         # Suche verdrahten
         self._search_var.trace_add("write", lambda *_: self._on_search_changed())
+
+        self._settings_view = SettingsView(self, self)
+
+    def _layout_toolbar_buttons(self) -> None:
+        col = 2
+        order = [
+            "show_select_all",
+            "show_deselect_all",
+            "show_expand_all",
+            "show_collapse_all",
+            "show_add_connection",
+            "show_reload",
+            "show_open_tunnel",
+            "show_check_hosts",
+        ]
+        for key in order:
+            btn = self._toolbar_buttons[key]
+            btn.grid_forget()
+            if getattr(self.settings.toolbar, key):
+                padx = (8, 2) if key == "show_add_connection" else (2, 2)
+                if key == "show_check_hosts":
+                    padx = (2, 0)
+                btn.grid(row=0, column=col, padx=padx)
+                col += 1
+
+    def preview_toolbar_visibility(self, toolbar_settings: ToolbarSettings) -> None:
+        self.settings.toolbar = toolbar_settings
+        self._layout_toolbar_buttons()
+
+    def get_default_user(self) -> str:
+        return self.settings.default_user
+
+    def get_quick_users(self) -> list[str]:
+        return list(self.settings.quick_users)
+
+    def get_terminal_settings(self) -> WindowsTerminalSettings:
+        return self.settings.windows_terminal
+
+    def show_settings_view(self) -> None:
+        if self._settings_view is None or self._main_frame is None:
+            return
+        self._settings_view.load_from_app()
+        self._main_frame.grid_remove()
+        self._settings_view.grid(row=0, column=0, sticky="nsew")
+
+    def show_main_view(self) -> None:
+        if self._settings_view is not None:
+            self._settings_view.grid_remove()
+        if self._main_frame is not None:
+            self._main_frame.grid()
+        self._layout_toolbar_buttons()
+
+    def apply_settings(self, settings: AppSettings) -> None:
+        self.settings = settings
+        _save_settings(settings)
+        self._layout_toolbar_buttons()
+        self._search_entry.focus_set()
+        ToastNotification(self, "Einstellungen gespeichert")
+
+    def reset_settings(self) -> None:
+        self.apply_settings(_default_settings())
+        if self._settings_view is not None:
+            self._settings_view.load_from_app()
+
+    def _reset_session_colors(self) -> None:
+        for session_key in list(self._tree.get_session_colors().keys()):
+            self._tree.set_session_color(session_key, None)
+        ToastNotification(self, "Farben zurückgesetzt")
+
+    def reset_view_state(self) -> None:
+        self._search_var.set("")
+        self._tree.populate(self._sessions, open_folders=set(self._initial_open_folders))
+        current_colors = set(self._tree.get_session_colors())
+        startup_colors = dict(self._initial_session_colors)
+        for session_key in current_colors | set(startup_colors):
+            self._tree.set_session_color(session_key, startup_colors.get(session_key))
+        ToastNotification(self, "Ansicht auf Startzustand zurückgesetzt")
+
+    def _invert_selection(self) -> None:
+        self._tree.invert_checked()
 
     def _on_selection_changed(self, count: int) -> None:
         """Callback vom SessionTree – aktualisiert den Verbinden-Button."""
@@ -2783,13 +3244,13 @@ class SSHManagerApp(tk.Tk):
         selected = self._tree.get_selected_sessions()
         if not selected:
             return
-        dialog = UserDialog(self)
+        dialog = UserDialog(self, quick_users=self.get_quick_users(), default_user=self.get_default_user())
         self.wait_window(dialog)
         if dialog.result is None:
             return  # Abbrechen gedrückt
         user = dialog.result
         try:
-            TerminalLauncher.launch(selected, user, self._tree.get_session_colors())
+            TerminalLauncher.launch(selected, user, self._tree.get_session_colors(), terminal_settings=self.get_terminal_settings())
         except Exception as e:
             messagebox.showerror("Fehler beim Starten", str(e))
 
@@ -2797,7 +3258,7 @@ class SSHManagerApp(tk.Tk):
         """Löst den Benutzernamen für genau eine Session auf."""
         if session.is_ssh_config_session and session.username:
             return session.username
-        dialog = UserDialog(self, title=title)
+        dialog = UserDialog(self, title=title, quick_users=self.get_quick_users(), default_user=self.get_default_user())
         self.wait_window(dialog)
         return dialog.result
 
@@ -2808,7 +3269,7 @@ class SSHManagerApp(tk.Tk):
         if user is None and not (session.is_ssh_config_session and session.username):
             return
         try:
-            TerminalLauncher.launch([session], user or "", colors)
+            TerminalLauncher.launch([session], user or "", colors, terminal_settings=self.get_terminal_settings())
         except Exception as e:
             messagebox.showerror("Fehler beim Starten", str(e))
 
@@ -3016,26 +3477,26 @@ class SSHManagerApp(tk.Tk):
 
     def _deploy_ssh_key(self, sessions: list[Session]) -> None:
         """Öffnet den ssh-copy-id Dialog und startet den Key-Transfer im Terminal."""
-        dialog = SshCopyIdDialog(self, target_count=len(sessions))
+        dialog = SshCopyIdDialog(self, target_count=len(sessions), quick_users=self.get_quick_users(), default_user=self.get_default_user())
         self.wait_window(dialog)
         if dialog.result is None:
             return
         key_filename, user = dialog.result
         try:
-            cmd = build_ssh_copy_id_command(sessions, key_filename, user)
+            cmd = build_ssh_copy_id_command(sessions, key_filename, user, terminal_settings=self.get_terminal_settings())
             subprocess.Popen(cmd, shell=True)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
 
     def _remove_ssh_key(self, sessions: list[Session]) -> None:
         """Öffnet den Remove-Key Dialog und entfernt den Key remote via SSH."""
-        dialog = SshRemoveKeyDialog(self, target_count=len(sessions))
+        dialog = SshRemoveKeyDialog(self, target_count=len(sessions), quick_users=self.get_quick_users(), default_user=self.get_default_user())
         self.wait_window(dialog)
         if dialog.result is None:
             return
         key_filename, user = dialog.result
         try:
-            cmd = build_ssh_remove_key_command(sessions, key_filename, user)
+            cmd = build_ssh_remove_key_command(sessions, key_filename, user, terminal_settings=self.get_terminal_settings())
             subprocess.Popen(cmd, shell=True)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
@@ -3048,7 +3509,7 @@ class SSHManagerApp(tk.Tk):
             return
         jumphost, local_port, remote_host, remote_port, user = dialog.result
         try:
-            cmd = build_ssh_tunnel_command(jumphost, local_port, remote_host, remote_port, user)
+            cmd = build_ssh_tunnel_command(jumphost, local_port, remote_host, remote_port, user, terminal_settings=self.get_terminal_settings())
             subprocess.Popen(cmd)
         except OSError as e:
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
@@ -3090,6 +3551,7 @@ class SSHManagerApp(tk.Tk):
                 jump_user or None,
                 jump_port,
                 self._tree.get_session_colors().get(session.key),
+                terminal_settings=self.get_terminal_settings(),
             )
             subprocess.Popen(cmd, shell=True)
         except OSError as e:
@@ -3133,11 +3595,12 @@ class SSHManagerApp(tk.Tk):
             messagebox.showwarning("Keine Hosts", "Keine ausführbaren Hosts ausgewählt.", parent=self)
             return
 
-        dialog = RemoteCommandDialog(self, target_count=len(runnable))
+        dialog = RemoteCommandDialog(self, target_count=len(runnable), last_command=self._initial_toolbar_search_texts.get("last_remote_command", ""))
         self.wait_window(dialog)
         if dialog.result is None:
             return
         user_mode, command, close_on_success = dialog.result
+        self._initial_toolbar_search_texts["last_remote_command"] = command
 
         session_users = self._resolve_users_for_sessions(runnable, user_mode)
         if session_users is None:
@@ -3152,6 +3615,7 @@ class SSHManagerApp(tk.Tk):
             [(session, user, command) for session, user in session_users],
             close_on_success=close_on_success,
             session_colors=self._tree.get_session_colors(),
+            terminal_settings=self.get_terminal_settings(),
         )
         try:
             subprocess.Popen(cmd, shell=True)
@@ -3177,7 +3641,7 @@ class SSHManagerApp(tk.Tk):
             messagebox.showerror("Fehler", f"Fehler beim Starten von WinSCP:\n{e}", parent=self)
 
     def _on_close(self) -> None:
-        _save_ui_state(self._tree.get_open_folders(), self._tree.get_session_colors())
+        _save_ui_state(self._tree.get_open_folders(), self._tree.get_session_colors(), {"main": self._search_var.get(), "last_remote_command": self._initial_toolbar_search_texts.get("last_remote_command", "")})
         self.destroy()
 
 
