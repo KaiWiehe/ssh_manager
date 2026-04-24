@@ -702,12 +702,16 @@ def _load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
         return set(), {}, {}
 
 
-def _save_ui_state(expanded_folders: set[str], session_colors: dict[str, str]) -> None:
+def _save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], toolbar_search_texts: dict[str, str] | None = None) -> None:
     """Speichert UI-Zustand als JSON in %APPDATA%\\SSH-Manager\\."""
     _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     _STATE_FILE.write_text(
         json.dumps(
-            {"expanded_folders": sorted(expanded_folders), "session_colors": session_colors},
+            {
+                "expanded_folders": sorted(expanded_folders),
+                "session_colors": session_colors,
+                "toolbar_search_texts": toolbar_search_texts or {},
+            },
             ensure_ascii=False,
             indent=2,
         ),
