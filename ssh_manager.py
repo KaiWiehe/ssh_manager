@@ -4,10 +4,8 @@ Benötigt: Python 3.8+, Windows, Windows Terminal (wt.exe), Git Bash-Profil.
 """
 from __future__ import annotations
 
-import json
 import subprocess
 import tkinter as tk
-from pathlib import Path
 from tkinter import messagebox, ttk
 
 from ssh_manager_app import (
@@ -42,7 +40,6 @@ from ssh_manager_app.core import (
     build_ssh_tunnel_command,
 )
 
-from ssh_manager_app.tree import SessionTree
 from ssh_manager_app.ui import build_main_ui, configure_app_styles
 
 from ssh_manager_app.dialogs import (
