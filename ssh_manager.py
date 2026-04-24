@@ -20,8 +20,37 @@ from typing import Optional, Callable
 from urllib.parse import unquote
 import winreg
 
+import json
 import ssh_manager_app.constants
-from ssh_manager_app import *
+from ssh_manager_app import (
+    AppSettings,
+    DEFAULT_USER,
+    PALETTE,
+    QUICK_USERS,
+    REGISTRY_PATH,
+    SKIP_SESSIONS,
+    ToolbarSettings,
+    WindowsTerminalSettings,
+    SourceVisibilitySettings,
+    Session,
+    WINDOW_MIN_SIZE,
+    WINDOW_TITLE,
+    color_tag,
+    default_settings,
+    load_app_sessions,
+    load_filezilla_config_sessions,
+    load_notes,
+    load_settings,
+    load_settings_from_path,
+    load_ssh_config_sessions,
+    load_ui_state,
+    save_app_sessions,
+    save_notes,
+    save_settings,
+    save_ui_state,
+    settings_to_dict,
+)
+from ssh_manager_app.constants import _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_DEFAULT_FOLDER, _SSH_CONFIG_FILE, _STATE_FILE
 
 def parse_session_key(key: str) -> tuple[list[str], str]:
     """
