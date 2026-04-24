@@ -20,6 +20,7 @@ from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 from dataclasses import asdict, dataclass, field
 from typing import Optional, Callable
 from urllib.parse import unquote
+import xml.etree.ElementTree as ET
 import winreg
 
 # ---------------------------------------------------------------------------
@@ -40,6 +41,7 @@ _SSH_CONFIG_FILE = Path.home() / ".ssh" / "config"
 _SSH_CONFIG_PREFIX = "__sshcfg__"
 _SSH_ALIAS_PREFIX = "__sshalias__"
 _SSH_CONFIG_DEFAULT_FOLDER = "SSH Config"
+_FILEZILLA_CONFIG_DEFAULT_FOLDER = "FileZilla Config"
 
 PALETTE: list[tuple[str, str]] = [
     ("Grün (Test)",  "#2d8653"),
@@ -69,7 +71,7 @@ class Session:
     hostname: str                   # HostName-Wert
     username: str = ""              # UserName-Wert (optional)
     port: int = 22                  # PortNumber (default 22)
-    source: str = "winscp"          # "winscp" | "app" | "ssh_config" | "ssh_alias"
+    source: str = "winscp"          # "winscp" | "app" | "ssh_config" | "ssh_alias" | "filezilla_config"
 
     @property
     def folder_key(self) -> str:
@@ -789,8 +791,57 @@ def _save_app_sessions(sessions: list[Session]) -> None:
 
 
 def _load_filezilla_config_sessions() -> list[Session]:
-    """Platzhalter für zukünftigen FileZilla-Import. Aktuell noch ohne Parsing."""
-    return []
+    """Lädt FileZilla-Sites aus sitemanager.xml und wandelt sie in Sessions um."""
+    appdata = Path(os.environ.get("APPDATA", Path.home()))
+    candidates = [
+        appdata / "FileZilla" / "sitemanager.xml",
+        appdata / "filezilla" / "sitemanager.xml",
+    ]
+    file_path = next((path for path in candidates if path.exists()), None)
+    if file_path is None:
+        return []
+
+    try:
+        root = ET.fromstring(file_path.read_text(encoding="utf-8"))
+    except (OSError, ET.ParseError):
+        return []
+
+    sessions: list[Session] = []
+
+    def walk_folder(node: ET.Element, folder_path: list[str]) -> None:
+        for child in list(node):
+            if child.tag == "Folder":
+                name = child.attrib.get("Name", "Ordner").strip() or "Ordner"
+                walk_folder(child, folder_path + [name])
+            elif child.tag == "Server":
+                host = (child.findtext("Host") or "").strip()
+                if not host:
+                    continue
+                protocol = (child.findtext("Protocol") or "0").strip()
+                if protocol not in {"0", "1"}:
+                    continue
+                name = (child.findtext("Name") or host).strip() or host
+                user = (child.findtext("User") or "").strip()
+                port_text = (child.findtext("Port") or "22").strip()
+                try:
+                    port = int(port_text) if port_text else 22
+                except ValueError:
+                    port = 22
+                full_folder = [_FILEZILLA_CONFIG_DEFAULT_FOLDER] + folder_path
+                session_key = f"__filezilla__{'/'.join(full_folder)}/{name}/{host}/{port}"
+                sessions.append(Session(
+                    key=session_key,
+                    display_name=name,
+                    folder_path=full_folder,
+                    hostname=host,
+                    username=user,
+                    port=port,
+                    source="filezilla_config",
+                ))
+
+    for servers in root.findall("Servers"):
+        walk_folder(servers, [])
+    return sessions
 
 
 def _load_ssh_config_sessions() -> list[Session]:
