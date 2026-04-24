@@ -609,6 +609,14 @@ class WindowsTerminalSettings:
 
 
 @dataclass
+class SourceVisibilitySettings:
+    show_winscp: bool = True
+    show_ssh_config: bool = True
+    show_filezilla_config: bool = False
+    show_app_connections: bool = True
+
+
+@dataclass
 class AppSettings:
     quick_users: list[str] = field(default_factory=lambda: list(QUICK_USERS))
     default_user: str = DEFAULT_USER
@@ -616,6 +624,7 @@ class AppSettings:
     host_check_timeout_seconds: int = 3
     startup_expand_mode: str = "remember"
     windows_terminal: WindowsTerminalSettings = field(default_factory=WindowsTerminalSettings)
+    source_visibility: SourceVisibilitySettings = field(default_factory=SourceVisibilitySettings)
 
 
 def _default_settings() -> AppSettings:
@@ -646,6 +655,7 @@ def _load_settings_from_path(path: Path) -> AppSettings:
     raw = json.loads(path.read_text(encoding="utf-8"))
     toolbar_raw = raw.get("toolbar", {}) if isinstance(raw, dict) else {}
     wt_raw = raw.get("windows_terminal", {}) if isinstance(raw, dict) else {}
+    visibility_raw = raw.get("source_visibility", {}) if isinstance(raw, dict) else {}
 
     quick_users = raw.get("quick_users", defaults.quick_users)
     if not isinstance(quick_users, list):
@@ -685,6 +695,12 @@ def _load_settings_from_path(path: Path) -> AppSettings:
             profile_name=str(wt_raw.get("profile_name", defaults.windows_terminal.profile_name)).strip() or defaults.windows_terminal.profile_name,
             use_tab_color=bool(wt_raw.get("use_tab_color", defaults.windows_terminal.use_tab_color)),
             title_mode=str(wt_raw.get("title_mode", defaults.windows_terminal.title_mode)),
+        ),
+        source_visibility=SourceVisibilitySettings(
+            show_winscp=bool(visibility_raw.get("show_winscp", defaults.source_visibility.show_winscp)),
+            show_ssh_config=bool(visibility_raw.get("show_ssh_config", defaults.source_visibility.show_ssh_config)),
+            show_filezilla_config=bool(visibility_raw.get("show_filezilla_config", defaults.source_visibility.show_filezilla_config)),
+            show_app_connections=bool(visibility_raw.get("show_app_connections", defaults.source_visibility.show_app_connections)),
         ),
     )
 
@@ -770,6 +786,11 @@ def _save_app_sessions(sessions: list[Session]) -> None:
         json.dumps({"sessions": entries}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def _load_filezilla_config_sessions() -> list[Session]:
+    """Platzhalter für zukünftigen FileZilla-Import. Aktuell noch ohne Parsing."""
+    return []
 
 
 def _load_ssh_config_sessions() -> list[Session]:
@@ -2903,6 +2924,7 @@ class SettingsView(ttk.Frame):
         self._profile_name_var = tk.StringVar()
         self._title_mode_var = tk.StringVar()
         self._toolbar_vars: dict[str, tk.BooleanVar] = {}
+        self._source_visibility_vars: dict[str, tk.BooleanVar] = {}
         self._use_tab_color_var = tk.BooleanVar()
         self._section_frames: dict[str, ttk.Frame] = {}
         self._nav_buttons: dict[str, ttk.Button] = {}
@@ -2947,6 +2969,7 @@ class SettingsView(ttk.Frame):
 
         sections = [
             ("general", "Allgemein"),
+            ("sources", "Quellen / Ansicht"),
             ("users", "Schnellauswahl-Benutzer"),
             ("toolbar", "Toolbar"),
             ("terminal", "Windows Terminal"),
@@ -2960,6 +2983,7 @@ class SettingsView(ttk.Frame):
             self._nav_buttons[key] = btn
 
         self._section_frames["general"] = self._build_general_section()
+        self._section_frames["sources"] = self._build_sources_section()
         self._section_frames["users"] = self._build_users_section()
         self._section_frames["toolbar"] = self._build_toolbar_section()
         self._section_frames["terminal"] = self._build_terminal_section()
@@ -2989,6 +3013,23 @@ class SettingsView(ttk.Frame):
         ttk.Label(form, text="Ordner beim Start:").grid(row=2, column=0, sticky="w", pady=6, padx=(0, 12))
         self._startup_expand_combo = ttk.Combobox(form, textvariable=self._startup_expand_var, values=list(self.STARTUP_LABELS.values()), state="readonly", width=32)
         self._startup_expand_combo.grid(row=2, column=1, sticky="ew", pady=6)
+        return frame
+
+    def _build_sources_section(self) -> ttk.Frame:
+        frame = self._build_section_frame("Quellen / Ansicht", "Steuert nur, was in der Hauptansicht angezeigt wird. Nichts davon löscht Verbindungen.")
+        items = [
+            ("show_winscp", "WinSCP", "Standardmäßig an"),
+            ("show_ssh_config", "SSH Config", "Standardmäßig an"),
+            ("show_filezilla_config", "FileZilla Config", "Neuer Weg, standardmäßig aus"),
+            ("show_app_connections", "Eigene App-Verbindungen", "Standardmäßig an"),
+        ]
+        grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        grid.grid(row=2, column=0, sticky="nw")
+        for row, (key, label, hint) in enumerate(items):
+            var = tk.BooleanVar()
+            self._source_visibility_vars[key] = var
+            ttk.Checkbutton(grid, text=label, variable=var, command=self._on_source_visibility_changed).grid(row=row * 2, column=0, sticky="w", pady=(0, 2))
+            ttk.Label(grid, text=hint, style="SettingsHint.TLabel").grid(row=row * 2 + 1, column=0, sticky="w", pady=(0, 8), padx=(24, 0))
         return frame
 
     def _build_users_section(self) -> ttk.Frame:
@@ -3085,6 +3126,7 @@ class SettingsView(ttk.Frame):
         self._active_section = key
         labels = {
             "general": "Allgemein",
+            "sources": "Quellen / Ansicht",
             "users": "Schnellauswahl-Benutzer",
             "toolbar": "Toolbar",
             "terminal": "Windows Terminal",
@@ -3108,6 +3150,8 @@ class SettingsView(ttk.Frame):
         self._startup_expand_var.set(self.STARTUP_LABELS.get(settings.startup_expand_mode, self.STARTUP_LABELS["remember"]))
         for key, var in self._toolbar_vars.items():
             var.set(bool(getattr(settings.toolbar, key)))
+        for key, var in self._source_visibility_vars.items():
+            var.set(bool(getattr(settings.source_visibility, key)))
         self._profile_name_var.set(settings.windows_terminal.profile_name)
         self._use_tab_color_var.set(settings.windows_terminal.use_tab_color)
         self._title_mode_var.set(self.TITLE_MODE_LABELS.get(settings.windows_terminal.title_mode, self.TITLE_MODE_LABELS["default"]))
@@ -3117,6 +3161,12 @@ class SettingsView(ttk.Frame):
 
     def _collect_toolbar_settings(self) -> ToolbarSettings:
         return ToolbarSettings(**{key: var.get() for key, var in self._toolbar_vars.items()})
+
+    def _collect_source_visibility_settings(self) -> SourceVisibilitySettings:
+        return SourceVisibilitySettings(**{key: var.get() for key, var in self._source_visibility_vars.items()})
+
+    def _on_source_visibility_changed(self) -> None:
+        self._app.preview_source_visibility(self._collect_source_visibility_settings())
 
     def _collect_settings(self) -> AppSettings:
         quick_users = [line.strip() for line in self._quick_users_text.get("1.0", "end").splitlines() if line.strip()]
@@ -3142,6 +3192,7 @@ class SettingsView(ttk.Frame):
                 use_tab_color=self._use_tab_color_var.get(),
                 title_mode=title_mode,
             ),
+            source_visibility=self._collect_source_visibility_settings(),
         )
 
     def _save(self) -> None:
@@ -3202,14 +3253,13 @@ class SSHManagerApp(tk.Tk):
 
         self.settings = _load_settings()
         self._startup_settings = _load_settings()
+        self._winscp_sessions = winscp_sessions
+        self._filezilla_sessions = _load_filezilla_config_sessions()
 
         # App-eigene Sessions und SSH-Config-Sessions laden und mergen
         self._app_sessions: list[Session] = _load_app_sessions()
-        ssh_config_sessions = _load_ssh_config_sessions()
-        self._sessions = sorted(
-            winscp_sessions + self._app_sessions + ssh_config_sessions,
-            key=lambda s: (0 if s.folder_key == _SSH_CONFIG_DEFAULT_FOLDER else 1, s.folder_key.lower(), s.display_name.lower()),
-        )
+        self._ssh_config_sessions = _load_ssh_config_sessions()
+        self._sessions = self._build_visible_sessions()
 
         # Checkbox-Images (nach Tk-Initialisierung erzeugen!)
         self._img_unchecked, self._img_checked = _create_checkbox_images(self)
@@ -3393,6 +3443,21 @@ class SSHManagerApp(tk.Tk):
         self._search_history = []
         self._persist_ui_state()
 
+    def _build_visible_sessions(self) -> list[Session]:
+        visible: list[Session] = []
+        if self.settings.source_visibility.show_winscp:
+            visible.extend(self._winscp_sessions)
+        if self.settings.source_visibility.show_app_connections:
+            visible.extend(self._app_sessions)
+        if self.settings.source_visibility.show_ssh_config:
+            visible.extend(self._ssh_config_sessions)
+        if self.settings.source_visibility.show_filezilla_config:
+            visible.extend(self._filezilla_sessions)
+        return sorted(
+            visible,
+            key=lambda s: (0 if s.folder_key == _SSH_CONFIG_DEFAULT_FOLDER else 1, s.folder_key.lower(), s.display_name.lower()),
+        )
+
     def _layout_toolbar_buttons(self) -> None:
         col = 2
         order = [
@@ -3418,6 +3483,12 @@ class SSHManagerApp(tk.Tk):
     def preview_toolbar_visibility(self, toolbar_settings: ToolbarSettings) -> None:
         self.settings.toolbar = toolbar_settings
         self._layout_toolbar_buttons()
+
+    def preview_source_visibility(self, source_visibility: SourceVisibilitySettings) -> None:
+        self.settings.source_visibility = source_visibility
+        self._sessions = self._build_visible_sessions()
+        self._tree.refresh(self._sessions)
+        self._persist_ui_state()
 
     def get_default_user(self) -> str:
         return self.settings.default_user
@@ -3561,10 +3632,11 @@ class SSHManagerApp(tk.Tk):
 
     def _rebuild_sessions(self, *, reload_winscp: bool = False) -> None:
         """Merged alle Session-Quellen und aktualisiert den Baum."""
-        ssh_config_sessions = _load_ssh_config_sessions()
+        self._ssh_config_sessions = _load_ssh_config_sessions()
+        self._filezilla_sessions = _load_filezilla_config_sessions()
         if reload_winscp:
             try:
-                winscp = RegistryReader().load_sessions()
+                self._winscp_sessions = RegistryReader().load_sessions()
             except OSError as e:
                 messagebox.showerror(
                     "Registry-Fehler",
@@ -3572,13 +3644,8 @@ class SSHManagerApp(tk.Tk):
                     f"Pfad: HKCU\\{REGISTRY_PATH}",
                     parent=self,
                 )
-                winscp = []
-        else:
-            winscp = [s for s in self._sessions if s.source == "winscp"]
-        self._sessions = sorted(
-            winscp + self._app_sessions + ssh_config_sessions,
-            key=lambda s: (0 if s.folder_key == _SSH_CONFIG_DEFAULT_FOLDER else 1, s.folder_key.lower(), s.display_name.lower()),
-        )
+                self._winscp_sessions = []
+        self._sessions = self._build_visible_sessions()
         self._tree.refresh(self._sessions)
 
     def _reload_sessions(self) -> None:
