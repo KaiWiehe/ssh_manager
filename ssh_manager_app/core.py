@@ -6,7 +6,9 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import tkinter as tk
 from pathlib import Path
+from typing import Optional
 from urllib.parse import unquote
 import winreg
 

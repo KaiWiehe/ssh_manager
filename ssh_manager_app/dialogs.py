@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import tkinter as tk
 import uuid
 from pathlib import Path
