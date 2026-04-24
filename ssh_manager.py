@@ -693,10 +693,15 @@ def _load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
     """Lädt UI-Zustand aus JSON. Gibt leere Defaults zurück wenn nicht vorhanden."""
     try:
         data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+        toolbar_texts = dict(data.get("toolbar_search_texts", {}))
+        history = toolbar_texts.get("search_history", [])
+        if not isinstance(history, list):
+            history = []
+        toolbar_texts["search_history"] = [str(item).strip() for item in history if str(item).strip()]
         return (
             set(data.get("expanded_folders", [])),
             dict(data.get("session_colors", {})),
-            dict(data.get("toolbar_search_texts", {})),
+            toolbar_texts,
         )
     except (OSError, json.JSONDecodeError, ValueError):
         return set(), {}, {}
@@ -3276,9 +3281,15 @@ class SSHManagerApp(tk.Tk):
         toolbar.columnconfigure(1, weight=1)
 
         ttk.Label(toolbar, text="Suche:").grid(row=0, column=0, padx=(0, 4))
+        search_wrap = ttk.Frame(toolbar)
+        search_wrap.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        search_wrap.columnconfigure(0, weight=1)
         self._search_var = tk.StringVar(value=self._initial_toolbar_search_texts.get("main", ""))
-        self._search_entry = ttk.Entry(toolbar, textvariable=self._search_var)
-        self._search_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        self._search_history = list(self._initial_toolbar_search_texts.get("search_history", []))
+        self._search_entry = ttk.Entry(search_wrap, textvariable=self._search_var)
+        self._search_entry.grid(row=0, column=0, sticky="ew")
+        self._search_history_btn = ttk.Button(search_wrap, text="▾", width=3, command=self._show_search_history_menu)
+        self._search_history_btn.grid(row=0, column=1, padx=(4, 0))
 
         self._toolbar_buttons["show_select_all"] = ttk.Button(toolbar, text="Alle auswählen", command=self._select_all)
         self._toolbar_buttons["show_deselect_all"] = ttk.Button(toolbar, text="Alle abwählen", command=self._deselect_all)
@@ -3336,6 +3347,8 @@ class SSHManagerApp(tk.Tk):
 
         # Suche verdrahten
         self._search_var.trace_add("write", lambda *_: self._on_search_changed())
+        self._search_entry.bind("<Return>", self._remember_current_search)
+        self._search_entry.bind("<FocusOut>", self._remember_current_search)
 
         self._settings_view = SettingsView(self, self)
 
@@ -3346,8 +3359,40 @@ class SSHManagerApp(tk.Tk):
             {
                 "main": self._search_var.get(),
                 "last_remote_command": self._initial_toolbar_search_texts.get("last_remote_command", ""),
+                "search_history": list(self._search_history),
             },
         )
+
+    def _add_search_history_entry(self, value: str) -> None:
+        query = value.strip()
+        if not query:
+            return
+        self._search_history = [item for item in self._search_history if item != query]
+        self._search_history.insert(0, query)
+        self._search_history = self._search_history[:10]
+        self._persist_ui_state()
+
+    def _apply_search_history_entry(self, value: str) -> None:
+        self._search_var.set(value)
+        self._search_entry.icursor("end")
+        self._search_entry.focus_set()
+
+    def _show_search_history_menu(self) -> None:
+        menu = tk.Menu(self, tearoff=False)
+        if self._search_history:
+            for item in self._search_history:
+                menu.add_command(label=item, command=lambda v=item: self._apply_search_history_entry(v))
+            menu.add_separator()
+            menu.add_command(label="Verlauf leeren", command=self._clear_search_history)
+        else:
+            menu.add_command(label="Kein Suchverlauf", state=tk.DISABLED)
+        x = self._search_history_btn.winfo_rootx()
+        y = self._search_history_btn.winfo_rooty() + self._search_history_btn.winfo_height()
+        menu.tk_popup(x, y)
+
+    def _clear_search_history(self) -> None:
+        self._search_history = []
+        self._persist_ui_state()
 
     def _layout_toolbar_buttons(self) -> None:
         col = 2
@@ -3450,6 +3495,9 @@ class SSHManagerApp(tk.Tk):
     def _on_search_changed(self) -> None:
         self._tree.filter(self._search_var.get())
         self._persist_ui_state()
+
+    def _remember_current_search(self, _event=None) -> None:
+        self._add_search_history_entry(self._search_var.get())
 
     def _select_all(self) -> None:
         self._tree.set_all_checked(True)
