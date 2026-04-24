@@ -1064,7 +1064,7 @@ class SessionTree(ttk.Frame):
             self._tv.tag_configure(_color_tag(hex_color), foreground=hex_color)
 
     def _apply_column_visibility(self) -> None:
-        display = ["tree"]
+        display: list[str] = []
         if self._toolbar_settings.show_hostname_column:
             display.append("hostname")
         if self._toolbar_settings.show_port_column:
