@@ -3288,8 +3288,8 @@ class SSHManagerApp(tk.Tk):
         self._search_history = list(self._initial_toolbar_search_texts.get("search_history", []))
         self._search_entry = ttk.Entry(search_wrap, textvariable=self._search_var)
         self._search_entry.grid(row=0, column=0, sticky="ew")
-        self._search_history_btn = ttk.Button(search_wrap, text="▾", width=3, command=self._show_search_history_menu)
-        self._search_history_btn.grid(row=0, column=1, padx=(4, 0))
+        self._search_history_btn = ttk.Button(search_wrap, text="▾", width=2, command=self._show_search_history_menu)
+        self._search_history_btn.grid(row=0, column=1, padx=(2, 0))
 
         self._toolbar_buttons["show_select_all"] = ttk.Button(toolbar, text="Alle auswählen", command=self._select_all)
         self._toolbar_buttons["show_deselect_all"] = ttk.Button(toolbar, text="Alle abwählen", command=self._deselect_all)
@@ -3346,9 +3346,8 @@ class SSHManagerApp(tk.Tk):
         self._connect_btn.grid(row=0, column=0)
 
         # Suche verdrahten
+        self._search_history_after_id = None
         self._search_var.trace_add("write", lambda *_: self._on_search_changed())
-        self._search_entry.bind("<Return>", self._remember_current_search)
-        self._search_entry.bind("<FocusOut>", self._remember_current_search)
 
         self._settings_view = SettingsView(self, self)
 
@@ -3365,7 +3364,7 @@ class SSHManagerApp(tk.Tk):
 
     def _add_search_history_entry(self, value: str) -> None:
         query = value.strip()
-        if not query:
+        if len(query) < 2:
             return
         self._search_history = [item for item in self._search_history if item != query]
         self._search_history.insert(0, query)
@@ -3493,11 +3492,15 @@ class SSHManagerApp(tk.Tk):
             self._connect_btn.config(text="Verbinden", state=tk.DISABLED)
 
     def _on_search_changed(self) -> None:
-        self._tree.filter(self._search_var.get())
+        value = self._search_var.get()
+        self._tree.filter(value)
         self._persist_ui_state()
-
-    def _remember_current_search(self, _event=None) -> None:
-        self._add_search_history_entry(self._search_var.get())
+        self.after_cancel(self._search_history_after_id) if getattr(self, '_search_history_after_id', None) else None
+        query = value.strip()
+        if len(query) >= 2:
+            self._search_history_after_id = self.after(450, lambda q=query: self._add_search_history_entry(q))
+        else:
+            self._search_history_after_id = None
 
     def _select_all(self) -> None:
         self._tree.set_all_checked(True)
