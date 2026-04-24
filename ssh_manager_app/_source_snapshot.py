@@ -4,6 +4,7 @@ Benötigt: Python 3.8+, Windows, Windows Terminal (wt.exe), Git Bash-Profil.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -16,13 +17,86 @@ import tkinter as tk
 import uuid
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
+from dataclasses import asdict, dataclass, field
 from typing import Optional, Callable
 from urllib.parse import unquote
+import xml.etree.ElementTree as ET
 import winreg
 
-import ssh_manager_app.constants
-from ssh_manager_app import *
+# ---------------------------------------------------------------------------
+# Konstanten
+# ---------------------------------------------------------------------------
+REGISTRY_PATH = r"Software\Martin Prikryl\WinSCP 2\Sessions"
+SKIP_SESSIONS = {"Default Settings"}
+QUICK_USERS = ["tool-admin", "dev-sys", "de-nb-statist"]
+DEFAULT_USER = "tool-admin"
+WINDOW_TITLE = "SSH-Manager"
+WINDOW_MIN_SIZE = (600, 450)
+_APPDATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager"
+_STATE_FILE = _APPDATA_DIR / "ui_state.json"
+_SETTINGS_FILE = _APPDATA_DIR / "settings.json"
+_APP_SESSIONS_FILE = Path(os.environ.get("APPDATA", Path.home())) / "SSH-Manager" / "app_sessions.json"
+_NOTES_FILE = _APPDATA_DIR / "notes.json"
+_APP_PREFIX = "__app__"
+_SSH_CONFIG_FILE = Path.home() / ".ssh" / "config"
+_SSH_CONFIG_PREFIX = "__sshcfg__"
+_SSH_ALIAS_PREFIX = "__sshalias__"
+_SSH_CONFIG_DEFAULT_FOLDER = "SSH Config"
+_FILEZILLA_CONFIG_DEFAULT_FOLDER = "FileZilla Config"
 
+PALETTE: list[tuple[str, str]] = [
+    ("Grün (Test)",  "#2d8653"),
+    ("Rot (Live)",   "#c0392b"),
+    ("Blau",         "#2980b9"),
+    ("Orange",       "#d35400"),
+    ("Lila",         "#8e44ad"),
+    ("Türkis",       "#16a085"),
+    ("Grau",         "#7f8c8d"),
+    ("Gelb",         "#b7950b"),
+]
+
+
+def _color_tag(hex_color: str) -> str:
+    """Tag-Name für eine Hex-Farbe, z.B. '#2d8653' → 'color_2d8653'."""
+    return f"color_{hex_color.lstrip('#')}"
+
+# ---------------------------------------------------------------------------
+# Datenmodell
+# ---------------------------------------------------------------------------
+@dataclass
+class Session:
+    """Repräsentiert eine SSH-Session (aus WinSCP-Registry oder eigene App-Session)."""
+    key: str                        # originaler Registry-Subkey-Name oder __app__<uuid>
+    display_name: str               # URL-dekodierter Session-Name (letzter Teil)
+    folder_path: list[str]          # URL-dekodierte Ordnerpfad-Teile
+    hostname: str                   # HostName-Wert
+    username: str = ""              # UserName-Wert (optional)
+    port: int = 22                  # PortNumber (default 22)
+    source: str = "winscp"          # "winscp" | "app" | "ssh_config" | "ssh_alias" | "filezilla_config"
+
+    @property
+    def folder_key(self) -> str:
+        """Ordner-Pfad als String, z.B. 'Extern/Sub'."""
+        return "/".join(self.folder_path)
+
+    @property
+    def is_app_session(self) -> bool:
+        return self.source == "app"
+
+    @property
+    def is_ssh_config_session(self) -> bool:
+        """True für ssh_config (aus Config-Datei) und ssh_alias (Kopie, in JSON)."""
+        return self.source in ("ssh_config", "ssh_alias")
+
+    @property
+    def is_ssh_alias_copy(self) -> bool:
+        """True wenn SSH-Alias-Kopie (dupliziert, löschbar, in JSON gespeichert)."""
+        return self.source == "ssh_alias"
+
+
+# ---------------------------------------------------------------------------
+# Reine Hilfsfunktionen (testbar ohne GUI/Registry)
+# ---------------------------------------------------------------------------
 def parse_session_key(key: str) -> tuple[list[str], str]:
     """
     Zerlegt einen WinSCP-Registry-Subkey-Namen in Ordner-Pfad und Session-Name.
@@ -149,7 +223,7 @@ def _append_ssh_config_alias(alias: str, target: Session, target_user: str, jump
     if not alias or ' ' in alias or '*' in alias or '?' in alias:
         raise ValueError('Alias darf keine Leerzeichen oder Wildcards enthalten.')
 
-    existing = {s.display_name.lower() for s in load_ssh_config_sessions()}
+    existing = {s.display_name.lower() for s in _load_ssh_config_sessions()}
     if alias.lower() in existing:
         raise ValueError(f"Alias '{alias}' existiert bereits in ~/.ssh/config.")
 
@@ -167,15 +241,15 @@ def _append_ssh_config_alias(alias: str, target: Session, target_user: str, jump
         proxy_jump = f"{proxy_jump}:{jump_port}"
     lines.append(f'    ProxyJump {proxy_jump}')
 
-    ssh_manager_app.constants._SSH_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _SSH_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     prefix = "\n"
-    if ssh_manager_app.constants._SSH_CONFIG_FILE.exists():
-        existing_text = ssh_manager_app.constants._SSH_CONFIG_FILE.read_text(encoding='utf-8')
+    if _SSH_CONFIG_FILE.exists():
+        existing_text = _SSH_CONFIG_FILE.read_text(encoding='utf-8')
         if existing_text and not existing_text.endswith("\n"):
             prefix = "\n\n"
         elif existing_text:
             prefix = "\n"
-    with ssh_manager_app.constants._SSH_CONFIG_FILE.open('a', encoding='utf-8') as f:
+    with _SSH_CONFIG_FILE.open('a', encoding='utf-8') as f:
         f.write(prefix + "\n".join(lines) + "\n")
 
 
@@ -228,7 +302,7 @@ def build_remote_command_wt_command(
 
 def _write_temp_bash_script(prefix: str, content: str) -> str:
     """Schreibt ein temporäres Bash-Skript für WT/Git Bash und gibt den Windows-Pfad zurück."""
-    script_dir = ssh_manager_app.constants._STATE_FILE.parent / "tmp"
+    script_dir = _STATE_FILE.parent / "tmp"
     script_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".sh", prefix=prefix, dir=script_dir, delete=False) as f:
         f.write(content)
@@ -518,6 +592,350 @@ def _create_checkbox_images(root: tk.Tk) -> tuple[tk.PhotoImage, tk.PhotoImage]:
 # ---------------------------------------------------------------------------
 # UI-State Persistenz
 # ---------------------------------------------------------------------------
+@dataclass
+class ToolbarSettings:
+    show_select_all: bool = True
+    show_deselect_all: bool = True
+    show_expand_all: bool = True
+    show_collapse_all: bool = True
+    show_add_connection: bool = True
+    show_reload: bool = True
+    show_open_tunnel: bool = True
+    show_check_hosts: bool = True
+    show_hostname_column: bool = True
+    show_port_column: bool = True
+    show_notes_column: bool = True
+    column_order: list[str] = field(default_factory=lambda: ["notes", "hostname", "port"])
+
+
+@dataclass
+class WindowsTerminalSettings:
+    profile_name: str = "Git Bash"
+    use_tab_color: bool = True
+    title_mode: str = "default"
+
+
+@dataclass
+class SourceVisibilitySettings:
+    show_winscp: bool = True
+    show_ssh_config: bool = True
+    show_filezilla_config: bool = False
+    show_app_connections: bool = True
+
+
+@dataclass
+class AppSettings:
+    quick_users: list[str] = field(default_factory=lambda: list(QUICK_USERS))
+    default_user: str = DEFAULT_USER
+    toolbar: ToolbarSettings = field(default_factory=ToolbarSettings)
+    host_check_timeout_seconds: int = 3
+    startup_expand_mode: str = "remember"
+    windows_terminal: WindowsTerminalSettings = field(default_factory=WindowsTerminalSettings)
+    source_visibility: SourceVisibilitySettings = field(default_factory=SourceVisibilitySettings)
+
+
+def _default_settings() -> AppSettings:
+    return AppSettings()
+
+
+def _settings_to_dict(settings: AppSettings) -> dict:
+    return asdict(settings)
+
+
+def _load_settings() -> AppSettings:
+    try:
+        return _load_settings_from_path(_SETTINGS_FILE)
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError):
+        return _default_settings()
+
+
+def _save_settings(settings: AppSettings) -> None:
+    _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _SETTINGS_FILE.write_text(
+        json.dumps(_settings_to_dict(settings), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_settings_from_path(path: Path) -> AppSettings:
+    defaults = _default_settings()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    toolbar_raw = raw.get("toolbar", {}) if isinstance(raw, dict) else {}
+    wt_raw = raw.get("windows_terminal", {}) if isinstance(raw, dict) else {}
+    visibility_raw = raw.get("source_visibility", {}) if isinstance(raw, dict) else {}
+
+    quick_users = raw.get("quick_users", defaults.quick_users)
+    if not isinstance(quick_users, list):
+        quick_users = defaults.quick_users
+    quick_users = [str(user).strip() for user in quick_users if str(user).strip()] or list(defaults.quick_users)
+
+    default_user = str(raw.get("default_user", defaults.default_user)).strip() or quick_users[0]
+    if default_user not in quick_users:
+        quick_users.insert(0, default_user)
+
+    host_timeout = raw.get("host_check_timeout_seconds", defaults.host_check_timeout_seconds)
+    try:
+        host_timeout = max(1, int(host_timeout))
+    except (TypeError, ValueError):
+        host_timeout = defaults.host_check_timeout_seconds
+
+    startup_expand_mode = str(raw.get("startup_expand_mode", defaults.startup_expand_mode))
+    if startup_expand_mode not in {"remember", "expanded", "collapsed"}:
+        startup_expand_mode = defaults.startup_expand_mode
+
+    return AppSettings(
+        quick_users=quick_users,
+        default_user=default_user,
+        toolbar=ToolbarSettings(
+            show_select_all=bool(toolbar_raw.get("show_select_all", defaults.toolbar.show_select_all)),
+            show_deselect_all=bool(toolbar_raw.get("show_deselect_all", defaults.toolbar.show_deselect_all)),
+            show_expand_all=bool(toolbar_raw.get("show_expand_all", defaults.toolbar.show_expand_all)),
+            show_collapse_all=bool(toolbar_raw.get("show_collapse_all", defaults.toolbar.show_collapse_all)),
+            show_add_connection=bool(toolbar_raw.get("show_add_connection", defaults.toolbar.show_add_connection)),
+            show_reload=bool(toolbar_raw.get("show_reload", defaults.toolbar.show_reload)),
+            show_open_tunnel=bool(toolbar_raw.get("show_open_tunnel", defaults.toolbar.show_open_tunnel)),
+            show_check_hosts=bool(toolbar_raw.get("show_check_hosts", defaults.toolbar.show_check_hosts)),
+            show_hostname_column=bool(toolbar_raw.get("show_hostname_column", defaults.toolbar.show_hostname_column)),
+            show_port_column=bool(toolbar_raw.get("show_port_column", defaults.toolbar.show_port_column)),
+            show_notes_column=bool(toolbar_raw.get("show_notes_column", defaults.toolbar.show_notes_column)),
+            column_order=[
+                col for col in toolbar_raw.get("column_order", defaults.toolbar.column_order)
+                if col in {"notes", "hostname", "port"}
+            ] or list(defaults.toolbar.column_order),
+        ),
+        host_check_timeout_seconds=host_timeout,
+        startup_expand_mode=startup_expand_mode,
+        windows_terminal=WindowsTerminalSettings(
+            profile_name=str(wt_raw.get("profile_name", defaults.windows_terminal.profile_name)).strip() or defaults.windows_terminal.profile_name,
+            use_tab_color=bool(wt_raw.get("use_tab_color", defaults.windows_terminal.use_tab_color)),
+            title_mode=str(wt_raw.get("title_mode", defaults.windows_terminal.title_mode)),
+        ),
+        source_visibility=SourceVisibilitySettings(
+            show_winscp=bool(visibility_raw.get("show_winscp", defaults.source_visibility.show_winscp)),
+            show_ssh_config=bool(visibility_raw.get("show_ssh_config", defaults.source_visibility.show_ssh_config)),
+            show_filezilla_config=bool(visibility_raw.get("show_filezilla_config", defaults.source_visibility.show_filezilla_config)),
+            show_app_connections=bool(visibility_raw.get("show_app_connections", defaults.source_visibility.show_app_connections)),
+        ),
+    )
+
+
+def _load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
+    """Lädt UI-Zustand aus JSON. Gibt leere Defaults zurück wenn nicht vorhanden."""
+    try:
+        data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+        toolbar_texts = dict(data.get("toolbar_search_texts", {}))
+        history = toolbar_texts.get("search_history", [])
+        if not isinstance(history, list):
+            history = []
+        toolbar_texts["search_history"] = [str(item).strip() for item in history if str(item).strip()]
+        return (
+            set(data.get("expanded_folders", [])),
+            dict(data.get("session_colors", {})),
+            toolbar_texts,
+        )
+    except (OSError, json.JSONDecodeError, ValueError):
+        return set(), {}, {}
+
+
+def _save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], toolbar_search_texts: dict[str, str] | None = None) -> None:
+    """Speichert UI-Zustand als JSON in %APPDATA%\\SSH-Manager\\."""
+    _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _STATE_FILE.write_text(
+        json.dumps(
+            {
+                "expanded_folders": sorted(expanded_folders),
+                "session_colors": session_colors,
+                "toolbar_search_texts": toolbar_search_texts or {},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _load_notes() -> dict[str, str]:
+    try:
+        data = json.loads(_NOTES_FILE.read_text(encoding="utf-8"))
+        notes = data.get("notes", {})
+        if not isinstance(notes, dict):
+            return {}
+        return {str(k): str(v) for k, v in notes.items() if str(v).strip()}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _save_notes(notes: dict[str, str]) -> None:
+    _NOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _NOTES_FILE.write_text(
+        json.dumps({"notes": notes}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_app_sessions() -> list[Session]:
+    """Lädt eigene App-Sessions und SSH-Alias-Kopien aus JSON."""
+    try:
+        data = json.loads(_APP_SESSIONS_FILE.read_text(encoding="utf-8"))
+        sessions = []
+        for entry in data.get("sessions", []):
+            source = entry.get("source", "app")
+            folder_str = entry.get("folder", "")
+            folder_path = [p for p in folder_str.split("/") if p] if folder_str else []
+            key = (_SSH_ALIAS_PREFIX if source == "ssh_alias" else _APP_PREFIX) + entry["id"]
+            sessions.append(Session(
+                key=key,
+                display_name=entry["name"],
+                folder_path=folder_path,
+                hostname=entry["hostname"],
+                username=entry.get("username", ""),
+                port=int(entry.get("port", 22)),
+                source=source,
+            ))
+        return sessions
+    except (OSError, json.JSONDecodeError, ValueError, KeyError):
+        return []
+
+
+def _save_app_sessions(sessions: list[Session]) -> None:
+    """Speichert eigene App-Sessions und SSH-Alias-Kopien als JSON in %APPDATA%\\SSH-Manager\\."""
+    _APP_SESSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    entries = []
+    for s in sessions:
+        if s.source not in ("app", "ssh_alias"):
+            continue
+        prefix = _SSH_ALIAS_PREFIX if s.source == "ssh_alias" else _APP_PREFIX
+        session_id = s.key[len(prefix):]
+        entries.append({
+            "id": session_id,
+            "name": s.display_name,
+            "folder": s.folder_key,
+            "hostname": s.hostname,
+            "username": s.username,
+            "port": s.port,
+            "source": s.source,
+        })
+    _APP_SESSIONS_FILE.write_text(
+        json.dumps({"sessions": entries}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_filezilla_config_sessions() -> list[Session]:
+    """Lädt FileZilla-Sites aus sitemanager.xml und wandelt sie in Sessions um."""
+    appdata = Path(os.environ.get("APPDATA", Path.home()))
+    candidates = [
+        appdata / "FileZilla" / "sitemanager.xml",
+        appdata / "filezilla" / "sitemanager.xml",
+    ]
+    file_path = next((path for path in candidates if path.exists()), None)
+    if file_path is None:
+        return []
+
+    try:
+        root = ET.fromstring(file_path.read_text(encoding="utf-8"))
+    except (OSError, ET.ParseError):
+        return []
+
+    sessions: list[Session] = []
+
+    def walk_folder(node: ET.Element, folder_path: list[str]) -> None:
+        for child in list(node):
+            if child.tag == "Folder":
+                name = child.attrib.get("Name", "Ordner").strip() or "Ordner"
+                walk_folder(child, folder_path + [name])
+            elif child.tag == "Server":
+                host = (child.findtext("Host") or "").strip()
+                if not host:
+                    continue
+                protocol = (child.findtext("Protocol") or "0").strip()
+                if protocol not in {"0", "1"}:
+                    continue
+                name = (child.findtext("Name") or host).strip() or host
+                user = (child.findtext("User") or "").strip()
+                port_text = (child.findtext("Port") or "22").strip()
+                try:
+                    port = int(port_text) if port_text else 22
+                except ValueError:
+                    port = 22
+                full_folder = [_FILEZILLA_CONFIG_DEFAULT_FOLDER] + folder_path
+                session_key = f"__filezilla__{'/'.join(full_folder)}/{name}/{host}/{port}"
+                sessions.append(Session(
+                    key=session_key,
+                    display_name=name,
+                    folder_path=full_folder,
+                    hostname=host,
+                    username=user,
+                    port=port,
+                    source="filezilla_config",
+                ))
+
+    for servers in root.findall("Servers"):
+        walk_folder(servers, [])
+    return sessions
+
+
+def _load_ssh_config_sessions() -> list[Session]:
+    """
+    Parst ~/.ssh/config und gibt alle Host-Einträge als Sessions zurück.
+    Wildcards (* ?) und Multi-Pattern-Hosts (Leerzeichen) werden übersprungen.
+    Alle Sessions landen im Ordner 'SSH Config'.
+    """
+    try:
+        text = _SSH_CONFIG_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    sessions: list[Session] = []
+    current_alias: str | None = None
+    current_hostname: str | None = None
+    current_user: str = ""
+    current_port: int = 22
+
+    def _flush() -> None:
+        nonlocal current_alias, current_hostname, current_user, current_port
+        if current_alias and '*' not in current_alias and '?' not in current_alias:
+            sessions.append(Session(
+                key=_SSH_CONFIG_PREFIX + current_alias,
+                display_name=current_alias,
+                folder_path=[_SSH_CONFIG_DEFAULT_FOLDER],
+                hostname=current_hostname or current_alias,
+                username=current_user,
+                port=current_port,
+                source="ssh_config",
+            ))
+        current_alias = None
+        current_hostname = None
+        current_user = ""
+        current_port = 22
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        parts = stripped.split(None, 1)
+        if len(parts) < 2:
+            continue
+        kw, val = parts[0].lower(), parts[1].strip()
+        if kw == "host":
+            _flush()
+            current_alias = val if ' ' not in val else None
+        elif kw == "hostname" and current_alias:
+            current_hostname = val
+        elif kw == "user" and current_alias:
+            current_user = val
+        elif kw == "port" and current_alias:
+            try:
+                current_port = int(val)
+            except ValueError:
+                pass
+    _flush()
+    return sessions
+
+
+# ---------------------------------------------------------------------------
+# SessionTree
+# ---------------------------------------------------------------------------
 class SessionTree(ttk.Frame):
     """
     ttk.Treeview-Wrapper mit Checkbox-Unterstützung.
@@ -649,7 +1067,7 @@ class SessionTree(ttk.Frame):
     def _configure_color_tags(self) -> None:
         """Registriert für jede Palettenfarbe einen Treeview-Tag."""
         for _, hex_color in PALETTE:
-            self._tv.tag_configure(color_tag(hex_color), foreground=hex_color)
+            self._tv.tag_configure(_color_tag(hex_color), foreground=hex_color)
 
     def _apply_column_visibility(self) -> None:
         visible = {
@@ -740,7 +1158,7 @@ class SessionTree(ttk.Frame):
             self._session_colors.pop(session_key, None)
         for item_id, session in self._item_to_session.items():
             if session.key == session_key:
-                color_tag = color_tag(hex_color) if hex_color else None
+                color_tag = _color_tag(hex_color) if hex_color else None
                 tags = (self.TAG_SESSION,) + ((color_tag,) if color_tag else ())
                 self._tv.item(item_id, tags=tags)
                 break
@@ -785,7 +1203,7 @@ class SessionTree(ttk.Frame):
             port_str = str(session.port) if session.port != 22 else ""
             note_text = self._notes_getter(session.key)
             note_short = (note_text[:57] + "...") if len(note_text) > 60 else note_text
-            _ctag = color_tag(self._session_colors[session.key]) if session.key in self._session_colors else None
+            _ctag = _color_tag(self._session_colors[session.key]) if session.key in self._session_colors else None
             _tags = (self.TAG_SESSION,) + ((_ctag,) if _ctag else ())
             label = self._session_label(session, None)
             item_id = self._tv.insert(
@@ -1684,7 +2102,7 @@ class SshCopyIdDialog(tk.Toplevel):
 
         # Key-Auswahl
         ttk.Label(frame, text="Public Key:").grid(row=1, column=0, sticky="w", pady=(0, 4))
-        pub_keys = sorted(p.name for p in (ssh_manager_app.constants._SSH_CONFIG_FILE.parent).glob("*.pub"))
+        pub_keys = sorted(p.name for p in (_SSH_CONFIG_FILE.parent).glob("*.pub"))
         self._key_var = tk.StringVar(value=pub_keys[0] if pub_keys else "")
         key_cb = ttk.Combobox(
             frame, textvariable=self._key_var, values=pub_keys, width=30, state="readonly" if pub_keys else "normal"
@@ -1794,7 +2212,7 @@ class SshRemoveKeyDialog(tk.Toplevel):
             ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
         ttk.Label(frame, text="Public Key:").grid(row=1, column=0, sticky="w", pady=(0, 4))
-        pub_keys = sorted(p.name for p in (ssh_manager_app.constants._SSH_CONFIG_FILE.parent).glob("*.pub"))
+        pub_keys = sorted(p.name for p in (_SSH_CONFIG_FILE.parent).glob("*.pub"))
         self._key_var = tk.StringVar(value=pub_keys[0] if pub_keys else "")
         key_cb = ttk.Combobox(
             frame, textvariable=self._key_var, values=pub_keys, width=30, state="readonly" if pub_keys else "normal"
@@ -2416,7 +2834,7 @@ class SessionEditDialog(tk.Toplevel):
         if self._existing_session and self._existing_session.is_ssh_alias_copy:
             session_key = self._existing_session.key
         else:
-            session_key = ssh_manager_app.constants._SSH_ALIAS_PREFIX + str(uuid.uuid4())
+            session_key = _SSH_ALIAS_PREFIX + str(uuid.uuid4())
         self.result = Session(
             key=session_key,
             display_name=alias,
@@ -2467,7 +2885,7 @@ class SessionEditDialog(tk.Toplevel):
         session_key = (
             self._existing_session.key
             if self._existing_session and not self._duplicate
-            else ssh_manager_app.constants._APP_PREFIX + str(uuid.uuid4())
+            else _APP_PREFIX + str(uuid.uuid4())
         )
         self.result = Session(
             key=session_key,
@@ -2873,7 +3291,7 @@ class SettingsView(ttk.Frame):
             return
         settings = self._collect_settings()
         try:
-            Path(path).write_text(__import__("json").dumps(settings_to_dict(settings), ensure_ascii=False, indent=2), encoding="utf-8")
+            Path(path).write_text(json.dumps(_settings_to_dict(settings), ensure_ascii=False, indent=2), encoding="utf-8")
         except OSError as e:
             messagebox.showerror("Export fehlgeschlagen", f"Datei konnte nicht gespeichert werden:\n{e}", parent=self)
             return
@@ -2888,7 +3306,7 @@ class SettingsView(ttk.Frame):
         if not path:
             return
         try:
-            settings = load_settings_from_path(Path(path))
+            settings = _load_settings_from_path(Path(path))
         except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
             messagebox.showerror("Import fehlgeschlagen", f"Datei konnte nicht gelesen werden:\n{e}", parent=self)
             return
@@ -3058,21 +3476,21 @@ class SSHManagerApp(tk.Tk):
             )
             winscp_sessions = []
 
-        self.settings = load_settings()
-        self._startup_settings = load_settings()
+        self.settings = _load_settings()
+        self._startup_settings = _load_settings()
         self._winscp_sessions = winscp_sessions
-        self._filezilla_sessions = load_filezilla_config_sessions()
+        self._filezilla_sessions = _load_filezilla_config_sessions()
 
         # App-eigene Sessions und SSH-Config-Sessions laden und mergen
-        self._app_sessions: list[Session] = load_app_sessions()
-        self._notes = load_notes()
-        self._ssh_config_sessions = load_ssh_config_sessions()
+        self._app_sessions: list[Session] = _load_app_sessions()
+        self._notes = _load_notes()
+        self._ssh_config_sessions = _load_ssh_config_sessions()
         self._sessions = self._build_visible_sessions()
 
         # Checkbox-Images (nach Tk-Initialisierung erzeugen!)
         self._img_unchecked, self._img_checked = _create_checkbox_images(self)
 
-        self._initial_open_folders, self._initial_session_colors, self._initial_toolbar_search_texts = load_ui_state()
+        self._initial_open_folders, self._initial_session_colors, self._initial_toolbar_search_texts = _load_ui_state()
         if self.settings.startup_expand_mode == "expanded":
             self._initial_open_folders = {s.folder_key for s in self._sessions if s.folder_key}
         elif self.settings.startup_expand_mode == "collapsed":
@@ -3218,7 +3636,7 @@ class SSHManagerApp(tk.Tk):
         self._settings_view = SettingsView(self, self)
 
     def _persist_ui_state(self) -> None:
-        save_ui_state(
+        _save_ui_state(
             self._tree.get_open_folders(),
             self._tree.get_session_colors(),
             {
@@ -3334,7 +3752,7 @@ class SSHManagerApp(tk.Tk):
                 self._notes[session.key] = note
             else:
                 self._notes.pop(session.key, None)
-            save_notes(self._notes)
+            _save_notes(self._notes)
             result["saved"] = True
             dialog.destroy()
 
@@ -3399,13 +3817,13 @@ class SSHManagerApp(tk.Tk):
 
     def apply_settings(self, settings: AppSettings) -> None:
         self.settings = settings
-        save_settings(settings)
+        _save_settings(settings)
         self._layout_toolbar_buttons()
         self._search_entry.focus_set()
         ToastNotification(self, "Einstellungen gespeichert")
 
     def reset_settings(self) -> None:
-        self.apply_settings(default_settings())
+        self.apply_settings(_default_settings())
         if self._settings_view is not None:
             self._settings_view.load_from_app()
 
@@ -3518,8 +3936,8 @@ class SSHManagerApp(tk.Tk):
 
     def _rebuild_sessions(self, *, reload_winscp: bool = False) -> None:
         """Merged alle Session-Quellen und aktualisiert den Baum."""
-        self._ssh_config_sessions = load_ssh_config_sessions()
-        self._filezilla_sessions = load_filezilla_config_sessions()
+        self._ssh_config_sessions = _load_ssh_config_sessions()
+        self._filezilla_sessions = _load_filezilla_config_sessions()
         if reload_winscp:
             try:
                 self._winscp_sessions = RegistryReader().load_sessions()
@@ -3555,8 +3973,8 @@ class SSHManagerApp(tk.Tk):
             self._notes[dialog.result.key] = dialog.note_result
         else:
             self._notes.pop(dialog.result.key, None)
-        save_notes(self._notes)
-        save_app_sessions(self._app_sessions)
+        _save_notes(self._notes)
+        _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _edit_session(self, session: Session) -> None:
@@ -3574,8 +3992,8 @@ class SSHManagerApp(tk.Tk):
             self._notes[dialog.result.key] = dialog.note_result
         else:
             self._notes.pop(dialog.result.key, None)
-        save_notes(self._notes)
-        save_app_sessions(self._app_sessions)
+        _save_notes(self._notes)
+        _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _duplicate_app_session(self, session: Session) -> None:
@@ -3587,7 +4005,7 @@ class SSHManagerApp(tk.Tk):
         if dialog.result is None:
             return
         self._app_sessions.append(dialog.result)
-        save_app_sessions(self._app_sessions)
+        _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _move_session(self, session: Session) -> None:
@@ -3609,7 +4027,7 @@ class SSHManagerApp(tk.Tk):
                     source=s.source,
                 )
                 break
-        save_app_sessions(self._app_sessions)
+        _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _move_sessions(self, sessions: list[Session]) -> None:
@@ -3631,7 +4049,7 @@ class SSHManagerApp(tk.Tk):
                     port=s.port,
                     source=s.source,
                 )
-        save_app_sessions(self._app_sessions)
+        _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _delete_session(self, session: Session) -> None:
@@ -3643,7 +4061,7 @@ class SSHManagerApp(tk.Tk):
         ):
             return
         self._app_sessions = [s for s in self._app_sessions if s.key != session.key]
-        save_app_sessions(self._app_sessions)
+        _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _delete_folder(self, sessions: list[Session], folder_key: str) -> None:
@@ -3656,7 +4074,7 @@ class SSHManagerApp(tk.Tk):
             return
         keys_to_delete = {s.key for s in sessions}
         self._app_sessions = [s for s in self._app_sessions if s.key not in keys_to_delete]
-        save_app_sessions(self._app_sessions)
+        _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _rename_folder(self, folder_key: str) -> None:
@@ -3683,7 +4101,7 @@ class SSHManagerApp(tk.Tk):
                     and fp[depth] == old_name):
                 session.folder_path = fp[:depth] + [new_name] + fp[depth + 1:]
 
-        save_app_sessions(self._app_sessions)
+        _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _duplicate_ssh_alias(self, session: Session) -> None:
@@ -3698,7 +4116,7 @@ class SSHManagerApp(tk.Tk):
         if dialog.result is None:
             return
         self._app_sessions.append(dialog.result)
-        save_app_sessions(self._app_sessions)
+        _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _inspect_ssh_config(self, session: Session) -> None:
@@ -3708,7 +4126,7 @@ class SSHManagerApp(tk.Tk):
     def _open_ssh_config_in_vscode(self) -> None:
         """Öffnet ~/.ssh/config in VS Code."""
         try:
-            subprocess.Popen(f'code "{ssh_manager_app.constants._SSH_CONFIG_FILE}"', shell=True)
+            subprocess.Popen(f'code "{_SSH_CONFIG_FILE}"', shell=True)
         except OSError as e:
             messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{e}")
 
