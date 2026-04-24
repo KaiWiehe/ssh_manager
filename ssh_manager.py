@@ -3339,6 +3339,7 @@ class SSHManagerApp(tk.Tk):
         file_menu.add_command(label="Neu laden", command=self._reload_sessions)
         file_menu.add_separator()
         file_menu.add_command(label="Einstellungen", command=self.show_settings_view)
+        file_menu.add_command(label="JSONs in VS Code öffnen", command=self._open_appdata_jsons_in_vscode)
         file_menu.add_separator()
         file_menu.add_command(label="Beenden", command=self._on_close)
         menubar.add_cascade(label="Datei", menu=file_menu)
@@ -3864,6 +3865,14 @@ class SSHManagerApp(tk.Tk):
         """Öffnet ~/.ssh/config in VS Code."""
         try:
             subprocess.Popen(f'code "{_SSH_CONFIG_FILE}"', shell=True)
+        except OSError as e:
+            messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{e}")
+
+    def _open_appdata_jsons_in_vscode(self) -> None:
+        """Öffnet den SSH-Manager-AppData-Ordner mit JSON-Dateien in VS Code."""
+        try:
+            _APPDATA_DIR.mkdir(parents=True, exist_ok=True)
+            subprocess.Popen(f'code "{_APPDATA_DIR}"', shell=True)
         except OSError as e:
             messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{e}")
 
