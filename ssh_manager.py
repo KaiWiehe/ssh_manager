@@ -2849,11 +2849,10 @@ class SettingsView(ttk.Frame):
     }
 
     def __init__(self, parent: tk.Widget, app: "SSHManagerApp"):
-        super().__init__(parent, padding=12)
+        super().__init__(parent, padding=0)
         self._app = app
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        self._quick_users_var = tk.StringVar()
         self._default_user_var = tk.StringVar()
         self._host_timeout_var = tk.StringVar()
         self._startup_expand_var = tk.StringVar()
@@ -2861,49 +2860,100 @@ class SettingsView(ttk.Frame):
         self._title_mode_var = tk.StringVar()
         self._toolbar_vars: dict[str, tk.BooleanVar] = {}
         self._use_tab_color_var = tk.BooleanVar()
+        self._section_frames: dict[str, ttk.Frame] = {}
+        self._nav_buttons: dict[str, ttk.Button] = {}
+        self._active_section = "general"
         self._build()
         self.load_from_app()
 
     def _build(self) -> None:
-        self.configure(style="Settings.TFrame")
-        canvas = tk.Canvas(self, highlightthickness=0, bd=0, background="#e9e7e3")
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
-        content = ttk.Frame(canvas, padding=(16, 16, 24, 16), style="Settings.TFrame")
-        content.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        self._canvas_window_id = canvas.create_window((0, 0), window=content, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.grid(row=0, column=0, sticky="nsew")
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        self._canvas = canvas
-        self._content = content
-        self.bind("<Configure>", self._on_resize)
+        self.configure(style="SettingsRoot.TFrame")
+        root = ttk.Frame(self, style="SettingsRoot.TFrame", padding=0)
+        root.grid(row=0, column=0, sticky="nsew")
+        root.columnconfigure(1, weight=1)
+        root.rowconfigure(0, weight=1)
+        self._root = root
 
-        row = 0
-        general = ttk.LabelFrame(content, text="Allgemein", padding=12)
-        general.grid(row=row, column=0, sticky="ew", pady=(0, 12))
-        general.columnconfigure(1, weight=1)
-        ttk.Label(general, text="Standardbenutzer:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
-        self._default_user_combo = ttk.Combobox(general, textvariable=self._default_user_var, state="readonly")
-        self._default_user_combo.grid(row=0, column=1, sticky="ew", pady=4)
-        ttk.Label(general, text="Hosts prüfen Timeout (s):").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 8))
-        ttk.Entry(general, textvariable=self._host_timeout_var, width=12).grid(row=1, column=1, sticky="w", pady=4)
-        ttk.Label(general, text="Ordner beim Start:").grid(row=2, column=0, sticky="w", pady=4, padx=(0, 8))
-        startup_values = list(self.STARTUP_LABELS.values())
-        self._startup_expand_combo = ttk.Combobox(general, textvariable=self._startup_expand_var, values=startup_values, state="readonly")
-        self._startup_expand_combo.grid(row=2, column=1, sticky="ew", pady=4)
+        nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(12, 16))
+        nav.grid(row=0, column=0, sticky="nsw")
+        nav.columnconfigure(0, weight=1)
+        self._nav = nav
 
-        row += 1
-        users = ttk.LabelFrame(content, text="Schnellauswahl-Benutzer", padding=12)
-        users.grid(row=row, column=0, sticky="ew", pady=(0, 12))
-        users.columnconfigure(0, weight=1)
-        ttk.Label(users, text="Ein Benutzer pro Zeile.").grid(row=0, column=0, sticky="w", pady=(0, 6))
-        self._quick_users_text = scrolledtext.ScrolledText(users, wrap="word", height=6)
-        self._quick_users_text.grid(row=1, column=0, sticky="ew")
+        content_wrap = ttk.Frame(root, style="SettingsContent.TFrame", padding=(18, 16, 18, 12))
+        content_wrap.grid(row=0, column=1, sticky="nsew")
+        content_wrap.columnconfigure(0, weight=1)
+        content_wrap.rowconfigure(1, weight=1)
 
-        row += 1
-        toolbar = ttk.LabelFrame(content, text="Toolbar", padding=12)
-        toolbar.grid(row=row, column=0, sticky="ew", pady=(0, 12))
-        toolbar.columnconfigure(0, weight=1)
+        header = ttk.Frame(content_wrap, style="SettingsContent.TFrame")
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        header.columnconfigure(0, weight=1)
+        ttk.Label(header, text="Einstellungen", style="SettingsTitle.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(header, text="Direkt im Hauptfenster, optimiert für Fullscreen.", style="SettingsSubtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
+
+        self._content_host = ttk.Frame(content_wrap, style="SettingsContent.TFrame")
+        self._content_host.grid(row=1, column=0, sticky="nsew")
+        self._content_host.columnconfigure(0, weight=1)
+        self._content_host.rowconfigure(0, weight=1)
+
+        actions = ttk.Frame(content_wrap, style="SettingsContent.TFrame", padding=(0, 12, 0, 0))
+        actions.grid(row=2, column=0, sticky="ew")
+        ttk.Button(actions, text="Speichern", command=self._save).pack(side="left")
+        ttk.Button(actions, text="Zurück", command=self._app.show_main_view).pack(side="left", padx=(8, 0))
+
+        sections = [
+            ("general", "Allgemein"),
+            ("users", "Schnellauswahl-Benutzer"),
+            ("toolbar", "Toolbar"),
+            ("terminal", "Windows Terminal"),
+            ("reset", "Zurücksetzen"),
+        ]
+        ttk.Label(nav, text="Bereiche", style="SettingsNavTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 10))
+        for idx, (key, label) in enumerate(sections, start=1):
+            btn = ttk.Button(nav, text=label, command=lambda k=key: self._show_section(k), style="SettingsNav.TButton")
+            btn.grid(row=idx, column=0, sticky="ew", pady=3)
+            self._nav_buttons[key] = btn
+
+        self._section_frames["general"] = self._build_general_section()
+        self._section_frames["users"] = self._build_users_section()
+        self._section_frames["toolbar"] = self._build_toolbar_section()
+        self._section_frames["terminal"] = self._build_terminal_section()
+        self._section_frames["reset"] = self._build_reset_section()
+        self._show_section(self._active_section)
+
+    def _build_section_frame(self, title: str, description: str) -> ttk.Frame:
+        frame = ttk.Frame(self._content_host, style="SettingsPanel.TFrame", padding=18)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+        ttk.Label(frame, text=title, style="SettingsSectionTitle.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(frame, text=description, style="SettingsHint.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 14))
+        return frame
+
+    def _build_general_section(self) -> ttk.Frame:
+        frame = self._build_section_frame("Allgemein", "Globale Vorgaben für Auswahl, Host-Checks und Baumzustand.")
+        form = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        form.grid(row=2, column=0, sticky="nw")
+        form.columnconfigure(1, weight=1)
+        ttk.Label(form, text="Standardbenutzer:").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
+        self._default_user_combo = ttk.Combobox(form, textvariable=self._default_user_var, state="readonly", width=32)
+        self._default_user_combo.grid(row=0, column=1, sticky="ew", pady=6)
+        ttk.Label(form, text="Hosts prüfen Timeout (s):").grid(row=1, column=0, sticky="w", pady=6, padx=(0, 12))
+        ttk.Entry(form, textvariable=self._host_timeout_var, width=10).grid(row=1, column=1, sticky="w", pady=6)
+        ttk.Label(form, text="Ordner beim Start:").grid(row=2, column=0, sticky="w", pady=6, padx=(0, 12))
+        self._startup_expand_combo = ttk.Combobox(form, textvariable=self._startup_expand_var, values=list(self.STARTUP_LABELS.values()), state="readonly", width=32)
+        self._startup_expand_combo.grid(row=2, column=1, sticky="ew", pady=6)
+        return frame
+
+    def _build_users_section(self) -> ttk.Frame:
+        frame = self._build_section_frame("Schnellauswahl-Benutzer", "Ein Benutzer pro Zeile. Reihenfolge bleibt erhalten und wird in den Dialogen genutzt.")
+        self._quick_users_text = scrolledtext.ScrolledText(frame, wrap="word", height=14)
+        self._quick_users_text.grid(row=2, column=0, sticky="nsew")
+        frame.rowconfigure(2, weight=1)
+        return frame
+
+    def _build_toolbar_section(self) -> ttk.Frame:
+        frame = self._build_section_frame("Toolbar", "Lege fest, welche Buttons oben sichtbar sind. Änderungen wirken direkt.")
+        grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        grid.grid(row=2, column=0, sticky="nw")
         toolbar_items = [
             ("show_select_all", "Alle auswählen"),
             ("show_deselect_all", "Alle abwählen"),
@@ -2917,36 +2967,35 @@ class SettingsView(ttk.Frame):
         for idx, (key, label) in enumerate(toolbar_items):
             var = tk.BooleanVar()
             self._toolbar_vars[key] = var
-            ttk.Checkbutton(toolbar, text=label, variable=var, command=self._on_toolbar_changed).grid(row=idx // 2, column=idx % 2, sticky="w", padx=(0, 18), pady=3)
+            ttk.Checkbutton(grid, text=label, variable=var, command=self._on_toolbar_changed).grid(row=idx // 2, column=idx % 2, sticky="w", padx=(0, 28), pady=6)
+        return frame
 
-        row += 1
-        wt = ttk.LabelFrame(content, text="Windows Terminal", padding=12)
-        wt.grid(row=row, column=0, sticky="ew", pady=(0, 12))
-        wt.columnconfigure(1, weight=1)
-        ttk.Label(wt, text="Profilname:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
-        ttk.Entry(wt, textvariable=self._profile_name_var).grid(row=0, column=1, sticky="ew", pady=4)
-        ttk.Checkbutton(wt, text="Tab-Farben an Windows Terminal übergeben", variable=self._use_tab_color_var).grid(row=1, column=0, columnspan=2, sticky="w", pady=4)
-        ttk.Label(wt, text="Tab-Titel:").grid(row=2, column=0, sticky="w", pady=4, padx=(0, 8))
-        title_values = list(self.TITLE_MODE_LABELS.values())
-        self._title_mode_combo = ttk.Combobox(wt, textvariable=self._title_mode_var, values=title_values, state="readonly")
-        self._title_mode_combo.grid(row=2, column=1, sticky="ew", pady=4)
+    def _build_terminal_section(self) -> ttk.Frame:
+        frame = self._build_section_frame("Windows Terminal", "Nur optische Übergaben an Windows Terminal, keine SSH-Logik.")
+        form = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        form.grid(row=2, column=0, sticky="nw")
+        form.columnconfigure(1, weight=1)
+        ttk.Label(form, text="Profilname:").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
+        ttk.Entry(form, textvariable=self._profile_name_var, width=32).grid(row=0, column=1, sticky="ew", pady=6)
+        ttk.Checkbutton(form, text="Tab-Farben an Windows Terminal übergeben", variable=self._use_tab_color_var).grid(row=1, column=0, columnspan=2, sticky="w", pady=6)
+        ttk.Label(form, text="Tab-Titel:").grid(row=2, column=0, sticky="w", pady=6, padx=(0, 12))
+        self._title_mode_combo = ttk.Combobox(form, textvariable=self._title_mode_var, values=list(self.TITLE_MODE_LABELS.values()), state="readonly", width=32)
+        self._title_mode_combo.grid(row=2, column=1, sticky="ew", pady=6)
+        return frame
 
-        row += 1
-        reset = ttk.LabelFrame(content, text="Zurücksetzen", padding=12)
-        reset.grid(row=row, column=0, sticky="ew")
-        ttk.Button(reset, text="Einstellungen zurücksetzen", command=self._reset_settings).grid(row=0, column=0, sticky="w", pady=(0, 6))
-        ttk.Button(reset, text="Farben und Ordner auf Startzustand zurücksetzen", command=self._reset_view_state).grid(row=1, column=0, sticky="w")
+    def _build_reset_section(self) -> ttk.Frame:
+        frame = self._build_section_frame("Zurücksetzen", "Trenne dauerhaft gespeicherte Einstellungen sauber vom aktuellen Ansichts-Zustand.")
+        ttk.Button(frame, text="Einstellungen zurücksetzen", command=self._reset_settings).grid(row=2, column=0, sticky="w", pady=(0, 8))
+        ttk.Button(frame, text="Farben und Ordner auf Startzustand zurücksetzen", command=self._reset_view_state).grid(row=3, column=0, sticky="w")
+        return frame
 
-        actions = ttk.Frame(content, padding=(0, 12, 0, 0), style="Settings.TFrame")
-        actions.grid(row=row + 1, column=0, sticky="ew")
-        ttk.Button(actions, text="Speichern", command=self._save).pack(side="left")
-        ttk.Button(actions, text="Zurück", command=self._app.show_main_view).pack(side="left", padx=(8, 0))
-
-    def _on_resize(self, _event=None) -> None:
-        if hasattr(self, "_canvas") and hasattr(self, "_canvas_window_id"):
-            width = max(self.winfo_width() - 28, 320)
-            self._canvas.itemconfigure(self._canvas_window_id, width=width)
-            self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+    def _show_section(self, key: str) -> None:
+        self._active_section = key
+        for section_key, frame in self._section_frames.items():
+            if section_key == key:
+                frame.tkraise()
+        for section_key, button in self._nav_buttons.items():
+            button.state(["pressed"] if section_key == key else ["!pressed"])
 
     def load_from_app(self) -> None:
         settings = self._app.settings
@@ -3025,9 +3074,16 @@ class SSHManagerApp(tk.Tk):
         style.theme_use("clam")
         style.configure("Toast.TFrame", background="#333333", relief="flat")
         style.configure("Toast.TLabel", background="#333333", foreground="#f5f5f5")
-        style.configure("Settings.TFrame", background="#e9e7e3")
-        style.configure("Settings.TLabelframe", background="#e9e7e3")
-        style.configure("Settings.TLabelframe.Label", background="#e9e7e3")
+        style.configure("SettingsRoot.TFrame", background="#dfdbd4")
+        style.configure("SettingsNav.TFrame", background="#d7d2ca")
+        style.configure("SettingsContent.TFrame", background="#ebe8e2")
+        style.configure("SettingsPanel.TFrame", background="#f4f1eb")
+        style.configure("SettingsTitle.TLabel", background="#ebe8e2", font=("Segoe UI", 16, "bold"))
+        style.configure("SettingsSubtitle.TLabel", background="#ebe8e2", foreground="#5f5a52")
+        style.configure("SettingsNavTitle.TLabel", background="#d7d2ca", font=("Segoe UI", 10, "bold"))
+        style.configure("SettingsSectionTitle.TLabel", background="#f4f1eb", font=("Segoe UI", 12, "bold"))
+        style.configure("SettingsHint.TLabel", background="#f4f1eb", foreground="#6b655c")
+        style.configure("SettingsNav.TButton", padding=(10, 8))
 
         # Registry laden
         try:
