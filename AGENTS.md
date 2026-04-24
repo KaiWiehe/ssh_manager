@@ -23,13 +23,13 @@ Aus tkinter genutzte Module: `tk`, `ttk`, `messagebox`, `simpledialog`, `filedia
 
 ## Architektur
 
-Die gesamte App lebt in einer einzigen Datei: `ssh_manager.py`.
+Die App war ursprünglich fast komplett in `ssh_manager.py`, wurde inzwischen aber vorsichtig in Module aufgeteilt. `ssh_manager.py` enthält aktuell vor allem noch `SSHManagerApp` und die zentrale Verdrahtung.
 
 ### Datenfluss
 
 ```
 Registry (WinSCP)      ──┐
-~/.ssh/config          ──┼──► SSHManagerApp._build_visible_sessions() ──► SessionTree.populate()
+~/.ssh/config          ──┼──► storage/core ──► SSHManagerApp._build_visible_sessions() ──► SessionTree.populate()
 FileZilla sitemanager  ──┤
 app_sessions.json      ──┤
 notes.json / settings  ──┘
@@ -37,34 +37,54 @@ notes.json / settings  ──┘
 
 `SSHManagerApp` lädt beim Start WinSCP, SSH Config, FileZilla und eigene App-Sessions, filtert sie anhand der Anzeige-Einstellungen und gibt die sichtbaren Sessions an `SessionTree` weiter. Der "SSH Config"-Ordner wird immer oben sortiert, FileZilla landet unter `FileZilla Config`.
 
-### Schichten
+### Schichten / Module
 
-**Reine Logik (testbar ohne GUI/Registry):**
-- `Session` (dataclass) – Datenmodell
-- `parse_session_key()` – URL-Decoding von WinSCP-Registry-Keys
-- `build_wt_command()` – erzeugt den `wt.exe`-Befehl für SSH-Verbindungen
-- `build_ssh_copy_id_command()` – erzeugt den Befehl für `ssh-copy-id`
-- `build_ssh_remove_key_command()` – erzeugt den Befehl zum Entfernen eines Keys aus `authorized_keys`
-- `build_ssh_tunnel_command()` – erzeugt den Start für SSH Local Port Forwarding (`-N -L`)
-- `build_remote_command_wt_command()` – erzeugt WT-Tabs für Remote-Befehle auf einem oder mehreren Hosts
-- `_write_temp_bash_script()` – schreibt temporäre lokale Bash-Skripte für robuste WT/Git-Bash-Starts
-- `check_host_reachable()` – TCP-Verbindungstest (socket, kein SSH-Handshake)
-- `_find_git_bash()` – findet Git Bash (nicht WSL-Bash)
-- `_find_winscp()` – findet WinSCP.exe (`%LOCALAPPDATA%`, Program Files, PATH)
-- `_load_ui_state()` / `_save_ui_state()` – JSON-Persistenz in `%APPDATA%\SSH-Manager\`
-- `_load_settings()` / `_save_settings()` – Einstellungsmodell inkl. Toolbar, Quellenfilter, Spaltensichtbarkeit und Spaltenreihenfolge
-- `_load_notes()` / `_save_notes()` – lokale Session-Notizen in eigener JSON-Datei
+**`ssh_manager.py`**
+- enthält aktuell primär `SSHManagerApp`
+- zentrale Verdrahtung zwischen UI, Tree, Dialogen, Storage und Terminal-/Registry-Logik
 
-**GUI-Klassen:**
-- `SessionTree(ttk.Frame)` – der Haupt-Treeview mit Checkboxen, Farben, Kontextmenüs. Kommuniziert mit der App ausschließlich über Callback-Parameter (kein direkter App-Zugriff).
-- `SSHManagerApp(tk.Tk)` – Hauptfenster, verdrahtet alle Callbacks, besitzt den App-Zustand.
-- `SettingsView(ttk.Frame)` – Einstellungsansicht direkt im Hauptfenster, mit Bereichen für Toolbar, Quellen, Windows Terminal, Export/Import und Reset
-- Dialog-Klassen: `UserDialog`, `SessionEditDialog`, `MoveFolderDialog`, `SshCopyIdDialog`, `SshRemoveKeyDialog`, `SshConfigInspectDialog`, `SshTunnelDialog`, `RemoteCommandDialog`, `RemoteCommandConfirmDialog`
+**`ssh_manager_app/constants.py`**
+- App-Konstanten, Dateipfade, Standardordnernamen
+
+**`ssh_manager_app/models.py`**
+- `Session`
+- Settings-Dataclasses (`ToolbarSettings`, `WindowsTerminalSettings`, `SourceVisibilitySettings`, `AppSettings`)
+- `color_tag()`
+- `default_settings()` / `settings_to_dict()`
+
+**`ssh_manager_app/storage.py`**
+- Laden/Speichern von Settings, UI-State, Notes, App-Sessions
+- Loader für FileZilla und SSH Config
+
+**`ssh_manager_app/core.py`**
+- `parse_session_key()`
+- `build_wt_command()`
+- `build_jump_wt_command()`
+- `build_remote_command_wt_command()`
+- `build_ssh_copy_id_command()`
+- `build_ssh_remove_key_command()`
+- `build_ssh_tunnel_command()`
+- `check_host_reachable()`
+- `_create_checkbox_images()`
+- `TerminalLauncher`
+- `RegistryReader`
+
+**`ssh_manager_app/tree.py`**
+- `SessionTree(ttk.Frame)` – Haupt-Treeview mit Checkboxen, Farben, Kontextmenüs und Notes-Tooltip/Info-Anbindung
+
+**`ssh_manager_app/dialogs.py`**
+- Dialog-Klassen
+- `SettingsView`
+- `ToastNotification`
+
+**`ssh_manager_app/ui.py`**
+- `configure_app_styles()`
+- `build_main_ui()`
 
 **Datenquellen:**
 - `RegistryReader` – liest WinSCP-Sessions aus `HKCU\Software\Martin Prikryl\WinSCP 2\Sessions`
-- `_load_ssh_config_sessions()` – parst `~/.ssh/config` manuell (kein Parser-Import)
-- `_load_filezilla_config_sessions()` – liest FileZilla-Sites aus `%APPDATA%\FileZilla\sitemanager.xml`
+- `load_ssh_config_sessions()` – parst `~/.ssh/config` manuell (kein Parser-Import)
+- `load_filezilla_config_sessions()` – liest FileZilla-Sites aus `%APPDATA%\FileZilla\sitemanager.xml`
 - `app_sessions.json` – eigene Sessions (source=`app`) und SSH-Alias-Kopien (source=`ssh_alias`)
 - `notes.json` – Session-Notizen für alle Quellen, nur app-intern gespeichert
 
@@ -123,6 +143,8 @@ Kritisch für alle `build_*_command()`-Funktionen:
 `%APPDATA%\SSH-Manager\settings.json` speichert Benutzer-Einstellungen, Toolbar-Sichtbarkeit, Quellenfilter, Windows-Terminal-Optik und Spaltenreihenfolge.  
 `%APPDATA%\SSH-Manager\notes.json` speichert Notizen für Sessions aller Quellen.
 
+Wichtige Refactor-Regel: Die Persistenz-Funktionen liegen inzwischen in `ssh_manager_app/storage.py`. Neue Datei- oder JSON-Logik möglichst dort ergänzen, nicht wieder direkt in `ssh_manager.py` verteilen.
+
 ### Einstellungen / konfigurierbares Verhalten
 
 Früher kamen viele Defaults direkt aus Konstanten. Inzwischen ist das meiste in `settings.json` konfigurierbar und wird in `AppSettings` geladen:
@@ -175,3 +197,21 @@ Weiterhin als Konstanten relevant:
 - FileZilla wird nur gelesen, nie geschrieben. Quelle ist `%APPDATA%\FileZilla\sitemanager.xml`.
 - Suchverlauf wird live gespeichert. Änderungen an der Suche betreffen auch `ui_state.json`.
 - Tooltip für Notizen hängt am `Treeview`-Hover und ist empfindlich. Bei Änderungen an Motion-/Leave-Events vorsichtig sein.
+- Zusätzlich gibt es unten ein robusteres Notiz-Info-Panel. Tooltip ist also nicht mehr die einzige Notes-Anzeige.
+
+### Refactor-Learnings (sehr wichtig)
+
+- Keine großen Refactor-Sprünge in einem Zug. Lieber kleine Schnitte und danach sofort validieren.
+- Nach jedem Split sofort mindestens `python -m py_compile ssh_manager.py ssh_manager_app/*.py` laufen lassen.
+- Wenn UI betroffen ist, danach möglichst auf Windows kurz real testen.
+- `from package import *` **nicht** für Namen mit führendem Unterstrich verwenden. Private Konstanten wie `_SSH_CONFIG_DEFAULT_FOLDER` müssen explizit importiert werden.
+- Bei Modul-Splits immer prüfen:
+  - fehlen Imports im neuen Modul?
+  - fehlen danach Methoden in `SSHManagerApp`, auf die UI oder Tree noch zugreifen?
+  - wurde wirklich ausführbarer Code extrahiert oder versehentlich nur eine innere Funktion definiert?
+- UI-Splits können zu stillen Fehlern führen, bei denen nur eine leere App ohne Traceback erscheint. Dann insbesondere `build_main_ui()` / `grid()` / Callback-Verdrahtung prüfen.
+- Nach Split von UI-/Dialog-/Core-Code lieber erst stabilisieren und Imports aufräumen, bevor gleich der nächste große Schnitt folgt.
+
+### Empfohlene weitere Richtung
+
+Wenn weiter refactort wird, zuerst die Testbasis ausbauen und erst danach weitere App-Action-Methoden aus `SSHManagerApp` auslagern. Nicht sofort wieder `__init__` oder den kompletten UI-Startpfad groß umbauen.
