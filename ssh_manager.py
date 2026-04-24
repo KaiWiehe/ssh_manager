@@ -1079,10 +1079,13 @@ class SessionTree(ttk.Frame):
 
     def _on_tree_motion(self, event: tk.Event) -> None:
         item_id = self._tv.identify_row(event.y)
-        if not item_id or item_id == self._last_tooltip_item or item_id not in self._item_to_session:
+        if not item_id or item_id not in self._item_to_session:
+            self._hide_tooltip()
             return
-        self._last_tooltip_item = item_id
+        if item_id == self._last_tooltip_item:
+            return
         self._hide_tooltip()
+        self._last_tooltip_item = item_id
         note = self._notes_getter(self._item_to_session[item_id].key).strip()
         if not note:
             return
@@ -1091,7 +1094,10 @@ class SessionTree(ttk.Frame):
     def _show_tooltip(self, item_id: str, x: int, y: int, text: str) -> None:
         if item_id != self._last_tooltip_item:
             return
-        self._hide_tooltip()
+        if self._tooltip is not None:
+            self._tooltip.destroy()
+            self._tooltip = None
+        self._tooltip_after_id = None
         self._tooltip = tk.Toplevel(self)
         self._tooltip.wm_overrideredirect(True)
         self._tooltip.attributes("-topmost", True)
@@ -2645,6 +2651,7 @@ class SessionEditDialog(tk.Toplevel):
         folder_preset: str = "",
         alias_preset: str = "",
         duplicate: bool = False,
+        note: str = "",
     ):
         super().__init__(parent)
         self._existing_session = session
@@ -2652,6 +2659,7 @@ class SessionEditDialog(tk.Toplevel):
         self._existing_folders = existing_folders
         self._ssh_aliases = ssh_aliases or []
         self._alias_preset = alias_preset
+        self.note_result = note
 
         # Startmodus: Alias-Modus wenn Preset gesetzt oder bestehende ssh_alias Session
         if (session and session.is_ssh_alias_copy) or alias_preset:
@@ -2760,6 +2768,12 @@ class SessionEditDialog(tk.Toplevel):
         self._port_var = tk.StringVar(value=str(s.port) if (s and s.is_app_session) else "22")
         ttk.Entry(self._verbindung_frame, textvariable=self._port_var, width=8).grid(row=4, column=1, sticky="w")
 
+        ttk.Label(self._verbindung_frame, text="Notizen:").grid(row=5, column=0, sticky="nw", pady=4, padx=(0, 8))
+        self._note_text = tk.Text(self._verbindung_frame, width=32, height=4)
+        self._note_text.grid(row=5, column=1, sticky="ew", pady=4)
+        if self.note_result:
+            self._note_text.insert("1.0", self.note_result)
+
         # Buttons
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=content_row + 1, column=0, columnspan=2, pady=(12, 0))
@@ -2862,6 +2876,7 @@ class SessionEditDialog(tk.Toplevel):
             port=port,
             source="app",
         )
+        self.note_result = self._note_text.get("1.0", "end").strip()
         self.destroy()
 
     def _on_cancel(self) -> None:
@@ -3644,18 +3659,60 @@ class SSHManagerApp(tk.Tk):
         self._persist_ui_state()
 
     def _edit_session_note(self, session: Session) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Notiz bearbeiten")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(0, weight=1)
+
+        ttk.Label(frame, text=f"Notiz für {session.display_name}:").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        note_text = tk.Text(frame, width=48, height=6)
+        note_text.grid(row=1, column=0, sticky="ew")
         current = self._notes.get(session.key, "")
-        note = simpledialog.askstring("Notiz bearbeiten", f"Notiz für {session.display_name}:", initialvalue=current, parent=self)
-        if note is None:
-            return
-        note = note.strip()
-        if note:
-            self._notes[session.key] = note
-        else:
-            self._notes.pop(session.key, None)
-        _save_notes(self._notes)
-        self._tree.refresh(self._sessions)
-        self._persist_ui_state()
+        if current:
+            note_text.insert("1.0", current)
+        note_text.focus_set()
+
+        result = {"saved": False}
+
+        def on_ok() -> None:
+            note = note_text.get("1.0", "end").strip()
+            if note:
+                self._notes[session.key] = note
+            else:
+                self._notes.pop(session.key, None)
+            _save_notes(self._notes)
+            result["saved"] = True
+            dialog.destroy()
+
+        def on_cancel() -> None:
+            dialog.destroy()
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=2, column=0, pady=(12, 0))
+        ttk.Button(btn_frame, text="OK", command=on_ok, width=10).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=on_cancel, width=10).pack(side="left", padx=4)
+
+        dialog.update_idletasks()
+        pw = self.winfo_width()
+        ph = self.winfo_height()
+        px = self.winfo_x()
+        py = self.winfo_y()
+        w = dialog.winfo_reqwidth()
+        h = dialog.winfo_reqheight()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        dialog.geometry(f"+{x}+{y}")
+        dialog.bind("<Escape>", lambda _e: on_cancel())
+        dialog.bind("<Control-Return>", lambda _e: on_ok())
+        self.wait_window(dialog)
+        if result["saved"]:
+            self._tree.refresh(self._sessions)
+            self._persist_ui_state()
 
     def get_default_user(self) -> str:
         return self.settings.default_user
@@ -3832,12 +3889,20 @@ class SSHManagerApp(tk.Tk):
         if dialog.result is None:
             return
         self._app_sessions.append(dialog.result)
+        if dialog.note_result:
+            self._notes[dialog.result.key] = dialog.note_result
+            _save_notes(self._notes)
+        if dialog.note_result:
+            self._notes[dialog.result.key] = dialog.note_result
+        else:
+            self._notes.pop(dialog.result.key, None)
+        _save_notes(self._notes)
         _save_app_sessions(self._app_sessions)
         self._rebuild_sessions()
 
     def _edit_session(self, session: Session) -> None:
         """Öffnet den Dialog zum Bearbeiten einer App-Session."""
-        dialog = SessionEditDialog(self, self._get_all_folder_names(), session=session)
+        dialog = SessionEditDialog(self, self._get_all_folder_names(), session=session, note=self._notes.get(session.key, ""))
         self.wait_window(dialog)
         if dialog.result is None:
             return
