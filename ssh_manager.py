@@ -605,6 +605,7 @@ class ToolbarSettings:
     show_hostname_column: bool = True
     show_port_column: bool = True
     show_notes_column: bool = True
+    column_order: list[str] = field(default_factory=lambda: ["notes", "hostname", "port"])
 
 
 @dataclass
@@ -697,6 +698,10 @@ def _load_settings_from_path(path: Path) -> AppSettings:
             show_hostname_column=bool(toolbar_raw.get("show_hostname_column", defaults.toolbar.show_hostname_column)),
             show_port_column=bool(toolbar_raw.get("show_port_column", defaults.toolbar.show_port_column)),
             show_notes_column=bool(toolbar_raw.get("show_notes_column", defaults.toolbar.show_notes_column)),
+            column_order=[
+                col for col in toolbar_raw.get("column_order", defaults.toolbar.column_order)
+                if col in {"notes", "hostname", "port"}
+            ] or list(defaults.toolbar.column_order),
         ),
         host_check_timeout_seconds=host_timeout,
         startup_expand_mode=startup_expand_mode,
@@ -1064,14 +1069,19 @@ class SessionTree(ttk.Frame):
             self._tv.tag_configure(_color_tag(hex_color), foreground=hex_color)
 
     def _apply_column_visibility(self) -> None:
-        display: list[str] = []
-        if self._toolbar_settings.show_hostname_column:
-            display.append("hostname")
-        if self._toolbar_settings.show_port_column:
-            display.append("port")
-        if self._toolbar_settings.show_notes_column:
-            display.append("notes")
-        self._tv.configure(displaycolumns=display)
+        visible = {
+            "hostname": self._toolbar_settings.show_hostname_column,
+            "port": self._toolbar_settings.show_port_column,
+            "notes": self._toolbar_settings.show_notes_column,
+        }
+        ordered = []
+        for column in self._toolbar_settings.column_order:
+            if visible.get(column):
+                ordered.append(column)
+        for column in ("notes", "hostname", "port"):
+            if visible.get(column) and column not in ordered:
+                ordered.append(column)
+        self._tv.configure(displaycolumns=ordered)
 
     def update_toolbar_settings(self, toolbar_settings: ToolbarSettings) -> None:
         self._toolbar_settings = toolbar_settings
@@ -3221,6 +3231,16 @@ class SettingsView(ttk.Frame):
             var = tk.BooleanVar()
             self._toolbar_vars[key] = var
             ttk.Checkbutton(grid, text=label, variable=var, command=self._on_toolbar_changed).grid(row=idx // 2, column=idx % 2, sticky="w", padx=(0, 28), pady=6)
+
+        order_frame = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        order_frame.grid(row=3, column=0, sticky="nw", pady=(18, 0))
+        ttk.Label(order_frame, text="Spalten-Reihenfolge (ohne Name):", style="SettingsValue.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        self._column_order_list = tk.Listbox(order_frame, height=3, exportselection=False)
+        self._column_order_list.grid(row=1, column=0, rowspan=2, sticky="w")
+        btns = ttk.Frame(order_frame, style="SettingsPanel.TFrame")
+        btns.grid(row=1, column=1, sticky="nw", padx=(10, 0))
+        ttk.Button(btns, text="Hoch", command=lambda: self._move_column_order(-1), width=10).pack(anchor="w")
+        ttk.Button(btns, text="Runter", command=lambda: self._move_column_order(1), width=10).pack(anchor="w", pady=(6, 0))
         return frame
 
     def _build_terminal_section(self) -> ttk.Frame:
@@ -3312,6 +3332,9 @@ class SettingsView(ttk.Frame):
         self._startup_expand_var.set(self.STARTUP_LABELS.get(settings.startup_expand_mode, self.STARTUP_LABELS["remember"]))
         for key, var in self._toolbar_vars.items():
             var.set(bool(getattr(settings.toolbar, key)))
+        self._column_order_list.delete(0, "end")
+        for col in settings.toolbar.column_order:
+            self._column_order_list.insert("end", self._column_label(col))
         for key, var in self._source_visibility_vars.items():
             var.set(bool(getattr(settings.source_visibility, key)))
         self._profile_name_var.set(settings.windows_terminal.profile_name)
@@ -3321,8 +3344,38 @@ class SettingsView(ttk.Frame):
     def _on_toolbar_changed(self) -> None:
         self._app.preview_toolbar_visibility(self._collect_toolbar_settings())
 
+    def _column_label(self, key: str) -> str:
+        return {
+            "notes": "Notiz",
+            "hostname": "Hostname",
+            "port": "Port",
+        }[key]
+
+    def _column_key_from_label(self, label: str) -> str:
+        return {
+            "Notiz": "notes",
+            "Hostname": "hostname",
+            "Port": "port",
+        }[label]
+
+    def _move_column_order(self, direction: int) -> None:
+        selection = self._column_order_list.curselection()
+        if not selection:
+            return
+        idx = selection[0]
+        new_idx = idx + direction
+        if not (0 <= new_idx < self._column_order_list.size()):
+            return
+        value = self._column_order_list.get(idx)
+        self._column_order_list.delete(idx)
+        self._column_order_list.insert(new_idx, value)
+        self._column_order_list.selection_set(new_idx)
+        self._on_toolbar_changed()
+
     def _collect_toolbar_settings(self) -> ToolbarSettings:
-        return ToolbarSettings(**{key: var.get() for key, var in self._toolbar_vars.items()})
+        data = {key: var.get() for key, var in self._toolbar_vars.items()}
+        data["column_order"] = [self._column_key_from_label(self._column_order_list.get(i)) for i in range(self._column_order_list.size())]
+        return ToolbarSettings(**data)
 
     def _collect_source_visibility_settings(self) -> SourceVisibilitySettings:
         return SourceVisibilitySettings(**{key: var.get() for key, var in self._source_visibility_vars.items()})
