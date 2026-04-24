@@ -16,7 +16,7 @@ import threading
 import tkinter as tk
 import uuid
 from pathlib import Path
-from tkinter import messagebox, scrolledtext, simpledialog, ttk
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 from dataclasses import asdict, dataclass, field
 from typing import Optional, Callable
 from urllib.parse import unquote
@@ -627,12 +627,23 @@ def _settings_to_dict(settings: AppSettings) -> dict:
 
 
 def _load_settings() -> AppSettings:
-    defaults = _default_settings()
     try:
-        raw = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, ValueError):
-        return defaults
+        return _load_settings_from_path(_SETTINGS_FILE)
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError):
+        return _default_settings()
 
+
+def _save_settings(settings: AppSettings) -> None:
+    _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _SETTINGS_FILE.write_text(
+        json.dumps(_settings_to_dict(settings), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _load_settings_from_path(path: Path) -> AppSettings:
+    defaults = _default_settings()
+    raw = json.loads(path.read_text(encoding="utf-8"))
     toolbar_raw = raw.get("toolbar", {}) if isinstance(raw, dict) else {}
     wt_raw = raw.get("windows_terminal", {}) if isinstance(raw, dict) else {}
 
@@ -675,14 +686,6 @@ def _load_settings() -> AppSettings:
             use_tab_color=bool(wt_raw.get("use_tab_color", defaults.windows_terminal.use_tab_color)),
             title_mode=str(wt_raw.get("title_mode", defaults.windows_terminal.title_mode)),
         ),
-    )
-
-
-def _save_settings(settings: AppSettings) -> None:
-    _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _SETTINGS_FILE.write_text(
-        json.dumps(_settings_to_dict(settings), ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
 
 
@@ -2906,6 +2909,7 @@ class SettingsView(ttk.Frame):
             ("users", "Schnellauswahl-Benutzer"),
             ("toolbar", "Toolbar"),
             ("terminal", "Windows Terminal"),
+            ("transfer", "Export / Import"),
             ("reset", "Zurücksetzen"),
         ]
         ttk.Label(nav, text="Bereiche", style="SettingsNavTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 10))
@@ -2918,6 +2922,7 @@ class SettingsView(ttk.Frame):
         self._section_frames["users"] = self._build_users_section()
         self._section_frames["toolbar"] = self._build_toolbar_section()
         self._section_frames["terminal"] = self._build_terminal_section()
+        self._section_frames["transfer"] = self._build_transfer_section()
         self._section_frames["reset"] = self._build_reset_section()
         self._show_section(self._active_section)
 
@@ -2988,11 +2993,52 @@ class SettingsView(ttk.Frame):
         self._title_mode_combo.grid(row=2, column=1, sticky="ew", pady=6)
         return frame
 
+    def _build_transfer_section(self) -> ttk.Frame:
+        frame = self._build_section_frame("Export / Import", "Speichere deine Einstellungen separat oder lade sie aus einer JSON-Datei wieder ein.")
+        ttk.Button(frame, text="Einstellungen exportieren…", command=self._export_settings).grid(row=2, column=0, sticky="w", pady=(0, 8))
+        ttk.Button(frame, text="Einstellungen importieren…", command=self._import_settings).grid(row=3, column=0, sticky="w")
+        return frame
+
     def _build_reset_section(self) -> ttk.Frame:
         frame = self._build_section_frame("Zurücksetzen", "Trenne dauerhaft gespeicherte Einstellungen sauber vom aktuellen Ansichts-Zustand.")
         ttk.Button(frame, text="Einstellungen zurücksetzen", command=self._reset_settings).grid(row=2, column=0, sticky="w", pady=(0, 8))
         ttk.Button(frame, text="Farben und Ordner auf Startzustand zurücksetzen", command=self._reset_view_state).grid(row=3, column=0, sticky="w")
         return frame
+
+    def _export_settings(self) -> None:
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Einstellungen exportieren",
+            defaultextension=".json",
+            filetypes=[("JSON-Dateien", "*.json"), ("Alle Dateien", "*.*")],
+            initialfile="ssh-manager-settings.json",
+        )
+        if not path:
+            return
+        settings = self._collect_settings()
+        try:
+            Path(path).write_text(json.dumps(_settings_to_dict(settings), ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError as e:
+            messagebox.showerror("Export fehlgeschlagen", f"Datei konnte nicht gespeichert werden:\n{e}", parent=self)
+            return
+        ToastNotification(self._app, "Einstellungen exportiert")
+
+    def _import_settings(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Einstellungen importieren",
+            filetypes=[("JSON-Dateien", "*.json"), ("Alle Dateien", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            settings = _load_settings_from_path(Path(path))
+        except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
+            messagebox.showerror("Import fehlgeschlagen", f"Datei konnte nicht gelesen werden:\n{e}", parent=self)
+            return
+        self._app.apply_settings(settings)
+        self.load_from_app()
+        ToastNotification(self._app, "Einstellungen importiert")
 
     def _show_section(self, key: str) -> None:
         self._active_section = key
@@ -3001,6 +3047,7 @@ class SettingsView(ttk.Frame):
             "users": "Schnellauswahl-Benutzer",
             "toolbar": "Toolbar",
             "terminal": "Windows Terminal",
+            "transfer": "Export / Import",
             "reset": "Zurücksetzen",
         }
         for section_key, frame in self._section_frames.items():
@@ -3177,6 +3224,9 @@ class SSHManagerApp(tk.Tk):
 
         settings_menu = tk.Menu(menubar, tearoff=False)
         settings_menu.add_command(label="Einstellungen öffnen", command=self.show_settings_view)
+        settings_menu.add_command(label="Einstellungen exportieren…", command=self._export_settings_dialog)
+        settings_menu.add_command(label="Einstellungen importieren…", command=self._import_settings_dialog)
+        settings_menu.add_separator()
         settings_menu.add_command(label="Einstellungen zurücksetzen", command=self.reset_settings)
         menubar.add_cascade(label="Einstellungen", menu=settings_menu)
 
@@ -3286,6 +3336,16 @@ class SSHManagerApp(tk.Tk):
 
     def get_terminal_settings(self) -> WindowsTerminalSettings:
         return self.settings.windows_terminal
+
+    def _export_settings_dialog(self) -> None:
+        if self._settings_view is None:
+            return
+        self._settings_view._export_settings()
+
+    def _import_settings_dialog(self) -> None:
+        if self._settings_view is None:
+            return
+        self._settings_view._import_settings()
 
     def show_settings_view(self) -> None:
         if self._settings_view is None or self._main_frame is None:
