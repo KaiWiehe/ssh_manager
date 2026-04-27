@@ -1,4 +1,5 @@
 import json
+import tkinter as tk
 import os
 import sys
 import tempfile
@@ -8,7 +9,14 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import winreg
-from ssh_manager_app.actions_app import get_all_folder_names, get_ssh_aliases
+from ssh_manager_app.actions_app import (
+    close_app,
+    export_settings_dialog,
+    get_all_folder_names,
+    get_ssh_aliases,
+    import_settings_dialog,
+    show_search_history_menu,
+)
 from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
@@ -564,3 +572,62 @@ def test_layout_toolbar_buttons_places_only_enabled_buttons_in_order():
     assert app._toolbar_buttons["show_reload"].grid.call_args.kwargs == {"row": 0, "column": 5, "padx": (2, 2)}
     app._toolbar_buttons["show_open_tunnel"].grid.assert_not_called()
     assert app._toolbar_buttons["show_check_hosts"].grid.call_args.kwargs == {"row": 0, "column": 6, "padx": (2, 0)}
+
+
+def test_export_and_import_settings_dialog_delegate_only_when_view_exists():
+    app = MagicMock()
+    app._settings_view = None
+
+    export_settings_dialog(app)
+    import_settings_dialog(app)
+
+    app = MagicMock()
+    app._settings_view = MagicMock()
+
+    export_settings_dialog(app)
+    import_settings_dialog(app)
+
+    app._settings_view._export_settings.assert_called_once_with()
+    app._settings_view._import_settings.assert_called_once_with()
+
+
+def test_close_app_persists_state_before_destroy():
+    app = MagicMock()
+
+    close_app(app)
+
+    app._persist_ui_state.assert_called_once_with()
+    app.destroy.assert_called_once_with()
+
+
+def test_show_search_history_menu_builds_entries_and_popup_for_history():
+    app = MagicMock()
+    app._search_history = ["alpha", "beta"]
+    app._search_history_btn.winfo_rootx.return_value = 100
+    app._search_history_btn.winfo_rooty.return_value = 50
+    app._search_history_btn.winfo_height.return_value = 20
+
+    menu = MagicMock()
+    with patch("ssh_manager_app.actions_app.tk.Menu", return_value=menu):
+        show_search_history_menu(app)
+
+    labels = [call.kwargs.get("label") for call in menu.add_command.call_args_list]
+    assert labels == ["alpha", "beta", "Verlauf leeren"]
+    menu.add_separator.assert_called_once_with()
+    menu.tk_popup.assert_called_once_with(100, 70)
+
+
+def test_show_search_history_menu_shows_placeholder_when_empty():
+    app = MagicMock()
+    app._search_history = []
+    app._search_history_btn.winfo_rootx.return_value = 5
+    app._search_history_btn.winfo_rooty.return_value = 7
+    app._search_history_btn.winfo_height.return_value = 11
+
+    menu = MagicMock()
+    with patch("ssh_manager_app.actions_app.tk.Menu", return_value=menu):
+        show_search_history_menu(app)
+
+    menu.add_command.assert_called_once_with(label="Kein Suchverlauf", state=tk.DISABLED)
+    menu.add_separator.assert_not_called()
+    menu.tk_popup.assert_called_once_with(5, 18)
