@@ -62,6 +62,18 @@ def edit_session_note_callback(app, session) -> None:
     edit_session_note(app, session)
 
 
+def export_settings_dialog_callback(app) -> None:
+    from .actions_app import export_settings_dialog
+
+    export_settings_dialog(app)
+
+
+def import_settings_dialog_callback(app) -> None:
+    from .actions_app import import_settings_dialog
+
+    import_settings_dialog(app)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -122,8 +134,8 @@ def build_main_ui(self) -> None:
 
     settings_menu = tk.Menu(menubar, tearoff=False)
     settings_menu.add_command(label="Einstellungen öffnen", command=self.show_settings_view)
-    settings_menu.add_command(label="Einstellungen exportieren…", command=self._export_settings_dialog)
-    settings_menu.add_command(label="Einstellungen importieren…", command=self._import_settings_dialog)
+    settings_menu.add_command(label="Einstellungen exportieren…", command=lambda: export_settings_dialog_callback(self))
+    settings_menu.add_command(label="Einstellungen importieren…", command=lambda: import_settings_dialog_callback(self))
     settings_menu.add_separator()
     settings_menu.add_command(label="Einstellungen zurücksetzen", command=self.reset_settings)
     menubar.add_cascade(label="Einstellungen", menu=settings_menu)
