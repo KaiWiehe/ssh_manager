@@ -212,6 +212,18 @@ def on_search_changed_callback(app) -> None:
     on_search_changed(app)
 
 
+def preview_toolbar_visibility_callback(app, toolbar_settings) -> None:
+    from .actions_ui import preview_toolbar_visibility
+
+    preview_toolbar_visibility(app, toolbar_settings)
+
+
+def preview_source_visibility_callback(app, source_visibility) -> None:
+    from .actions_ui import preview_source_visibility
+
+    preview_source_visibility(app, source_visibility)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")

@@ -361,7 +361,9 @@ class SettingsView(ttk.Frame):
         self._title_mode_var.set(self.TITLE_MODE_LABELS.get(settings.windows_terminal.title_mode, self.TITLE_MODE_LABELS["default"]))
 
     def _on_toolbar_changed(self) -> None:
-        self._app.preview_toolbar_visibility(self._collect_toolbar_settings())
+        from .actions_ui import preview_toolbar_visibility
+
+        preview_toolbar_visibility(self._app, self._collect_toolbar_settings())
 
     def _column_label(self, key: str) -> str:
         return {
@@ -400,7 +402,9 @@ class SettingsView(ttk.Frame):
         return SourceVisibilitySettings(**{key: var.get() for key, var in self._source_visibility_vars.items()})
 
     def _on_source_visibility_changed(self) -> None:
-        self._app.preview_source_visibility(self._collect_source_visibility_settings())
+        from .actions_ui import preview_source_visibility
+
+        preview_source_visibility(self._app, self._collect_source_visibility_settings())
 
     def _collect_settings(self) -> AppSettings:
         quick_users = [line.strip() for line in self._quick_users_text.get("1.0", "end").splitlines() if line.strip()]

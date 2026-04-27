@@ -12,7 +12,6 @@ from tkinter import messagebox, ttk
 from ssh_manager_app import (
     AppSettings,
     ToolbarSettings,
-    SourceVisibilitySettings,
     Session,
     WindowsTerminalSettings,
     WINDOW_MIN_SIZE,
@@ -47,10 +46,7 @@ from ssh_manager_app.actions_ui import (
     deselect_all,
     expand_all,
     invert_selection,
-    on_search_changed,
     on_selection_changed,
-    preview_source_visibility,
-    preview_toolbar_visibility,
     reset_session_colors,
     reset_settings,
     reset_view_state,
@@ -116,12 +112,6 @@ class SSHManagerApp(tk.Tk):
         build_main_ui(self)
         self.protocol("WM_DELETE_WINDOW", lambda: close_app_callback(self))
 
-    def preview_toolbar_visibility(self, toolbar_settings: ToolbarSettings) -> None:
-        preview_toolbar_visibility(self, toolbar_settings)
-
-    def preview_source_visibility(self, source_visibility: SourceVisibilitySettings) -> None:
-        preview_source_visibility(self, source_visibility)
-
     def get_default_user(self) -> str:
         return self.settings.default_user
 
@@ -148,9 +138,6 @@ class SSHManagerApp(tk.Tk):
 
     def _on_selection_changed(self, count: int) -> None:
         on_selection_changed(self, count)
-
-    def _on_search_changed(self) -> None:
-        on_search_changed(self)
 
     def _select_all(self) -> None:
         select_all(self)
