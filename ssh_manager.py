@@ -12,14 +12,21 @@ from ssh_manager_app import (
     ToolbarSettings,
     SourceVisibilitySettings,
     Session,
+    WindowsTerminalSettings,
     WINDOW_MIN_SIZE,
     WINDOW_TITLE,
+    REGISTRY_PATH,
+    default_settings,
     load_app_sessions,
+    load_filezilla_config_sessions,
     load_notes,
     load_settings,
+    load_ssh_config_sessions,
     load_ui_state,
     save_app_sessions,
 )
+
+from ssh_manager_app.constants import _SSH_CONFIG_DEFAULT_FOLDER
 
 from ssh_manager_app.core import (
     RegistryReader,
