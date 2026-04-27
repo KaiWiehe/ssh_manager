@@ -72,6 +72,14 @@ from ssh_manager_app.actions_sessions import (
     duplicate_ssh_alias,
     open_appdata_jsons_in_vscode,
 )
+from ssh_manager_app.actions_app import (
+    close_app,
+    export_settings_dialog,
+    get_all_folder_names,
+    get_ssh_aliases,
+    import_settings_dialog,
+    show_search_history_menu,
+)
 from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.actions_remote import (
     connect_sessions,
@@ -152,17 +160,7 @@ class SSHManagerApp(tk.Tk):
         apply_search_history_entry(self, value)
 
     def _show_search_history_menu(self) -> None:
-        menu = tk.Menu(self, tearoff=False)
-        if self._search_history:
-            for item in self._search_history:
-                menu.add_command(label=item, command=lambda v=item: self._apply_search_history_entry(v))
-            menu.add_separator()
-            menu.add_command(label="Verlauf leeren", command=self._clear_search_history)
-        else:
-            menu.add_command(label="Kein Suchverlauf", state=tk.DISABLED)
-        x = self._search_history_btn.winfo_rootx()
-        y = self._search_history_btn.winfo_rooty() + self._search_history_btn.winfo_height()
-        menu.tk_popup(x, y)
+        show_search_history_menu(self)
 
     def _clear_search_history(self) -> None:
         clear_search_history(self)
@@ -211,14 +209,10 @@ class SSHManagerApp(tk.Tk):
         return self.settings.windows_terminal
 
     def _export_settings_dialog(self) -> None:
-        if self._settings_view is None:
-            return
-        self._settings_view._export_settings()
+        export_settings_dialog(self)
 
     def _import_settings_dialog(self) -> None:
-        if self._settings_view is None:
-            return
-        self._settings_view._import_settings()
+        import_settings_dialog(self)
 
     def _persist_ui_state(self) -> None:
         persist_ui_state(self)
@@ -275,16 +269,10 @@ class SSHManagerApp(tk.Tk):
         quick_connect_session(self, session)
 
     def _get_all_folder_names(self) -> list[str]:
-        """Gibt alle bekannten Ordnernamen aus allen Session-Quellen zurück."""
-        folders = set()
-        for s in self._sessions:
-            if s.folder_key:
-                folders.add(s.folder_key)
-        return sorted(folders)
+        return get_all_folder_names(self)
 
     def _get_ssh_aliases(self) -> list[str]:
-        """Gibt alle SSH-Config-Aliases zurück (für Alias-Picker im Dialog)."""
-        return sorted(s.display_name for s in self._sessions if s.source == "ssh_config")
+        return get_ssh_aliases(self)
 
     def _rebuild_sessions(self, *, reload_winscp: bool = False) -> None:
         rebuild_sessions(self, reload_winscp=reload_winscp)
@@ -351,8 +339,7 @@ class SSHManagerApp(tk.Tk):
         open_in_winscp(self, sessions)
 
     def _on_close(self) -> None:
-        self._persist_ui_state()
-        self.destroy()
+        close_app(self)
 
 
 # ---------------------------------------------------------------------------
