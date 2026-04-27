@@ -545,6 +545,16 @@ def test_add_search_history_entry_deduplicates_limits_and_persists():
 
 
 
+def test_main_modules_import_cleanly():
+    import importlib
+
+    ui_module = importlib.import_module("ssh_manager_app.ui")
+    main_module = importlib.import_module("ssh_manager")
+
+    assert hasattr(ui_module, "build_main_ui")
+    assert hasattr(main_module, "SSHManagerApp")
+
+
 def test_layout_toolbar_buttons_places_only_enabled_buttons_in_order():
     app = MagicMock()
     app.settings = AppSettings()
