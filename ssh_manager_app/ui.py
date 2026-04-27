@@ -194,6 +194,12 @@ def open_appdata_jsons_in_vscode_callback(app) -> None:
     open_appdata_jsons_in_vscode(app)
 
 
+def close_app_callback(app) -> None:
+    from .actions_app import close_app
+
+    close_app(app)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -228,7 +234,7 @@ def build_main_ui(self) -> None:
     file_menu.add_command(label="Einstellungen", command=lambda: show_settings_view_callback(self))
     file_menu.add_command(label="JSONs in VS Code öffnen", command=lambda: open_appdata_jsons_in_vscode_callback(self))
     file_menu.add_separator()
-    file_menu.add_command(label="Beenden", command=self._on_close)
+    file_menu.add_command(label="Beenden", command=lambda: close_app_callback(self))
     menubar.add_cascade(label="Datei", menu=file_menu)
 
     selection_menu = tk.Menu(menubar, tearoff=False)

@@ -36,7 +36,7 @@ from ssh_manager_app.core import (
     _create_checkbox_images,
 )
 
-from ssh_manager_app.ui import build_main_ui, configure_app_styles
+from ssh_manager_app.ui import build_main_ui, close_app_callback, configure_app_styles
 from ssh_manager_app.actions_ui import (
     add_search_history_entry,
     apply_search_history_entry,
@@ -57,7 +57,7 @@ from ssh_manager_app.actions_ui import (
     select_all,
 )
 from ssh_manager_app.actions_sessions import add_session, open_appdata_jsons_in_vscode
-from ssh_manager_app.actions_app import close_app, get_all_folder_names, get_ssh_aliases, show_search_history_menu
+from ssh_manager_app.actions_app import get_all_folder_names, get_ssh_aliases, show_search_history_menu
 
 if TYPE_CHECKING:
     from ssh_manager_app.dialogs_settings_misc import SettingsView
@@ -114,7 +114,7 @@ class SSHManagerApp(tk.Tk):
         self._main_frame: ttk.Frame | None = None
         self._settings_view: SettingsView | None = None
         build_main_ui(self)
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.protocol("WM_DELETE_WINDOW", lambda: close_app_callback(self))
 
     def _add_search_history_entry(self, value: str) -> None:
         add_search_history_entry(self, value)
@@ -175,9 +175,6 @@ class SSHManagerApp(tk.Tk):
 
     def _collapse_all(self) -> None:
         collapse_all(self)
-
-    def _on_close(self) -> None:
-        close_app(self)
 
 
 # ---------------------------------------------------------------------------
