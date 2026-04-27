@@ -73,6 +73,7 @@ from ssh_manager_app.actions_sessions import (
     duplicate_ssh_alias,
     open_appdata_jsons_in_vscode,
 )
+from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.actions_remote import (
     connect_sessions,
     deploy_ssh_key,
@@ -204,61 +205,7 @@ class SSHManagerApp(tk.Tk):
         preview_source_visibility(self, source_visibility)
 
     def _edit_session_note(self, session: Session) -> None:
-        dialog = tk.Toplevel(self)
-        dialog.title("Notiz bearbeiten")
-        dialog.resizable(False, False)
-        dialog.transient(self)
-        dialog.grab_set()
-
-        frame = ttk.Frame(dialog, padding=16)
-        frame.pack(fill="both", expand=True)
-        frame.columnconfigure(0, weight=1)
-
-        ttk.Label(frame, text=f"Notiz für {session.display_name}:").grid(row=0, column=0, sticky="w", pady=(0, 6))
-        note_text = tk.Text(frame, width=48, height=6)
-        note_text.grid(row=1, column=0, sticky="ew")
-        current = self._notes.get(session.key, "")
-        if current:
-            note_text.insert("1.0", current)
-        note_text.focus_set()
-
-        result = {"saved": False}
-
-        def on_ok() -> None:
-            note = note_text.get("1.0", "end").strip()
-            if note:
-                self._notes[session.key] = note
-            else:
-                self._notes.pop(session.key, None)
-            save_notes(self._notes)
-            result["saved"] = True
-            dialog.destroy()
-
-        def on_cancel() -> None:
-            dialog.destroy()
-
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=2, column=0, pady=(12, 0))
-        ttk.Button(btn_frame, text="OK", command=on_ok, width=10).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Abbrechen", command=on_cancel, width=10).pack(side="left", padx=4)
-
-        dialog.update_idletasks()
-        pw = self.winfo_width()
-        ph = self.winfo_height()
-        px = self.winfo_x()
-        py = self.winfo_y()
-        w = dialog.winfo_reqwidth()
-        h = dialog.winfo_reqheight()
-        x = px + (pw - w) // 2
-        y = py + (ph - h) // 2
-        dialog.geometry(f"+{x}+{y}")
-        dialog.bind("<Escape>", lambda _e: on_cancel())
-        dialog.bind("<Control-Return>", lambda _e: on_ok())
-        self.wait_window(dialog)
-        if result["saved"]:
-            self._tree.refresh(self._sessions)
-            self._update_notes_info(session)
-            self._persist_ui_state()
+        edit_session_note(self, session)
 
     def get_default_user(self) -> str:
         return self.settings.default_user
