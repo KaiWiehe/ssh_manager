@@ -36,6 +36,31 @@ from ssh_manager_app.core import (
 )
 
 from ssh_manager_app.ui import build_main_ui, configure_app_styles
+from ssh_manager_app.actions_ui import (
+    add_search_history_entry,
+    apply_search_history_entry,
+    apply_settings,
+    build_visible_sessions,
+    clear_search_history,
+    collapse_all,
+    deselect_all,
+    expand_all,
+    invert_selection,
+    on_search_changed,
+    on_selection_changed,
+    persist_ui_state,
+    preview_source_visibility,
+    preview_toolbar_visibility,
+    rebuild_sessions,
+    reload_sessions,
+    reset_session_colors,
+    reset_settings,
+    reset_view_state,
+    select_all,
+    show_main_view,
+    show_settings_view,
+    update_notes_info,
+)
 from ssh_manager_app.actions_sessions import (
     add_session,
     edit_session,
@@ -116,24 +141,20 @@ class SSHManagerApp(tk.Tk):
             self._initial_open_folders = set()
         self._toolbar_buttons: dict[str, ttk.Button] = {}
         self._terminal_launcher = TerminalLauncher
+        self._registry_reader = RegistryReader
+        self._registry_path = REGISTRY_PATH
+        self._default_settings_factory = default_settings
+        self._ssh_config_default_folder = _SSH_CONFIG_DEFAULT_FOLDER
         self._main_frame: ttk.Frame | None = None
         self._settings_view: SettingsView | None = None
         build_main_ui(self)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _add_search_history_entry(self, value: str) -> None:
-        query = value.strip()
-        if len(query) < 2:
-            return
-        self._search_history = [item for item in self._search_history if item != query]
-        self._search_history.insert(0, query)
-        self._search_history = self._search_history[:10]
-        self._persist_ui_state()
+        add_search_history_entry(self, value)
 
     def _apply_search_history_entry(self, value: str) -> None:
-        self._search_var.set(value)
-        self._search_entry.icursor("end")
-        self._search_entry.focus_set()
+        apply_search_history_entry(self, value)
 
     def _show_search_history_menu(self) -> None:
         menu = tk.Menu(self, tearoff=False)
@@ -149,23 +170,10 @@ class SSHManagerApp(tk.Tk):
         menu.tk_popup(x, y)
 
     def _clear_search_history(self) -> None:
-        self._search_history = []
-        self._persist_ui_state()
+        clear_search_history(self)
 
     def _build_visible_sessions(self) -> list[Session]:
-        visible: list[Session] = []
-        if self.settings.source_visibility.show_winscp:
-            visible.extend(self._winscp_sessions)
-        if self.settings.source_visibility.show_app_connections:
-            visible.extend(self._app_sessions)
-        if self.settings.source_visibility.show_ssh_config:
-            visible.extend(self._ssh_config_sessions)
-        if self.settings.source_visibility.show_filezilla_config:
-            visible.extend(self._filezilla_sessions)
-        return sorted(
-            visible,
-            key=lambda s: (0 if s.folder_key == _SSH_CONFIG_DEFAULT_FOLDER else 1, s.folder_key.lower(), s.display_name.lower()),
-        )
+        return build_visible_sessions(self)
 
     def _layout_toolbar_buttons(self) -> None:
         col = 2
@@ -190,15 +198,10 @@ class SSHManagerApp(tk.Tk):
                 col += 1
 
     def preview_toolbar_visibility(self, toolbar_settings: ToolbarSettings) -> None:
-        self.settings.toolbar = toolbar_settings
-        self._layout_toolbar_buttons()
-        self._tree.update_toolbar_settings(toolbar_settings)
+        preview_toolbar_visibility(self, toolbar_settings)
 
     def preview_source_visibility(self, source_visibility: SourceVisibilitySettings) -> None:
-        self.settings.source_visibility = source_visibility
-        self._sessions = self._build_visible_sessions()
-        self._tree.refresh(self._sessions)
-        self._persist_ui_state()
+        preview_source_visibility(self, source_visibility)
 
     def _edit_session_note(self, session: Session) -> None:
         dialog = tk.Toplevel(self)
@@ -277,103 +280,49 @@ class SSHManagerApp(tk.Tk):
         self._settings_view._import_settings()
 
     def _persist_ui_state(self) -> None:
-        save_ui_state(
-            self._tree.get_open_folders(),
-            self._tree.get_session_colors(),
-            {
-                "main": self._search_var.get(),
-                "last_remote_command": self._initial_toolbar_search_texts.get("last_remote_command", ""),
-                "search_history": list(self._search_history),
-            },
-        )
+        persist_ui_state(self)
 
     def show_settings_view(self) -> None:
-        if self._settings_view is None or self._main_frame is None:
-            return
-        self._settings_view.load_from_app()
-        self._main_frame.grid_remove()
-        self._settings_view.grid(row=0, column=0, sticky="nsew")
+        show_settings_view(self)
 
     def show_main_view(self) -> None:
-        if self._settings_view is not None:
-            self._settings_view.grid_remove()
-        if self._main_frame is not None:
-            self._main_frame.grid()
-        self._layout_toolbar_buttons()
+        show_main_view(self)
 
     def apply_settings(self, settings: AppSettings) -> None:
-        self.settings = settings
-        save_settings(settings)
-        self._layout_toolbar_buttons()
-        self._search_entry.focus_set()
-        ToastNotification(self, "Einstellungen gespeichert")
+        apply_settings(self, settings)
 
     def reset_settings(self) -> None:
-        self.apply_settings(default_settings())
-        if self._settings_view is not None:
-            self._settings_view.load_from_app()
+        reset_settings(self)
 
     def _reset_session_colors(self) -> None:
-        for session_key in list(self._tree.get_session_colors().keys()):
-            self._tree.set_session_color(session_key, None)
-        ToastNotification(self, "Farben zurückgesetzt")
+        reset_session_colors(self)
 
     def reset_view_state(self) -> None:
-        self._search_var.set("")
-        self._tree.populate(self._sessions, open_folders=set(self._initial_open_folders))
-        current_colors = set(self._tree.get_session_colors())
-        startup_colors = dict(self._initial_session_colors)
-        for session_key in current_colors | set(startup_colors):
-            self._tree.set_session_color(session_key, startup_colors.get(session_key))
-        ToastNotification(self, "Ansicht auf Startzustand zurückgesetzt")
+        reset_view_state(self)
 
     def _invert_selection(self) -> None:
-        self._tree.invert_checked()
+        invert_selection(self)
 
     def _update_notes_info(self, session: Session | None = None) -> None:
-        if not hasattr(self, "_notes_info_var"):
-            return
-        if session is None:
-            self._notes_info_var.set("Notizinfo: Zeige den Mauszeiger auf Name oder Notiz, oder nutze Rechtsklick → Notiz bearbeiten…")
-            return
-        note = self._notes.get(session.key, "").strip()
-        if note:
-            self._notes_info_var.set(f"Notiz für {session.display_name}: {note}")
-        else:
-            self._notes_info_var.set(f"Notiz für {session.display_name}: Keine Notiz hinterlegt")
+        update_notes_info(self, session)
 
     def _on_selection_changed(self, count: int) -> None:
-        """Callback vom SessionTree – aktualisiert den Verbinden-Button."""
-        if count > 0:
-            self._connect_btn.config(
-                text=f"Verbinden ({count} ausgewählt)",
-                state=tk.NORMAL,
-            )
-        else:
-            self._connect_btn.config(text="Verbinden", state=tk.DISABLED)
+        on_selection_changed(self, count)
 
     def _on_search_changed(self) -> None:
-        value = self._search_var.get()
-        self._tree.filter(value)
-        self._persist_ui_state()
-        self.after_cancel(self._search_history_after_id) if getattr(self, '_search_history_after_id', None) else None
-        query = value.strip()
-        if len(query) >= 2:
-            self._search_history_after_id = self.after(450, lambda q=query: self._add_search_history_entry(q))
-        else:
-            self._search_history_after_id = None
+        on_search_changed(self)
 
     def _select_all(self) -> None:
-        self._tree.set_all_checked(True)
+        select_all(self)
 
     def _deselect_all(self) -> None:
-        self._tree.set_all_checked(False)
+        deselect_all(self)
 
     def _expand_all(self) -> None:
-        self._tree.expand_all()
+        expand_all(self)
 
     def _collapse_all(self) -> None:
-        self._tree.collapse_all()
+        collapse_all(self)
 
     def _on_connect(self) -> None:
         connect_sessions(self, self._tree.get_selected_sessions())
@@ -397,27 +346,10 @@ class SSHManagerApp(tk.Tk):
         return sorted(s.display_name for s in self._sessions if s.source == "ssh_config")
 
     def _rebuild_sessions(self, *, reload_winscp: bool = False) -> None:
-        """Merged alle Session-Quellen und aktualisiert den Baum."""
-        self._ssh_config_sessions = load_ssh_config_sessions()
-        self._filezilla_sessions = load_filezilla_config_sessions()
-        if reload_winscp:
-            try:
-                self._winscp_sessions = RegistryReader().load_sessions()
-            except OSError as e:
-                messagebox.showerror(
-                    "Registry-Fehler",
-                    f"WinSCP-Sessions konnten nicht geladen werden:\n{e}\n\n"
-                    f"Pfad: HKCU\\{REGISTRY_PATH}",
-                    parent=self,
-                )
-                self._winscp_sessions = []
-        self._sessions = self._build_visible_sessions()
-        self._tree.refresh(self._sessions)
+        rebuild_sessions(self, reload_winscp=reload_winscp)
 
     def _reload_sessions(self) -> None:
-        """Lädt WinSCP- und SSH-Config-Sessions erneut ein und aktualisiert die Ansicht."""
-        self._rebuild_sessions(reload_winscp=True)
-        ToastNotification(self, "Verbindungen neu geladen")
+        reload_sessions(self)
 
     def _add_session(self, folder_preset: str = "") -> None:
         add_session(self, folder_preset=folder_preset)
