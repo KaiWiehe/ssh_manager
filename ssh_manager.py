@@ -119,6 +119,10 @@ class SSHManagerApp(tk.Tk):
         self._startup_settings = load_settings()
         self._winscp_sessions = winscp_sessions
         self._filezilla_sessions = load_filezilla_config_sessions()
+        self._registry_reader = RegistryReader
+        self._registry_path = REGISTRY_PATH
+        self._default_settings_factory = default_settings
+        self._ssh_config_default_folder = _SSH_CONFIG_DEFAULT_FOLDER
 
         # App-eigene Sessions und SSH-Config-Sessions laden und mergen
         self._app_sessions: list[Session] = load_app_sessions()
@@ -136,10 +140,6 @@ class SSHManagerApp(tk.Tk):
             self._initial_open_folders = set()
         self._toolbar_buttons: dict[str, ttk.Button] = {}
         self._terminal_launcher = TerminalLauncher
-        self._registry_reader = RegistryReader
-        self._registry_path = REGISTRY_PATH
-        self._default_settings_factory = default_settings
-        self._ssh_config_default_folder = _SSH_CONFIG_DEFAULT_FOLDER
         self._main_frame: ttk.Frame | None = None
         self._settings_view: SettingsView | None = None
         build_main_ui(self)
