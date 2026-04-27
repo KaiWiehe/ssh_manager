@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import tkinter as tk
 
+from .actions_ui import persist_ui_state
+
 
 def show_search_history_menu(app) -> None:
     menu = tk.Menu(app, tearoff=False)
@@ -46,5 +48,5 @@ def import_settings_dialog(app) -> None:
 
 
 def close_app(app) -> None:
-    app._persist_ui_state()
+    persist_ui_state(app)
     app.destroy()

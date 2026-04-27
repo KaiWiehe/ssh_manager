@@ -49,7 +49,6 @@ from ssh_manager_app.actions_ui import (
     invert_selection,
     on_search_changed,
     on_selection_changed,
-    persist_ui_state,
     preview_source_visibility,
     preview_toolbar_visibility,
     rebuild_sessions,
@@ -60,7 +59,6 @@ from ssh_manager_app.actions_ui import (
     select_all,
     show_main_view,
     show_settings_view,
-    update_notes_info,
 )
 from ssh_manager_app.actions_sessions import (
     add_session,
@@ -193,9 +191,6 @@ class SSHManagerApp(tk.Tk):
     def _import_settings_dialog(self) -> None:
         import_settings_dialog(self)
 
-    def _persist_ui_state(self) -> None:
-        persist_ui_state(self)
-
     def show_settings_view(self) -> None:
         show_settings_view(self)
 
@@ -216,9 +211,6 @@ class SSHManagerApp(tk.Tk):
 
     def _invert_selection(self) -> None:
         invert_selection(self)
-
-    def _update_notes_info(self, session: Session | None = None) -> None:
-        update_notes_info(self, session)
 
     def _on_selection_changed(self, count: int) -> None:
         on_selection_changed(self, count)

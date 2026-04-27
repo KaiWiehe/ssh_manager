@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from .actions_ui import persist_ui_state, update_notes_info
 from .dialogs_toast import ToastNotification
 from .storage import save_notes
 
@@ -61,6 +62,6 @@ def edit_session_note(app, session) -> None:
     app.wait_window(dialog)
     if result["saved"]:
         app._tree.refresh(app._sessions)
-        app._update_notes_info(session)
-        app._persist_ui_state()
+        update_notes_info(app, session)
+        persist_ui_state(app)
         ToastNotification(app, "Notiz gespeichert")

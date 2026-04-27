@@ -32,6 +32,12 @@ def layout_toolbar_buttons(app) -> None:
             col += 1
 
 
+def persist_ui_state_callback(app) -> None:
+    from .actions_ui import persist_ui_state
+
+    persist_ui_state(app)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -154,7 +160,7 @@ def build_main_ui(self) -> None:
         on_open_in_winscp=self._open_in_winscp,
         on_run_remote_command=self._run_remote_command,
         on_open_via_jumphost=self._open_via_jumphost,
-        on_ui_state_changed=self._persist_ui_state,
+        on_ui_state_changed=lambda: persist_ui_state_callback(self),
         notes_getter=lambda key: self._notes.get(key, ""),
         on_edit_note=self._edit_session_note,
         toolbar_settings=self.settings.toolbar,

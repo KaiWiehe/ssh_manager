@@ -618,9 +618,10 @@ def test_export_and_import_settings_dialog_delegate_only_when_view_exists():
 def test_close_app_persists_state_before_destroy():
     app = MagicMock()
 
-    close_app(app)
+    with patch("ssh_manager_app.actions_app.persist_ui_state") as persist_mock:
+        close_app(app)
 
-    app._persist_ui_state.assert_called_once_with()
+    persist_mock.assert_called_once_with(app)
     app.destroy.assert_called_once_with()
 
 

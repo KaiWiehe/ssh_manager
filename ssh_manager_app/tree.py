@@ -185,8 +185,8 @@ class SessionTree(ttk.Frame):
         session = self._item_to_session.get(item_id)
         if session is not None:
             root = self.winfo_toplevel()
-            if hasattr(root, "_update_notes_info"):
-                root._update_notes_info(session)
+            from .actions_ui import update_notes_info
+            update_notes_info(root, session)
         self._tooltip = tk.Toplevel(self)
         self._tooltip.wm_overrideredirect(True)
         self._tooltip.attributes("-topmost", True)
@@ -203,8 +203,8 @@ class SessionTree(ttk.Frame):
             self._tooltip = None
         self._last_tooltip_item = None
         root = self.winfo_toplevel()
-        if hasattr(root, "_update_notes_info"):
-            root._update_notes_info(None)
+        from .actions_ui import update_notes_info
+        update_notes_info(root, None)
 
     def get_open_folders(self) -> set[str]:
         """Gibt folder_keys aller aktuell geöffneten Ordner zurück."""
