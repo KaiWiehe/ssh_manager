@@ -35,9 +35,6 @@ from ssh_manager_app.core import (
     RegistryReader,
     TerminalLauncher,
     _create_checkbox_images,
-    build_jump_wt_command,
-    build_remote_command_wt_command,
-    build_ssh_tunnel_command,
 )
 
 from ssh_manager_app.ui import build_main_ui, configure_app_styles
@@ -57,21 +54,16 @@ from ssh_manager_app.actions_remote import (
     deploy_ssh_key,
     remove_ssh_key,
     open_tunnel,
+    open_via_jumphost,
     resolve_users_for_sessions,
     run_remote_command,
 )
 
 from ssh_manager_app.dialogs import (
     MoveFolderDialog,
-    RemoteCommandConfirmDialog,
-    RemoteCommandDialog,
     SessionEditDialog,
     SettingsView,
     SshConfigInspectDialog,
-    SshCopyIdDialog,
-    SshRemoveKeyDialog,
-    SshTunnelDialog,
-    ToastNotification,
     UserDialog,
 )
 
@@ -497,47 +489,7 @@ class SSHManagerApp(tk.Tk):
         open_tunnel(self, session=session)
 
     def _open_via_jumphost(self, session: Session) -> None:
-        """Öffnet eine einzelne Verbindung temporär über einen Jumphost."""
-        dialog = JumpHostDialog(self, session, self._sessions, open_folders_getter=self._tree.get_open_folders)
-        self.wait_window(dialog)
-
-        if dialog.save_result is not None:
-            alias, jump_host, jump_port, jump_user, _target_key = dialog.save_result
-            target_user = self._resolve_single_session_user(session, title=f"Benutzername für {session.display_name}")
-            if target_user is None:
-                return
-            try:
-                _append_ssh_config_alias(alias, session, target_user, jump_host, jump_user, jump_port)
-            except ValueError as e:
-                messagebox.showwarning("SSH-Config", str(e), parent=self)
-                return
-            except OSError as e:
-                messagebox.showerror("SSH-Config", f"Fehler beim Schreiben von ~/.ssh/config:\n{e}", parent=self)
-                return
-            self._rebuild_sessions(reload_winscp=True)
-            ToastNotification(self, f"SSH-Config '{alias}' gespeichert")
-            return
-
-        if dialog.result is None:
-            return
-
-        jump_host, jump_user, jump_port = dialog.result
-        target_user = self._resolve_single_session_user(session, title=f"Benutzername für {session.display_name}")
-        if target_user is None:
-            return
-        try:
-            cmd = build_jump_wt_command(
-                session,
-                target_user,
-                jump_host,
-                jump_user or None,
-                jump_port,
-                self._tree.get_session_colors().get(session.key),
-                terminal_settings=self.get_terminal_settings(),
-            )
-            subprocess.Popen(cmd, shell=True)
-        except OSError as e:
-            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}", parent=self)
+        open_via_jumphost(self, session)
 
     def _resolve_users_for_sessions(self, sessions: list[Session], mode: str) -> list[tuple[Session, str]] | None:
         return resolve_users_for_sessions(self, sessions, mode)

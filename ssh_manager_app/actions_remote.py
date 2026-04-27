@@ -4,12 +4,14 @@ import subprocess
 from tkinter import messagebox
 
 from .core import (
+    _append_ssh_config_alias,
+    build_jump_wt_command,
     build_remote_command_wt_command,
     build_ssh_copy_id_command,
     build_ssh_remove_key_command,
     build_ssh_tunnel_command,
 )
-from .dialogs import RemoteCommandConfirmDialog, RemoteCommandDialog, SshCopyIdDialog, SshRemoveKeyDialog, SshTunnelDialog, UserDialog
+from .dialogs import JumpHostDialog, RemoteCommandConfirmDialog, RemoteCommandDialog, SshCopyIdDialog, SshRemoveKeyDialog, SshTunnelDialog, ToastNotification, UserDialog
 from .models import Session
 
 
@@ -128,6 +130,50 @@ def run_remote_command(app, sessions: list[Session]) -> None:
         terminal_settings=app.get_terminal_settings(),
     )
     try:
+        subprocess.Popen(cmd, shell=True)
+    except OSError as exc:
+        messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
+
+
+def open_via_jumphost(app, session: Session) -> None:
+    """Öffnet eine einzelne Verbindung temporär über einen Jumphost."""
+    dialog = JumpHostDialog(app, session, app._sessions, open_folders_getter=app._tree.get_open_folders)
+    app.wait_window(dialog)
+
+    if dialog.save_result is not None:
+        alias, jump_host, jump_port, jump_user, _target_key = dialog.save_result
+        target_user = app._resolve_single_session_user(session, title=f"Benutzername für {session.display_name}")
+        if target_user is None:
+            return
+        try:
+            _append_ssh_config_alias(alias, session, target_user, jump_host, jump_user, jump_port)
+        except ValueError as exc:
+            messagebox.showwarning("SSH-Config", str(exc), parent=app)
+            return
+        except OSError as exc:
+            messagebox.showerror("SSH-Config", f"Fehler beim Schreiben von ~/.ssh/config:\n{exc}", parent=app)
+            return
+        app._rebuild_sessions(reload_winscp=True)
+        ToastNotification(app, f"SSH-Config '{alias}' gespeichert")
+        return
+
+    if dialog.result is None:
+        return
+
+    jump_host, jump_user, jump_port = dialog.result
+    target_user = app._resolve_single_session_user(session, title=f"Benutzername für {session.display_name}")
+    if target_user is None:
+        return
+    try:
+        cmd = build_jump_wt_command(
+            session,
+            target_user,
+            jump_host,
+            jump_user or None,
+            jump_port,
+            app._tree.get_session_colors().get(session.key),
+            terminal_settings=app.get_terminal_settings(),
+        )
         subprocess.Popen(cmd, shell=True)
     except OSError as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
