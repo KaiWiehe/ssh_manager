@@ -53,6 +53,13 @@ from ssh_manager_app.actions_sessions import (
     duplicate_ssh_alias,
     open_appdata_jsons_in_vscode,
 )
+from ssh_manager_app.actions_remote import (
+    deploy_ssh_key,
+    remove_ssh_key,
+    open_tunnel,
+    resolve_users_for_sessions,
+    run_remote_command,
+)
 
 from ssh_manager_app.dialogs import (
     MoveFolderDialog,
@@ -481,48 +488,13 @@ class SSHManagerApp(tk.Tk):
         open_appdata_jsons_in_vscode(self)
 
     def _deploy_ssh_key(self, sessions: list[Session]) -> None:
-        """Öffnet den ssh-copy-id Dialog und startet den Key-Transfer im Terminal."""
-        dialog = SshCopyIdDialog(self, target_count=len(sessions), quick_users=self.get_quick_users(), default_user=self.get_default_user())
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        key_filename, user = dialog.result
-        try:
-            cmd = build_ssh_copy_id_command(sessions, key_filename, user, terminal_settings=self.get_terminal_settings())
-            subprocess.Popen(cmd, shell=True)
-        except OSError as e:
-            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+        deploy_ssh_key(self, sessions)
 
     def _remove_ssh_key(self, sessions: list[Session]) -> None:
-        """Öffnet den Remove-Key Dialog und entfernt den Key remote via SSH."""
-        dialog = SshRemoveKeyDialog(self, target_count=len(sessions), quick_users=self.get_quick_users(), default_user=self.get_default_user())
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        key_filename, user = dialog.result
-        try:
-            cmd = build_ssh_remove_key_command(sessions, key_filename, user, terminal_settings=self.get_terminal_settings())
-            subprocess.Popen(cmd, shell=True)
-        except OSError as e:
-            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+        remove_ssh_key(self, sessions)
 
     def _open_tunnel(self, session: Session | None = None) -> None:
-        """Öffnet den Tunnel-Dialog und startet den SSH-Tunnel im Terminal."""
-        dialog = SshTunnelDialog(
-            self,
-            session=session,
-            quick_users=self.get_quick_users(),
-            default_user=self.get_default_user(),
-        )
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        jumphost, local_port, remote_host, remote_port, user = dialog.result
-        try:
-            cmd = build_ssh_tunnel_command(jumphost, local_port, remote_host, remote_port, user, terminal_settings=self.get_terminal_settings())
-            subprocess.Popen(cmd)
-        except OSError as e:
-            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}")
+        open_tunnel(self, session=session)
 
     def _open_via_jumphost(self, session: Session) -> None:
         """Öffnet eine einzelne Verbindung temporär über einen Jumphost."""
@@ -568,75 +540,10 @@ class SSHManagerApp(tk.Tk):
             messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}", parent=self)
 
     def _resolve_users_for_sessions(self, sessions: list[Session], mode: str) -> list[tuple[Session, str]] | None:
-        """Löst Benutzernamen für Sessions auf, global oder pro Host."""
-        resolved: list[tuple[Session, str]] = []
-        if mode == "all":
-            missing = [s for s in sessions if not (s.is_ssh_config_session and s.username)]
-            shared_user = None
-            if missing:
-                dialog = UserDialog(self, title="Benutzername für alle Hosts")
-                self.wait_window(dialog)
-                if dialog.result is None:
-                    return None
-                shared_user = dialog.result
-            for session in sessions:
-                user = session.username if session.is_ssh_config_session and session.username else shared_user
-                if not user:
-                    messagebox.showwarning("Fehlender Benutzer", f"Für '{session.display_name}' konnte kein Benutzer bestimmt werden.", parent=self)
-                    return None
-                resolved.append((session, user))
-            return resolved
-
-        for session in sessions:
-            if session.is_ssh_config_session and session.username:
-                resolved.append((session, session.username))
-                continue
-            dialog = UserDialog(self, title=f"Benutzername für {session.display_name}")
-            self.wait_window(dialog)
-            if dialog.result is None:
-                return None
-            resolved.append((session, dialog.result))
-        return resolved
+        return resolve_users_for_sessions(self, sessions, mode)
 
     def _run_remote_command(self, sessions: list[Session]) -> None:
-        """Führt einen Remote-Befehl auf einem oder mehreren Hosts aus."""
-        runnable = [s for s in sessions if s.hostname]
-        if not runnable:
-            messagebox.showwarning("Keine Hosts", "Keine ausführbaren Hosts ausgewählt.", parent=self)
-            return
-
-        dialog = RemoteCommandDialog(
-            self,
-            target_count=len(runnable),
-            last_command=self._initial_toolbar_search_texts.get("last_remote_command", ""),
-            quick_users=self.get_quick_users(),
-            default_user=self.get_default_user(),
-        )
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        user_mode, command, close_on_success = dialog.result
-        self._initial_toolbar_search_texts["last_remote_command"] = command
-
-        session_users = self._resolve_users_for_sessions(runnable, user_mode)
-        if session_users is None:
-            return
-
-        confirm = RemoteCommandConfirmDialog(self, command, session_users, close_on_success)
-        self.wait_window(confirm)
-        if not confirm.result:
-            return
-
-        cmd = build_remote_command_wt_command(
-            [(session, user, command) for session, user in session_users],
-            close_on_success=close_on_success,
-            session_colors=self._tree.get_session_colors(),
-            terminal_settings=self.get_terminal_settings(),
-        )
-        try:
-            subprocess.Popen(cmd, shell=True)
-        except OSError as e:
-            messagebox.showerror("Fehler", f"Fehler beim Starten:\n{e}", parent=self)
+        run_remote_command(self, sessions)
 
     def _open_in_winscp(self, sessions: list[Session]) -> None:
         """Öffnet eine oder mehrere WinSCP-Sessions direkt in WinSCP."""
