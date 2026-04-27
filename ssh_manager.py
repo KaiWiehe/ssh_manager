@@ -41,6 +41,18 @@ from ssh_manager_app.core import (
 )
 
 from ssh_manager_app.ui import build_main_ui, configure_app_styles
+from ssh_manager_app.actions_sessions import (
+    add_session,
+    edit_session,
+    duplicate_app_session,
+    move_session,
+    move_sessions,
+    delete_session,
+    delete_folder,
+    rename_folder,
+    duplicate_ssh_alias,
+    open_appdata_jsons_in_vscode,
+)
 
 from ssh_manager_app.dialogs import (
     MoveFolderDialog,
@@ -427,166 +439,31 @@ class SSHManagerApp(tk.Tk):
         ToastNotification(self, "Verbindungen neu geladen")
 
     def _add_session(self, folder_preset: str = "") -> None:
-        """Öffnet den Dialog zum Anlegen einer neuen Session (App oder SSH-Alias)."""
-        dialog = SessionEditDialog(
-            self,
-            self._get_all_folder_names(),
-            ssh_aliases=self._get_ssh_aliases(),
-            folder_preset=folder_preset,
-        )
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        self._app_sessions.append(dialog.result)
-        if dialog.note_result:
-            self._notes[dialog.result.key] = dialog.note_result
-        else:
-            self._notes.pop(dialog.result.key, None)
-        save_notes(self._notes)
-        save_app_sessions(self._app_sessions)
-        self._rebuild_sessions()
+        add_session(self, folder_preset=folder_preset)
 
     def _edit_session(self, session: Session) -> None:
-        """Öffnet den Dialog zum Bearbeiten einer App-Session."""
-        dialog = SessionEditDialog(self, self._get_all_folder_names(), session=session, note=self._notes.get(session.key, ""))
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        for i, s in enumerate(self._app_sessions):
-            if s.key == session.key:
-                # Farbe auf neuen Key übertragen falls Key sich geändert hat (sollte nicht passieren)
-                self._app_sessions[i] = dialog.result
-                break
-        if dialog.note_result:
-            self._notes[dialog.result.key] = dialog.note_result
-        else:
-            self._notes.pop(dialog.result.key, None)
-        save_notes(self._notes)
-        save_app_sessions(self._app_sessions)
-        self._rebuild_sessions()
+        edit_session(self, session)
 
     def _duplicate_app_session(self, session: Session) -> None:
-        """Dupliziert eine App-Session (öffnet Dialog mit vorausgefüllten Daten, neue UUID)."""
-        dialog = SessionEditDialog(
-            self, self._get_all_folder_names(), session=session, duplicate=True
-        )
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        self._app_sessions.append(dialog.result)
-        save_app_sessions(self._app_sessions)
-        self._rebuild_sessions()
+        duplicate_app_session(self, session)
 
     def _move_session(self, session: Session) -> None:
-        """Verschiebt eine App- oder SSH-Alias-Session in einen anderen Ordner."""
-        dialog = MoveFolderDialog(self, self._get_all_folder_names(), session.folder_key)
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        folder_path = [p for p in dialog.result.split("/") if p]
-        for i, s in enumerate(self._app_sessions):
-            if s.key == session.key:
-                self._app_sessions[i] = Session(
-                    key=s.key,
-                    display_name=s.display_name,
-                    folder_path=folder_path,
-                    hostname=s.hostname,
-                    username=s.username,
-                    port=s.port,
-                    source=s.source,
-                )
-                break
-        save_app_sessions(self._app_sessions)
-        self._rebuild_sessions()
+        move_session(self, session)
 
     def _move_sessions(self, sessions: list[Session]) -> None:
-        """Verschiebt mehrere App-/SSH-Alias-Sessions in denselben Ordner."""
-        dialog = MoveFolderDialog(self, self._get_all_folder_names(), sessions[0].folder_key)
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        folder_path = [p for p in dialog.result.split("/") if p]
-        keys = {s.key for s in sessions}
-        for i, s in enumerate(self._app_sessions):
-            if s.key in keys:
-                self._app_sessions[i] = Session(
-                    key=s.key,
-                    display_name=s.display_name,
-                    folder_path=folder_path,
-                    hostname=s.hostname,
-                    username=s.username,
-                    port=s.port,
-                    source=s.source,
-                )
-        save_app_sessions(self._app_sessions)
-        self._rebuild_sessions()
+        move_sessions(self, sessions)
 
     def _delete_session(self, session: Session) -> None:
-        """Löscht eine App-Session nach Bestätigung."""
-        if not messagebox.askyesno(
-            "Verbindung löschen",
-            f"Verbindung '{session.display_name}' wirklich löschen?",
-            parent=self,
-        ):
-            return
-        self._app_sessions = [s for s in self._app_sessions if s.key != session.key]
-        save_app_sessions(self._app_sessions)
-        self._rebuild_sessions()
+        delete_session(self, session)
 
     def _delete_folder(self, sessions: list[Session], folder_key: str) -> None:
-        """Löscht alle App-Sessions in einem Ordner nach Bestätigung."""
-        if not messagebox.askyesno(
-            "Ordner löschen",
-            f"Ordner '{folder_key}' und alle {len(sessions)} Verbindung(en) darin löschen?",
-            parent=self,
-        ):
-            return
-        keys_to_delete = {s.key for s in sessions}
-        self._app_sessions = [s for s in self._app_sessions if s.key not in keys_to_delete]
-        save_app_sessions(self._app_sessions)
-        self._rebuild_sessions()
+        delete_folder(self, sessions, folder_key)
 
     def _rename_folder(self, folder_key: str) -> None:
-        """Benennt einen Ordner um, indem folder_path aller enthaltenen Sessions angepasst wird."""
-        parts = folder_key.split("/")
-        depth = len(parts) - 1
-        old_name = parts[depth]
-        prefix = parts[:depth]
-
-        new_name = simpledialog.askstring(
-            "Ordner umbenennen",
-            f"Neuer Name für '{old_name}':",
-            initialvalue=old_name,
-            parent=self,
-        )
-        if not new_name or new_name.strip() == old_name:
-            return
-        new_name = new_name.strip()
-
-        for session in self._app_sessions:
-            fp = session.folder_path
-            if (len(fp) > depth
-                    and fp[:depth] == prefix
-                    and fp[depth] == old_name):
-                session.folder_path = fp[:depth] + [new_name] + fp[depth + 1:]
-
-        save_app_sessions(self._app_sessions)
-        self._rebuild_sessions()
+        rename_folder(self, folder_key)
 
     def _duplicate_ssh_alias(self, session: Session) -> None:
-        """Dupliziert einen SSH-Config-Alias in einen anderen Ordner."""
-        dialog = SessionEditDialog(
-            self,
-            self._get_all_folder_names(),
-            ssh_aliases=self._get_ssh_aliases(),
-            alias_preset=session.display_name,
-        )
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return
-        self._app_sessions.append(dialog.result)
-        save_app_sessions(self._app_sessions)
-        self._rebuild_sessions()
+        duplicate_ssh_alias(self, session)
 
     def _inspect_ssh_config(self, session: Session) -> None:
         """Zeigt die effektive SSH-Konfiguration für einen Alias."""
@@ -601,11 +478,7 @@ class SSHManagerApp(tk.Tk):
 
     def _open_appdata_jsons_in_vscode(self) -> None:
         """Öffnet den SSH-Manager-AppData-Ordner mit JSON-Dateien in VS Code."""
-        try:
-            _APPDATA_DIR.mkdir(parents=True, exist_ok=True)
-            subprocess.Popen(f'code "{_APPDATA_DIR}"', shell=True)
-        except OSError as e:
-            messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{e}")
+        open_appdata_jsons_in_vscode(self)
 
     def _deploy_ssh_key(self, sessions: list[Session]) -> None:
         """Öffnet den ssh-copy-id Dialog und startet den Key-Transfer im Terminal."""

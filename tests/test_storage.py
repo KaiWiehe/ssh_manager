@@ -91,7 +91,7 @@ def test_save_and_load_app_sessions_roundtrip_for_app_and_alias_sources():
 
             sessions = [
                 Session(
-                    key=f"app__server-1",
+                    key=f"__app__server-1",
                     display_name="Server 1",
                     folder_path=["Team"],
                     hostname="10.0.0.1",
@@ -112,7 +112,7 @@ def test_save_and_load_app_sessions_roundtrip_for_app_and_alias_sources():
             save_app_sessions(sessions)
             loaded = load_app_sessions()
 
-    assert [s.key for s in loaded] == ["app__server-1", f"{_SSH_ALIAS_PREFIX}jump-prod"]
+    assert [s.key for s in loaded] == ["__app__server-1", f"{_SSH_ALIAS_PREFIX}jump-prod"]
     assert loaded[0].folder_path == ["Team"]
     assert loaded[1].port == 2222
 

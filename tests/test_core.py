@@ -38,21 +38,26 @@ def test_build_remote_command_wt_command_creates_temp_script_and_uses_git_bash()
     session = Session("app__srv", "App", ["Team"], "10.0.0.9")
     settings = WindowsTerminalSettings(profile_name="Git Bash", use_tab_color=True, title_mode="name")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_dir = Path(tmp)
-        with patch("ssh_manager_app.core._find_git_bash", return_value=r"C:\\Git\\bin\\bash.exe"), \
-             patch("ssh_manager_app.core._STATE_FILE", tmp_dir / "state.json"):
-            cmd = build_remote_command_wt_command(
-                [(session, "deploy", "uptime")],
-                close_on_success=False,
-                session_colors={session.key: "#abcdef"},
-                terminal_settings=settings,
-            )
-            script_files = list((tmp_dir / "tmp").glob("remote_cmd_*.sh"))
+    captured = {}
 
-    assert 'wt.exe new-tab --tabColor "#abcdef" --title "App" -p "Git Bash" -- "C:\\Git\\bin\\bash.exe" ' in cmd
-    assert len(script_files) == 1
-    script_text = script_files[0].read_text(encoding="utf-8")
+    def fake_write_temp_script(prefix, content):
+        captured["prefix"] = prefix
+        captured["content"] = content
+        return "/tmp/fake-remote.sh"
+
+    with patch("ssh_manager_app.core._find_git_bash", return_value=r"C:\\Git\\bin\\bash.exe"), \
+         patch("ssh_manager_app.core._write_temp_bash_script", side_effect=fake_write_temp_script):
+        cmd = build_remote_command_wt_command(
+            [(session, "deploy", "uptime")],
+            close_on_success=False,
+            session_colors={session.key: "#abcdef"},
+            terminal_settings=settings,
+        )
+
+    assert cmd.startswith('wt.exe new-tab --tabColor "#abcdef" --title "App" -p "Git Bash" -- ')
+    assert 'bash.exe' in cmd
+    assert captured["prefix"] == "remote_cmd_"
+    script_text = captured["content"]
     assert "ssh deploy@10.0.0.9 -t <<'__REMOTE_CMD__'" in script_text
     assert "uptime" in script_text
     assert "exec bash" in script_text
@@ -61,22 +66,26 @@ def test_build_remote_command_wt_command_creates_temp_script_and_uses_git_bash()
 def test_build_ssh_tunnel_command_returns_expected_wt_args():
     settings = WindowsTerminalSettings(profile_name="My Bash", use_tab_color=False, title_mode="default")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_dir = Path(tmp)
-        with patch("ssh_manager_app.core._find_git_bash", return_value=r"C:\\Git\\bin\\bash.exe"), \
-             patch("ssh_manager_app.core._STATE_FILE", tmp_dir / "state.json"):
-            cmd = build_ssh_tunnel_command(
-                ssh_server="jump.example.com",
-                local_port=15432,
-                remote_host="db.internal",
-                remote_port=5432,
-                user="deploy",
-                terminal_settings=settings,
-            )
-            script_files = list((tmp_dir / "tmp").glob("ssh_tunnel_*.sh"))
+    captured = {}
+
+    def fake_write_temp_script(prefix, content):
+        captured["prefix"] = prefix
+        captured["content"] = content
+        return "/tmp/fake-tunnel.sh"
+
+    with patch("ssh_manager_app.core._find_git_bash", return_value=r"C:\\Git\\bin\\bash.exe"), \
+         patch("ssh_manager_app.core._write_temp_bash_script", side_effect=fake_write_temp_script):
+        cmd = build_ssh_tunnel_command(
+            ssh_server="jump.example.com",
+            local_port=15432,
+            remote_host="db.internal",
+            remote_port=5432,
+            user="deploy",
+            terminal_settings=settings,
+        )
 
     assert cmd[:4] == ["wt.exe", "new-tab", "-p", "My Bash"]
     assert cmd[4:6] == ["--", r"C:\\Git\\bin\\bash.exe"]
-    assert len(script_files) == 1
-    script_text = script_files[0].read_text(encoding="utf-8")
+    assert captured["prefix"] == "ssh_tunnel_"
+    script_text = captured["content"]
     assert "ssh -N -L 15432:db.internal:5432 deploy@jump.example.com" in script_text

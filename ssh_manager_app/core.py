@@ -5,6 +5,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import tkinter as tk
 from pathlib import Path
@@ -326,6 +327,7 @@ def build_ssh_tunnel_command(
     ssh_server: str, local_port: int, remote_host: str, remote_port: int, user: str, terminal_settings: WindowsTerminalSettings | None = None
 ) -> list[str]:
     """Erzeugt den wt.exe-Aufruf für SSH Local Port Forwarding."""
+    settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
     tunnel_target = f"{local_port} -> {remote_host}:{remote_port} via {user}@{ssh_server}"
     script = "\n".join([

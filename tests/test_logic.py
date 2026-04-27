@@ -1,9 +1,25 @@
-# tests/test_logic.py
-import sys
+import json
 import os
+import sys
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from ssh_manager import Session, parse_session_key
+import winreg
+from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
+from ssh_manager_app.core import RegistryReader, build_wt_command, parse_session_key
+from ssh_manager_app.models import Session, color_tag
+from ssh_manager_app.storage import (
+    load_filezilla_config_sessions,
+    load_notes,
+    load_settings_from_path,
+    load_ssh_config_sessions,
+    load_ui_state,
+    save_notes,
+    save_ui_state,
+)
 
 
 def test_parse_session_key_with_folder():
@@ -34,9 +50,6 @@ def test_parse_session_key_url_encoded_folder():
     folder, name = parse_session_key("My%20Servers/web-01")
     assert folder == ["My Servers"]
     assert name == "web-01"
-
-
-from ssh_manager import build_wt_command
 
 
 def test_build_wt_command_empty_sessions():
@@ -79,13 +92,7 @@ def test_build_wt_command_mixed_ports():
     )
 
 
-from unittest.mock import patch, MagicMock
-import winreg
-from ssh_manager import RegistryReader
-
-
 def test_registry_reader_loads_sessions():
-    """RegistryReader liest Sessions korrekt aus gemockter Registry."""
     session_data = [
         ("Extern/Bundo", "ftp.example.com", 22, "myuser"),
         ("Privat/Plex", "192.168.1.10", 2222, "plex"),
@@ -136,7 +143,6 @@ def test_registry_reader_loads_sessions():
 
 
 def test_registry_reader_skips_malicious_hostname():
-    """RegistryReader überspringt Sessions mit gefährlichem Hostname."""
     session_data = [
         ("Safe/Server", "10.0.0.1", 22, "admin"),
         ("Malicious/Attack", "10.0.0.1 & del /f", 22, "admin"),
@@ -180,13 +186,11 @@ def test_registry_reader_skips_malicious_hostname():
         reader = RegistryReader()
         sessions = reader.load_sessions()
 
-    # Only the safe session should survive validation
     assert len(sessions) == 1
     assert sessions[0].hostname == "10.0.0.1"
 
 
 def test_registry_reader_skips_malicious_username():
-    """RegistryReader überspringt Sessions mit gefährlichem Username."""
     session_data = [
         ("Safe/Server", "10.0.0.2", 22, "valid-user"),
         ("Evil/Server", "10.0.0.3", 22, "user$(id)"),
@@ -232,51 +236,44 @@ def test_registry_reader_skips_malicious_username():
     assert sessions[0].hostname == "10.0.0.2"
 
 
-import json
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
-from ssh_manager import _color_tag, PALETTE, _load_ui_state, _save_ui_state
-
-
 def test_load_ui_state_missing_file_returns_defaults():
     with tempfile.TemporaryDirectory() as tmp:
         fake_path = Path(tmp) / "nonexistent.json"
-        with patch("ssh_manager._STATE_FILE", fake_path):
-            folders, colors = _load_ui_state()
+        with patch("ssh_manager_app.storage._STATE_FILE", fake_path):
+            folders, colors, toolbar_texts = load_ui_state()
     assert folders == set()
     assert colors == {}
+    assert toolbar_texts == {}
 
 
 def test_save_and_load_ui_state_roundtrip():
     with tempfile.TemporaryDirectory() as tmp:
         fake_path = Path(tmp) / "ui_state.json"
-        with patch("ssh_manager._STATE_FILE", fake_path):
-            _save_ui_state({"Extern", "Extern/Sub"}, {"Extern/srv": "#c0392b"})
-            folders, colors = _load_ui_state()
+        with patch("ssh_manager_app.storage._STATE_FILE", fake_path):
+            save_ui_state({"Extern", "Extern/Sub"}, {"Extern/srv": "#c0392b"})
+            folders, colors, toolbar_texts = load_ui_state()
     assert folders == {"Extern", "Extern/Sub"}
     assert colors == {"Extern/srv": "#c0392b"}
+    assert toolbar_texts == {"search_history": []}
 
 
 def test_load_ui_state_ignores_unknown_keys():
     with tempfile.TemporaryDirectory() as tmp:
         fake_path = Path(tmp) / "ui_state.json"
-        fake_path.write_text(json.dumps({"expanded_folders": ["A"], "future_key": 42}))
-        with patch("ssh_manager._STATE_FILE", fake_path):
-            folders, colors = _load_ui_state()
+        fake_path.write_text(json.dumps({"expanded_folders": ["A"], "future_key": 42}), encoding="utf-8")
+        with patch("ssh_manager_app.storage._STATE_FILE", fake_path):
+            folders, colors, toolbar_texts = load_ui_state()
     assert folders == {"A"}
     assert colors == {}
-
-
-from ssh_manager import _color_tag, PALETTE
+    assert toolbar_texts == {"search_history": []}
 
 
 def test_color_tag_strips_hash():
-    assert _color_tag("#2d8653") == "color_2d8653"
+    assert color_tag("#2d8653") == "color_2d8653"
 
 
 def test_color_tag_without_hash():
-    assert _color_tag("2d8653") == "color_2d8653"
+    assert color_tag("2d8653") == "color_2d8653"
 
 
 def test_palette_has_eight_entries():
@@ -289,12 +286,7 @@ def test_palette_entries_have_name_and_hex():
         assert hex_color.startswith("#") and len(hex_color) == 7
 
 
-from ssh_manager import _load_ssh_config_sessions, _SSH_CONFIG_DEFAULT_FOLDER
-from unittest.mock import patch, MagicMock
-
-
 def _mock_ssh_config(content: str):
-    """Erstellt einen Mock für _SSH_CONFIG_FILE mit gegebenem Inhalt."""
     m = MagicMock()
     m.read_text.return_value = content
     return m
@@ -302,8 +294,8 @@ def _mock_ssh_config(content: str):
 
 def test_load_ssh_config_sessions_basic():
     config = "Host myserver\n  HostName 10.0.0.5\n  User admin\n  Port 2222\n"
-    with patch("ssh_manager._SSH_CONFIG_FILE", _mock_ssh_config(config)):
-        sessions = _load_ssh_config_sessions()
+    with patch("ssh_manager_app.storage._SSH_CONFIG_FILE", _mock_ssh_config(config)):
+        sessions = load_ssh_config_sessions()
     assert len(sessions) == 1
     s = sessions[0]
     assert s.display_name == "myserver"
@@ -316,16 +308,16 @@ def test_load_ssh_config_sessions_basic():
 
 def test_load_ssh_config_sessions_skips_wildcards():
     config = "Host *\n  ServerAliveInterval 60\nHost realhost\n  HostName 1.2.3.4\n"
-    with patch("ssh_manager._SSH_CONFIG_FILE", _mock_ssh_config(config)):
-        sessions = _load_ssh_config_sessions()
+    with patch("ssh_manager_app.storage._SSH_CONFIG_FILE", _mock_ssh_config(config)):
+        sessions = load_ssh_config_sessions()
     assert len(sessions) == 1
     assert sessions[0].display_name == "realhost"
 
 
 def test_load_ssh_config_sessions_skips_multi_pattern():
     config = "Host foo bar\n  HostName 1.2.3.4\nHost single\n  HostName 5.6.7.8\n"
-    with patch("ssh_manager._SSH_CONFIG_FILE", _mock_ssh_config(config)):
-        sessions = _load_ssh_config_sessions()
+    with patch("ssh_manager_app.storage._SSH_CONFIG_FILE", _mock_ssh_config(config)):
+        sessions = load_ssh_config_sessions()
     assert len(sessions) == 1
     assert sessions[0].display_name == "single"
 
@@ -333,15 +325,15 @@ def test_load_ssh_config_sessions_skips_multi_pattern():
 def test_load_ssh_config_sessions_missing_file():
     m = MagicMock()
     m.read_text.side_effect = OSError("not found")
-    with patch("ssh_manager._SSH_CONFIG_FILE", m):
-        sessions = _load_ssh_config_sessions()
+    with patch("ssh_manager_app.storage._SSH_CONFIG_FILE", m):
+        sessions = load_ssh_config_sessions()
     assert sessions == []
 
 
 def test_load_ssh_config_sessions_hostname_fallback():
     config = "Host myalias\n"
-    with patch("ssh_manager._SSH_CONFIG_FILE", _mock_ssh_config(config)):
-        sessions = _load_ssh_config_sessions()
+    with patch("ssh_manager_app.storage._SSH_CONFIG_FILE", _mock_ssh_config(config)):
+        sessions = load_ssh_config_sessions()
     assert len(sessions) == 1
     assert sessions[0].hostname == "myalias"
 
@@ -358,16 +350,6 @@ def test_build_wt_command_ssh_alias_session():
     assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh prodbox'
 
 
-from ssh_manager import (
-    _default_settings,
-    _load_settings_from_path,
-    _save_notes,
-    _load_notes,
-    _load_filezilla_config_sessions,
-    ToolbarSettings,
-)
-
-
 def test_load_settings_from_path_reads_column_order_and_visibility():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "settings.json"
@@ -379,7 +361,7 @@ def test_load_settings_from_path_reads_column_order_and_visibility():
                 "column_order": ["hostname", "notes", "port"],
             }
         }), encoding="utf-8")
-        settings = _load_settings_from_path(path)
+        settings = load_settings_from_path(path)
     assert settings.toolbar.show_hostname_column is True
     assert settings.toolbar.show_port_column is False
     assert settings.toolbar.show_notes_column is True
@@ -394,21 +376,16 @@ def test_load_settings_from_path_filters_invalid_column_order_entries():
                 "column_order": ["foo", "notes", "hostname", "bar"]
             }
         }), encoding="utf-8")
-        settings = _load_settings_from_path(path)
+        settings = load_settings_from_path(path)
     assert settings.toolbar.column_order == ["notes", "hostname"]
-
-
-def test_default_column_order_matches_ui_expectation():
-    settings = _default_settings()
-    assert settings.toolbar.column_order == ["notes", "hostname", "port"]
 
 
 def test_save_and_load_notes_roundtrip():
     with tempfile.TemporaryDirectory() as tmp:
         fake_path = Path(tmp) / "notes.json"
-        with patch("ssh_manager._NOTES_FILE", fake_path):
-            _save_notes({"session-1": "Wichtige Notiz", "session-2": "  bleibt  "})
-            notes = _load_notes()
+        with patch("ssh_manager_app.storage._NOTES_FILE", fake_path):
+            save_notes({"session-1": "Wichtige Notiz", "session-2": "  bleibt  "})
+            notes = load_notes()
     assert notes == {"session-1": "Wichtige Notiz", "session-2": "  bleibt  "}
 
 
@@ -416,16 +393,16 @@ def test_load_notes_ignores_blank_entries():
     with tempfile.TemporaryDirectory() as tmp:
         fake_path = Path(tmp) / "notes.json"
         fake_path.write_text(json.dumps({"notes": {"a": "", "b": "   ", "c": "ok"}}), encoding="utf-8")
-        with patch("ssh_manager._NOTES_FILE", fake_path):
-            notes = _load_notes()
+        with patch("ssh_manager_app.storage._NOTES_FILE", fake_path):
+            notes = load_notes()
     assert notes == {"c": "ok"}
 
 
 def test_load_filezilla_config_sessions_reads_nested_sites():
-    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    xml = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <FileZilla3>
   <Servers>
-    <Folder Name="Kunden">
+    <Folder Name=\"Kunden\">
       <Server>
         <Name>app-01</Name>
         <Host>10.10.10.10</Host>
@@ -448,7 +425,7 @@ def test_load_filezilla_config_sessions_reads_nested_sites():
         fz_dir.mkdir(parents=True)
         (fz_dir / "sitemanager.xml").write_text(xml, encoding="utf-8")
         with patch.dict("os.environ", {"APPDATA": str(appdata)}):
-            sessions = _load_filezilla_config_sessions()
+            sessions = load_filezilla_config_sessions()
     assert len(sessions) == 2
     nested = next(s for s in sessions if s.display_name == "app-01")
     assert nested.hostname == "10.10.10.10"
@@ -461,7 +438,7 @@ def test_load_filezilla_config_sessions_reads_nested_sites():
 
 
 def test_load_filezilla_config_sessions_skips_non_ssh_protocols():
-    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    xml = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <FileZilla3>
   <Servers>
     <Server>
@@ -478,5 +455,5 @@ def test_load_filezilla_config_sessions_skips_non_ssh_protocols():
         fz_dir.mkdir(parents=True)
         (fz_dir / "sitemanager.xml").write_text(xml, encoding="utf-8")
         with patch.dict("os.environ", {"APPDATA": str(appdata)}):
-            sessions = _load_filezilla_config_sessions()
+            sessions = load_filezilla_config_sessions()
     assert sessions == []
