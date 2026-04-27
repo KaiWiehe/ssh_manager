@@ -9,25 +9,17 @@ from tkinter import messagebox, ttk
 
 from ssh_manager_app import (
     AppSettings,
-    REGISTRY_PATH,
     ToolbarSettings,
     SourceVisibilitySettings,
     Session,
     WINDOW_MIN_SIZE,
     WINDOW_TITLE,
-    default_settings,
     load_app_sessions,
-    load_filezilla_config_sessions,
     load_notes,
     load_settings,
-    load_ssh_config_sessions,
     load_ui_state,
     save_app_sessions,
-    save_notes,
-    save_settings,
-    save_ui_state,
 )
-from ssh_manager_app.constants import _SSH_CONFIG_DEFAULT_FOLDER
 
 from ssh_manager_app.core import (
     RegistryReader,
@@ -91,12 +83,7 @@ from ssh_manager_app.actions_open import (
     open_ssh_config_in_vscode,
 )
 
-from ssh_manager_app.dialogs import (
-    MoveFolderDialog,
-    SessionEditDialog,
-    SettingsView,
-    UserDialog,
-)
+from ssh_manager_app.dialogs import SettingsView
 
 class SSHManagerApp(tk.Tk):
     """Hauptfenster der SSH-Manager Applikation."""
