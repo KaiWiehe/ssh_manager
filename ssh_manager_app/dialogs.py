@@ -11,6 +11,25 @@ from . import DEFAULT_USER, QUICK_USERS, Session, WindowsTerminalSettings
 from .constants import _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_FILE
 
 _USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._-]+$")
+_HOSTNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._:-]+$")
+
+
+def _build_quickselect_buttons(parent: ttk.Frame, usernames: list[str], target_var: tk.StringVar, columns: int = 4, width: int = 14) -> ttk.Frame:
+    """Erzeugt ein kompaktes, umbrechendes Quickselect-Button-Grid."""
+    frame = ttk.Frame(parent)
+    button_columns = max(1, columns)
+    for col in range(button_columns):
+        frame.columnconfigure(col, weight=1)
+    for index, username in enumerate(usernames):
+        row = index // button_columns
+        col = index % button_columns
+        ttk.Button(
+            frame,
+            text=username,
+            command=lambda u=username: target_var.set(u),
+            width=width,
+        ).grid(row=row, column=col, padx=2, pady=2, sticky="ew")
+    return frame
 
 class UserDialog(tk.Toplevel):
     """
@@ -48,14 +67,8 @@ class UserDialog(tk.Toplevel):
 
         self._user_var = tk.StringVar(value=self._default_user)
 
-        # Quickselect-Buttons
-        for col, username in enumerate(self._quick_users):
-            ttk.Button(
-                frame,
-                text=username,
-                command=lambda u=username: self._user_var.set(u),
-                width=14,
-            ).grid(row=1, column=col, padx=2, pady=(0, 8))
+        quick_frame = _build_quickselect_buttons(frame, self._quick_users, self._user_var)
+        quick_frame.grid(row=1, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
 
         # Freitext-Eingabe
         ttk.Label(frame, text="Benutzername:").grid(
@@ -364,13 +377,8 @@ class SshCopyIdDialog(tk.Toplevel):
         ttk.Label(frame, text="Quickselect:").grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 4))
         self._user_var = tk.StringVar(value=self._default_user)
         quick_count = max(len(self._quick_users), 2)
-        for col, username in enumerate(self._quick_users):
-            ttk.Button(
-                frame,
-                text=username,
-                command=lambda u=username: self._user_var.set(u),
-                width=14,
-            ).grid(row=4, column=col, padx=2, pady=(0, 8))
+        quick_frame = _build_quickselect_buttons(frame, self._quick_users, self._user_var)
+        quick_frame.grid(row=4, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
 
         ttk.Label(frame, text="Benutzername:").grid(row=5, column=0, sticky="w", pady=(0, 4))
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
@@ -582,16 +590,9 @@ class RemoteCommandDialog(tk.Toplevel):
         ).grid(row=1, column=0, sticky="w", pady=(4, 8))
 
         ttk.Label(mode_frame, text="Quickselect:").grid(row=2, column=0, sticky="w", pady=(0, 4))
-        quick_frame = ttk.Frame(mode_frame)
-        quick_frame.grid(row=3, column=0, sticky="w")
         self._user_var = tk.StringVar(value=self._default_user)
-        for col, username in enumerate(self._quick_users):
-            ttk.Button(
-                quick_frame,
-                text=username,
-                command=lambda u=username: self._user_var.set(u),
-                width=14,
-            ).grid(row=0, column=col, padx=2, pady=(0, 6))
+        quick_frame = _build_quickselect_buttons(mode_frame, self._quick_users, self._user_var)
+        quick_frame.grid(row=3, column=0, sticky="ew", pady=(0, 6))
 
         user_entry_frame = ttk.Frame(mode_frame)
         user_entry_frame.grid(row=4, column=0, sticky="ew")
@@ -821,13 +822,8 @@ class SshTunnelDialog(tk.Toplevel):
         ttk.Label(frame, text="Quickselect:").grid(row=10, column=0, columnspan=2, sticky="w", pady=(0, 4))
         self._user_var = tk.StringVar(value=self._default_user)
         quick_count = max(len(self._quick_users), 2)
-        for col, username in enumerate(self._quick_users):
-            ttk.Button(
-                frame,
-                text=username,
-                command=lambda u=username: self._user_var.set(u),
-                width=14,
-            ).grid(row=11, column=col, padx=2, pady=(0, 8))
+        quick_frame = _build_quickselect_buttons(frame, self._quick_users, self._user_var)
+        quick_frame.grid(row=11, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
 
         ttk.Label(frame, text="Benutzername:").grid(row=12, column=0, sticky="w", pady=(0, 4))
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
