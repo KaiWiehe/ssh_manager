@@ -247,12 +247,6 @@ class SSHManagerApp(tk.Tk):
     def _quick_connect_session(self, session: Session) -> None:
         quick_connect_session(self, session)
 
-    def _get_all_folder_names(self) -> list[str]:
-        return get_all_folder_names(self)
-
-    def _get_ssh_aliases(self) -> list[str]:
-        return get_ssh_aliases(self)
-
     def _rebuild_sessions(self, *, reload_winscp: bool = False) -> None:
         rebuild_sessions(self, reload_winscp=reload_winscp)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from tkinter import messagebox, simpledialog
 
+from .actions_app import get_all_folder_names, get_ssh_aliases
 from .constants import _APPDATA_DIR
 from .dialogs_move_folder import MoveFolderDialog
 from .dialogs_session_edit import SessionEditDialog
@@ -13,8 +14,8 @@ def add_session(app, folder_preset: str = "") -> None:
     """Öffnet den Dialog zum Anlegen einer neuen Session (App oder SSH-Alias)."""
     dialog = SessionEditDialog(
         app,
-        app._get_all_folder_names(),
-        ssh_aliases=app._get_ssh_aliases(),
+        get_all_folder_names(app),
+        ssh_aliases=get_ssh_aliases(app),
         folder_preset=folder_preset,
     )
     app.wait_window(dialog)
@@ -32,7 +33,7 @@ def add_session(app, folder_preset: str = "") -> None:
 
 def edit_session(app, session: Session) -> None:
     """Öffnet den Dialog zum Bearbeiten einer App-Session."""
-    dialog = SessionEditDialog(app, app._get_all_folder_names(), session=session, note=app._notes.get(session.key, ""))
+    dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, note=app._notes.get(session.key, ""))
     app.wait_window(dialog)
     if dialog.result is None:
         return
@@ -51,7 +52,7 @@ def edit_session(app, session: Session) -> None:
 
 def duplicate_app_session(app, session: Session) -> None:
     """Dupliziert eine App-Session (öffnet Dialog mit vorausgefüllten Daten, neue UUID)."""
-    dialog = SessionEditDialog(app, app._get_all_folder_names(), session=session, duplicate=True)
+    dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, duplicate=True)
     app.wait_window(dialog)
     if dialog.result is None:
         return
@@ -62,7 +63,7 @@ def duplicate_app_session(app, session: Session) -> None:
 
 def move_session(app, session: Session) -> None:
     """Verschiebt eine App- oder SSH-Alias-Session in einen anderen Ordner."""
-    dialog = MoveFolderDialog(app, app._get_all_folder_names(), session.folder_key)
+    dialog = MoveFolderDialog(app, get_all_folder_names(app), session.folder_key)
     app.wait_window(dialog)
     if dialog.result is None:
         return
@@ -85,7 +86,7 @@ def move_session(app, session: Session) -> None:
 
 def move_sessions(app, sessions: list[Session]) -> None:
     """Verschiebt mehrere App-/SSH-Alias-Sessions in denselben Ordner."""
-    dialog = MoveFolderDialog(app, app._get_all_folder_names(), sessions[0].folder_key)
+    dialog = MoveFolderDialog(app, get_all_folder_names(app), sessions[0].folder_key)
     app.wait_window(dialog)
     if dialog.result is None:
         return
@@ -163,8 +164,8 @@ def duplicate_ssh_alias(app, session: Session) -> None:
     """Dupliziert einen SSH-Config-Alias in einen anderen Ordner."""
     dialog = SessionEditDialog(
         app,
-        app._get_all_folder_names(),
-        ssh_aliases=app._get_ssh_aliases(),
+        get_all_folder_names(app),
+        ssh_aliases=get_ssh_aliases(app),
         alias_preset=session.display_name,
     )
     app.wait_window(dialog)
