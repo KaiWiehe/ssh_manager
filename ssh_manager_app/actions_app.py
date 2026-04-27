@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from .actions_ui import persist_ui_state
+from .actions_ui import apply_search_history_entry, clear_search_history, persist_ui_state
 
 
 def show_search_history_menu(app) -> None:
     menu = tk.Menu(app, tearoff=False)
     if app._search_history:
         for item in app._search_history:
-            menu.add_command(label=item, command=lambda v=item: app._apply_search_history_entry(v))
+            menu.add_command(label=item, command=lambda v=item: apply_search_history_entry(app, v))
         menu.add_separator()
-        menu.add_command(label="Verlauf leeren", command=app._clear_search_history)
+        menu.add_command(label="Verlauf leeren", command=lambda: clear_search_history(app))
     else:
         menu.add_command(label="Kein Suchverlauf", state=tk.DISABLED)
     x = app._search_history_btn.winfo_rootx()

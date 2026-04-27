@@ -200,6 +200,18 @@ def close_app_callback(app) -> None:
     close_app(app)
 
 
+def show_search_history_menu_callback(app) -> None:
+    from .actions_app import show_search_history_menu
+
+    show_search_history_menu(app)
+
+
+def on_search_changed_callback(app) -> None:
+    from .actions_ui import on_search_changed
+
+    on_search_changed(app)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -283,7 +295,7 @@ def build_main_ui(self) -> None:
     self._search_history = list(self._initial_toolbar_search_texts.get("search_history", []))
     self._search_entry = ttk.Entry(search_wrap, textvariable=self._search_var)
     self._search_entry.grid(row=0, column=0, sticky="ew")
-    self._search_history_btn = ttk.Button(search_wrap, text="▾", width=2, command=self._show_search_history_menu)
+    self._search_history_btn = ttk.Button(search_wrap, text="▾", width=2, command=lambda: show_search_history_menu_callback(self))
     self._search_history_btn.grid(row=0, column=1, padx=(2, 0))
 
     self._toolbar_buttons["show_select_all"] = ttk.Button(toolbar, text="Alle auswählen", command=self._select_all)
@@ -346,7 +358,7 @@ def build_main_ui(self) -> None:
     self._connect_btn.grid(row=0, column=0)
 
     self._search_history_after_id = None
-    self._search_var.trace_add("write", lambda *_: self._on_search_changed())
+    self._search_var.trace_add("write", lambda *_: on_search_changed_callback(self))
 
     self._settings_view = SettingsView(self, self)
 

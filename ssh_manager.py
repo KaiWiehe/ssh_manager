@@ -116,18 +116,6 @@ class SSHManagerApp(tk.Tk):
         build_main_ui(self)
         self.protocol("WM_DELETE_WINDOW", lambda: close_app_callback(self))
 
-    def _add_search_history_entry(self, value: str) -> None:
-        add_search_history_entry(self, value)
-
-    def _apply_search_history_entry(self, value: str) -> None:
-        apply_search_history_entry(self, value)
-
-    def _show_search_history_menu(self) -> None:
-        show_search_history_menu(self)
-
-    def _clear_search_history(self) -> None:
-        clear_search_history(self)
-
     def preview_toolbar_visibility(self, toolbar_settings: ToolbarSettings) -> None:
         preview_toolbar_visibility(self, toolbar_settings)
 
