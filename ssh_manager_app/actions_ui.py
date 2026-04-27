@@ -7,6 +7,29 @@ from .models import AppSettings, Session, SourceVisibilitySettings, ToolbarSetti
 from .storage import load_filezilla_config_sessions, load_ssh_config_sessions, save_settings, save_ui_state
 
 
+def layout_toolbar_buttons(app) -> None:
+    col = 2
+    order = [
+        "show_select_all",
+        "show_deselect_all",
+        "show_expand_all",
+        "show_collapse_all",
+        "show_add_connection",
+        "show_reload",
+        "show_open_tunnel",
+        "show_check_hosts",
+    ]
+    for key in order:
+        btn = app._toolbar_buttons[key]
+        btn.grid_forget()
+        if getattr(app.settings.toolbar, key):
+            padx = (8, 2) if key == "show_add_connection" else (2, 2)
+            if key == "show_check_hosts":
+                padx = (2, 0)
+            btn.grid(row=0, column=col, padx=padx)
+            col += 1
+
+
 def preview_toolbar_visibility(app, toolbar_settings: ToolbarSettings) -> None:
     app.settings.toolbar = toolbar_settings
     app._layout_toolbar_buttons()
