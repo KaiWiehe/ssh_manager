@@ -4,7 +4,6 @@ Benötigt: Python 3.8+, Windows, Windows Terminal (wt.exe), Git Bash-Profil.
 """
 from __future__ import annotations
 
-import subprocess
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -28,7 +27,7 @@ from ssh_manager_app import (
     save_settings,
     save_ui_state,
 )
-from ssh_manager_app.constants import _SSH_CONFIG_DEFAULT_FOLDER, _SSH_CONFIG_FILE
+from ssh_manager_app.constants import _SSH_CONFIG_DEFAULT_FOLDER
 
 from ssh_manager_app.core import (
     RegistryReader,
@@ -60,12 +59,16 @@ from ssh_manager_app.actions_remote import (
     resolve_users_for_sessions,
     run_remote_command,
 )
+from ssh_manager_app.actions_open import (
+    inspect_ssh_config,
+    open_in_winscp,
+    open_ssh_config_in_vscode,
+)
 
 from ssh_manager_app.dialogs import (
     MoveFolderDialog,
     SessionEditDialog,
     SettingsView,
-    SshConfigInspectDialog,
     UserDialog,
 )
 
@@ -444,15 +447,10 @@ class SSHManagerApp(tk.Tk):
         duplicate_ssh_alias(self, session)
 
     def _inspect_ssh_config(self, session: Session) -> None:
-        """Zeigt die effektive SSH-Konfiguration für einen Alias."""
-        SshConfigInspectDialog(self, session.display_name)
+        inspect_ssh_config(self, session)
 
     def _open_ssh_config_in_vscode(self) -> None:
-        """Öffnet ~/.ssh/config in VS Code."""
-        try:
-            subprocess.Popen(f'code "{_SSH_CONFIG_FILE}"', shell=True)
-        except OSError as e:
-            messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{e}")
+        open_ssh_config_in_vscode(self)
 
     def _open_appdata_jsons_in_vscode(self) -> None:
         """Öffnet den SSH-Manager-AppData-Ordner mit JSON-Dateien in VS Code."""
@@ -477,22 +475,7 @@ class SSHManagerApp(tk.Tk):
         run_remote_command(self, sessions)
 
     def _open_in_winscp(self, sessions: list[Session]) -> None:
-        """Öffnet eine oder mehrere WinSCP-Sessions direkt in WinSCP."""
-        winscp = _find_winscp()
-        if not winscp:
-            messagebox.showerror(
-                "WinSCP nicht gefunden",
-                "WinSCP.exe wurde nicht gefunden.\n"
-                "Bitte WinSCP installieren oder zum PATH hinzufügen.",
-                parent=self,
-            )
-            return
-        try:
-            for session in sessions:
-                full_path = "/".join(session.folder_path + [session.display_name])
-                subprocess.Popen([winscp, full_path])
-        except OSError as e:
-            messagebox.showerror("Fehler", f"Fehler beim Starten von WinSCP:\n{e}", parent=self)
+        open_in_winscp(self, sessions)
 
     def _on_close(self) -> None:
         self._persist_ui_state()
