@@ -8,9 +8,11 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import winreg
+from ssh_manager_app.actions_app import get_all_folder_names, get_ssh_aliases
+from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, build_wt_command, parse_session_key
-from ssh_manager_app.models import Session, color_tag
+from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
 from ssh_manager_app.storage import (
     load_filezilla_config_sessions,
     load_notes,
@@ -457,3 +459,77 @@ def test_load_filezilla_config_sessions_skips_non_ssh_protocols():
         with patch.dict("os.environ", {"APPDATA": str(appdata)}):
             sessions = load_filezilla_config_sessions()
     assert sessions == []
+
+
+def test_get_all_folder_names_returns_sorted_unique_folder_keys():
+    app = MagicMock()
+    app._sessions = [
+        Session("1", "prod-a", ["Prod"], "10.0.0.1"),
+        Session("2", "prod-b", ["Prod"], "10.0.0.2"),
+        Session("3", "misc", [], "10.0.0.3"),
+        Session("4", "dev-a", ["Dev", "API"], "10.0.0.4"),
+    ]
+
+    assert get_all_folder_names(app) == ["Dev/API", "Prod"]
+
+
+
+def test_get_ssh_aliases_returns_sorted_ssh_config_display_names_only():
+    app = MagicMock()
+    app._sessions = [
+        Session("1", "winscp-box", ["Prod"], "10.0.0.1", source="winscp"),
+        Session("2", "db-main", [_SSH_CONFIG_DEFAULT_FOLDER], "db-main", source="ssh_config"),
+        Session("3", "app-edge", [_SSH_CONFIG_DEFAULT_FOLDER], "app-edge", source="ssh_config"),
+    ]
+
+    assert get_ssh_aliases(app) == ["app-edge", "db-main"]
+
+
+
+def test_build_visible_sessions_respects_visibility_and_sorts_ssh_config_folder_first():
+    app = MagicMock()
+    app.settings = AppSettings(
+        source_visibility=SourceVisibilitySettings(
+            show_winscp=True,
+            show_ssh_config=True,
+            show_filezilla_config=False,
+            show_app_connections=True,
+        )
+    )
+    app._ssh_config_default_folder = _SSH_CONFIG_DEFAULT_FOLDER
+    app._winscp_sessions = [Session("w1", "Zulu", ["Prod"], "10.0.0.10", source="winscp")]
+    app._app_sessions = [Session("a1", "Beta", ["App"], "10.0.0.20", source="app")]
+    app._ssh_config_sessions = [
+        Session("s1", "alpha", [_SSH_CONFIG_DEFAULT_FOLDER], "alpha", source="ssh_config"),
+        Session("s2", "gamma", [_SSH_CONFIG_DEFAULT_FOLDER], "gamma", source="ssh_config"),
+    ]
+    app._filezilla_sessions = [Session("f1", "Hidden", ["FileZilla"], "10.0.0.30", source="filezilla_config")]
+
+    visible = build_visible_sessions(app)
+
+    assert [session.display_name for session in visible] == ["alpha", "gamma", "Beta", "Zulu"]
+
+
+
+def test_add_search_history_entry_deduplicates_limits_and_persists():
+    app = MagicMock()
+    app._search_history = [f"item-{i}" for i in range(10)]
+
+    with patch("ssh_manager_app.actions_ui.persist_ui_state") as persist_mock:
+        add_search_history_entry(app, "item-5")
+        add_search_history_entry(app, "  fresh-query  ")
+        add_search_history_entry(app, "x")
+
+    assert app._search_history == [
+        "fresh-query",
+        "item-5",
+        "item-0",
+        "item-1",
+        "item-2",
+        "item-3",
+        "item-4",
+        "item-6",
+        "item-7",
+        "item-8",
+    ]
+    assert persist_mock.call_count == 2

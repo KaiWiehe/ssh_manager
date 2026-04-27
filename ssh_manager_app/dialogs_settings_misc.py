@@ -11,7 +11,7 @@ from .constants import _SSH_CONFIG_FILE
 from .storage import load_settings_from_path
 
 
-from .dialogs_misc import ToastNotification
+from .dialogs_toast import ToastNotification
 
 
 class SshConfigInspectDialog(tk.Toplevel):
