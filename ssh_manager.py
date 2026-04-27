@@ -218,26 +218,8 @@ class SSHManagerApp(tk.Tk):
         """Öffnet den SSH-Manager-AppData-Ordner mit JSON-Dateien in VS Code."""
         open_appdata_jsons_in_vscode(self)
 
-    def _deploy_ssh_key(self, sessions: list[Session]) -> None:
-        deploy_ssh_key(self, sessions)
-
-    def _remove_ssh_key(self, sessions: list[Session]) -> None:
-        remove_ssh_key(self, sessions)
-
-    def _open_tunnel(self, session: Session | None = None) -> None:
-        open_tunnel(self, session=session)
-
-    def _open_via_jumphost(self, session: Session) -> None:
-        open_via_jumphost(self, session)
-
     def _resolve_users_for_sessions(self, sessions: list[Session], mode: str) -> list[tuple[Session, str]] | None:
         return resolve_users_for_sessions(self, sessions, mode)
-
-    def _run_remote_command(self, sessions: list[Session]) -> None:
-        run_remote_command(self, sessions)
-
-    def _open_in_winscp(self, sessions: list[Session]) -> None:
-        open_in_winscp(self, sessions)
 
     def _on_close(self) -> None:
         close_app(self)

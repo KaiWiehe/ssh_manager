@@ -152,6 +152,36 @@ def open_in_winscp_callback(app, sessions) -> None:
     open_in_winscp(app, sessions)
 
 
+def deploy_ssh_key_callback(app, sessions) -> None:
+    from .actions_remote import deploy_ssh_key
+
+    deploy_ssh_key(app, sessions)
+
+
+def remove_ssh_key_callback(app, sessions) -> None:
+    from .actions_remote import remove_ssh_key
+
+    remove_ssh_key(app, sessions)
+
+
+def open_tunnel_callback(app, session=None) -> None:
+    from .actions_remote import open_tunnel
+
+    open_tunnel(app, session=session)
+
+
+def run_remote_command_callback(app, sessions) -> None:
+    from .actions_remote import run_remote_command
+
+    run_remote_command(app, sessions)
+
+
+def open_via_jumphost_callback(app, session) -> None:
+    from .actions_remote import open_via_jumphost
+
+    open_via_jumphost(app, session)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -206,8 +236,8 @@ def build_main_ui(self) -> None:
     actions_menu = tk.Menu(menubar, tearoff=False)
     actions_menu.add_command(label="Verbinden", command=lambda: connect_selected_sessions_callback(self))
     actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
-    actions_menu.add_command(label="Tunnel öffnen", command=self._open_tunnel)
-    actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: self._run_remote_command(self._tree.get_selected_sessions()))
+    actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
+    actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))
     menubar.add_cascade(label="Aktionen", menu=actions_menu)
 
     settings_menu = tk.Menu(menubar, tearoff=False)
@@ -244,7 +274,7 @@ def build_main_ui(self) -> None:
     self._toolbar_buttons["show_collapse_all"] = ttk.Button(toolbar, text="Einklappen", command=self._collapse_all)
     self._toolbar_buttons["show_add_connection"] = ttk.Button(toolbar, text="+ Verbindung", command=self._add_session)
     self._toolbar_buttons["show_reload"] = ttk.Button(toolbar, text="Neu laden", command=lambda: reload_sessions_callback(self))
-    self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=self._open_tunnel)
+    self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=lambda: open_tunnel_callback(self))
     self._toolbar_buttons["show_check_hosts"] = ttk.Button(toolbar, text="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
     layout_toolbar_buttons(self)
 
@@ -268,12 +298,12 @@ def build_main_ui(self) -> None:
         on_move_session=lambda session: move_session_callback(self, session),
         on_move_sessions=lambda sessions: move_sessions_callback(self, sessions),
         on_open_ssh_config_in_vscode=lambda: open_ssh_config_in_vscode_callback(self),
-        on_deploy_ssh_key=self._deploy_ssh_key,
-        on_remove_ssh_key=self._remove_ssh_key,
-        on_open_tunnel=self._open_tunnel,
+        on_deploy_ssh_key=lambda sessions: deploy_ssh_key_callback(self, sessions),
+        on_remove_ssh_key=lambda sessions: remove_ssh_key_callback(self, sessions),
+        on_open_tunnel=lambda session=None: open_tunnel_callback(self, session),
         on_open_in_winscp=lambda sessions: open_in_winscp_callback(self, sessions),
-        on_run_remote_command=self._run_remote_command,
-        on_open_via_jumphost=self._open_via_jumphost,
+        on_run_remote_command=lambda sessions: run_remote_command_callback(self, sessions),
+        on_open_via_jumphost=lambda session: open_via_jumphost_callback(self, session),
         on_ui_state_changed=lambda: persist_ui_state_callback(self),
         notes_getter=lambda key: self._notes.get(key, ""),
         on_edit_note=lambda session: edit_session_note_callback(self, session),
