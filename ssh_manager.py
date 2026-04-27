@@ -36,7 +36,7 @@ from ssh_manager_app.core import (
     _create_checkbox_images,
 )
 
-from ssh_manager_app.ui import build_main_ui, configure_app_styles, layout_toolbar_buttons
+from ssh_manager_app.ui import build_main_ui, configure_app_styles
 from ssh_manager_app.actions_ui import (
     add_search_history_entry,
     apply_search_history_entry,
@@ -171,9 +171,6 @@ class SSHManagerApp(tk.Tk):
 
     def _build_visible_sessions(self) -> list[Session]:
         return build_visible_sessions(self)
-
-    def _layout_toolbar_buttons(self) -> None:
-        layout_toolbar_buttons(self)
 
     def preview_toolbar_visibility(self, toolbar_settings: ToolbarSettings) -> None:
         preview_toolbar_visibility(self, toolbar_settings)

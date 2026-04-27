@@ -5,11 +5,12 @@ import tkinter as tk
 from .dialogs_toast import ToastNotification
 from .models import AppSettings, Session, SourceVisibilitySettings, ToolbarSettings
 from .storage import load_filezilla_config_sessions, load_ssh_config_sessions, save_settings, save_ui_state
+from .ui import layout_toolbar_buttons
 
 
 def preview_toolbar_visibility(app, toolbar_settings: ToolbarSettings) -> None:
     app.settings.toolbar = toolbar_settings
-    app._layout_toolbar_buttons()
+    layout_toolbar_buttons(app)
     app._tree.update_toolbar_settings(toolbar_settings)
 
 
@@ -49,14 +50,14 @@ def show_main_view(app) -> None:
         app._settings_view.grid_remove()
     if app._main_frame is not None:
         app._main_frame.grid()
-    app._layout_toolbar_buttons()
+    layout_toolbar_buttons(app)
 
 
 
 def apply_settings(app, settings: AppSettings) -> None:
     app.settings = settings
     save_settings(settings)
-    app._layout_toolbar_buttons()
+    layout_toolbar_buttons(app)
     app._search_entry.focus_set()
     ToastNotification(app, "Einstellungen gespeichert")
 
