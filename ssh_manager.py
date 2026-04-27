@@ -45,7 +45,6 @@ from ssh_manager_app.actions_ui import (
     deselect_all,
     expand_all,
     invert_selection,
-    layout_toolbar_buttons,
     on_search_changed,
     on_selection_changed,
     persist_ui_state,

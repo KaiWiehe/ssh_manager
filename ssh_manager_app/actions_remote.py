@@ -11,7 +11,16 @@ from .core import (
     build_ssh_remove_key_command,
     build_ssh_tunnel_command,
 )
-from .dialogs import JumpHostDialog, RemoteCommandConfirmDialog, RemoteCommandDialog, SshCopyIdDialog, SshRemoveKeyDialog, SshTunnelDialog, ToastNotification, UserDialog
+from .dialogs_remote import (
+    JumpHostDialog,
+    RemoteCommandConfirmDialog,
+    RemoteCommandDialog,
+    SshCopyIdDialog,
+    SshRemoveKeyDialog,
+    SshTunnelDialog,
+)
+from .dialogs_toast import ToastNotification
+from .dialogs_user import UserDialog
 from .models import Session
 
 

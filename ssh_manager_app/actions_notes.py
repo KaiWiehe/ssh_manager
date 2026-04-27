@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from .dialogs import ToastNotification
+from .dialogs_toast import ToastNotification
 from .storage import save_notes
 
 

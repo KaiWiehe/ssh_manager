@@ -3,7 +3,8 @@ from __future__ import annotations
 from tkinter import messagebox, simpledialog
 
 from .constants import _APPDATA_DIR
-from .dialogs import MoveFolderDialog, SessionEditDialog
+from .dialogs_move_folder import MoveFolderDialog
+from .dialogs_session_edit import SessionEditDialog
 from .models import Session
 from .storage import save_app_sessions, save_notes
 

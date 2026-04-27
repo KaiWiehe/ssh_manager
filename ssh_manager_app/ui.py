@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from .dialogs import SettingsView
+from .dialogs_remote import SettingsView
 from .tree import SessionTree
 
 

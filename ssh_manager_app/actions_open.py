@@ -5,7 +5,7 @@ from tkinter import messagebox
 
 from .constants import _SSH_CONFIG_FILE
 from .core import _find_winscp
-from .dialogs import SshConfigInspectDialog
+from .dialogs_settings_misc import SshConfigInspectDialog
 from .models import Session
 
 
