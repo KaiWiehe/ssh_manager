@@ -3,13 +3,12 @@ from .dialogs_remote import (
     JumpHostDialog,
     RemoteCommandConfirmDialog,
     RemoteCommandDialog,
-    SettingsView,
     SshCopyIdDialog,
     SshRemoveKeyDialog,
     SshTunnelDialog,
 )
 from .dialogs_session_edit import SessionEditDialog
-from .dialogs_settings_misc import SshConfigInspectDialog
+from .dialogs_settings_misc import SettingsView, SshConfigInspectDialog
 from .dialogs_toast import ToastNotification
 from .dialogs_user import UserDialog
 

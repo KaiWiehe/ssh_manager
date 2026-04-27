@@ -101,7 +101,7 @@ from ssh_manager_app.actions_open import (
 )
 
 if TYPE_CHECKING:
-    from ssh_manager_app.dialogs_remote import SettingsView
+    from ssh_manager_app.dialogs_settings_misc import SettingsView
 
 
 class SSHManagerApp(tk.Tk):
