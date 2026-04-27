@@ -86,6 +86,72 @@ def show_main_view_callback(app) -> None:
     show_main_view(app)
 
 
+def edit_session_callback(app, session) -> None:
+    from .actions_sessions import edit_session
+
+    edit_session(app, session)
+
+
+def delete_session_callback(app, session) -> None:
+    from .actions_sessions import delete_session
+
+    delete_session(app, session)
+
+
+def delete_folder_callback(app, sessions, folder_key) -> None:
+    from .actions_sessions import delete_folder
+
+    delete_folder(app, sessions, folder_key)
+
+
+def rename_folder_callback(app, folder_key) -> None:
+    from .actions_sessions import rename_folder
+
+    rename_folder(app, folder_key)
+
+
+def duplicate_ssh_alias_callback(app, session) -> None:
+    from .actions_sessions import duplicate_ssh_alias
+
+    duplicate_ssh_alias(app, session)
+
+
+def inspect_ssh_config_callback(app, session) -> None:
+    from .actions_open import inspect_ssh_config
+
+    inspect_ssh_config(app, session)
+
+
+def duplicate_app_session_callback(app, session) -> None:
+    from .actions_sessions import duplicate_app_session
+
+    duplicate_app_session(app, session)
+
+
+def move_session_callback(app, session) -> None:
+    from .actions_sessions import move_session
+
+    move_session(app, session)
+
+
+def move_sessions_callback(app, sessions) -> None:
+    from .actions_sessions import move_sessions
+
+    move_sessions(app, sessions)
+
+
+def open_ssh_config_in_vscode_callback(app) -> None:
+    from .actions_open import open_ssh_config_in_vscode
+
+    open_ssh_config_in_vscode(app)
+
+
+def open_in_winscp_callback(app, sessions) -> None:
+    from .actions_open import open_in_winscp
+
+    open_in_winscp(app, sessions)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -191,21 +257,21 @@ def build_main_ui(self) -> None:
         initial_open_folders=self._initial_open_folders,
         initial_session_colors=self._initial_session_colors,
         on_quick_connect=lambda session: quick_connect_session_callback(self, session),
-        on_edit_session=self._edit_session,
-        on_delete_session=self._delete_session,
-        on_delete_folder=self._delete_folder,
-        on_rename_folder=self._rename_folder,
+        on_edit_session=lambda session: edit_session_callback(self, session),
+        on_delete_session=lambda session: delete_session_callback(self, session),
+        on_delete_folder=lambda sessions, folder_key: delete_folder_callback(self, sessions, folder_key),
+        on_rename_folder=lambda folder_key: rename_folder_callback(self, folder_key),
         on_add_session_in_folder=self._add_session,
-        on_duplicate_ssh_alias=self._duplicate_ssh_alias,
-        on_inspect_ssh_config=self._inspect_ssh_config,
-        on_duplicate_app_session=self._duplicate_app_session,
-        on_move_session=self._move_session,
-        on_move_sessions=self._move_sessions,
-        on_open_ssh_config_in_vscode=self._open_ssh_config_in_vscode,
+        on_duplicate_ssh_alias=lambda session: duplicate_ssh_alias_callback(self, session),
+        on_inspect_ssh_config=lambda session: inspect_ssh_config_callback(self, session),
+        on_duplicate_app_session=lambda session: duplicate_app_session_callback(self, session),
+        on_move_session=lambda session: move_session_callback(self, session),
+        on_move_sessions=lambda sessions: move_sessions_callback(self, sessions),
+        on_open_ssh_config_in_vscode=lambda: open_ssh_config_in_vscode_callback(self),
         on_deploy_ssh_key=self._deploy_ssh_key,
         on_remove_ssh_key=self._remove_ssh_key,
         on_open_tunnel=self._open_tunnel,
-        on_open_in_winscp=self._open_in_winscp,
+        on_open_in_winscp=lambda sessions: open_in_winscp_callback(self, sessions),
         on_run_remote_command=self._run_remote_command,
         on_open_via_jumphost=self._open_via_jumphost,
         on_ui_state_changed=lambda: persist_ui_state_callback(self),

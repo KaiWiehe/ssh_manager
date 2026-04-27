@@ -214,36 +214,6 @@ class SSHManagerApp(tk.Tk):
     def _add_session(self, folder_preset: str = "") -> None:
         add_session(self, folder_preset=folder_preset)
 
-    def _edit_session(self, session: Session) -> None:
-        edit_session(self, session)
-
-    def _duplicate_app_session(self, session: Session) -> None:
-        duplicate_app_session(self, session)
-
-    def _move_session(self, session: Session) -> None:
-        move_session(self, session)
-
-    def _move_sessions(self, sessions: list[Session]) -> None:
-        move_sessions(self, sessions)
-
-    def _delete_session(self, session: Session) -> None:
-        delete_session(self, session)
-
-    def _delete_folder(self, sessions: list[Session], folder_key: str) -> None:
-        delete_folder(self, sessions, folder_key)
-
-    def _rename_folder(self, folder_key: str) -> None:
-        rename_folder(self, folder_key)
-
-    def _duplicate_ssh_alias(self, session: Session) -> None:
-        duplicate_ssh_alias(self, session)
-
-    def _inspect_ssh_config(self, session: Session) -> None:
-        inspect_ssh_config(self, session)
-
-    def _open_ssh_config_in_vscode(self) -> None:
-        open_ssh_config_in_vscode(self)
-
     def _open_appdata_jsons_in_vscode(self) -> None:
         """Öffnet den SSH-Manager-AppData-Ordner mit JSON-Dateien in VS Code."""
         open_appdata_jsons_in_vscode(self)
