@@ -545,6 +545,20 @@ def test_add_search_history_entry_deduplicates_limits_and_persists():
 
 
 
+
+
+def test_dialog_exports_use_split_modules():
+    from ssh_manager_app.dialogs import MoveFolderDialog, SettingsView, SshConfigInspectDialog, ToastNotification
+    from ssh_manager_app.dialogs_move_folder import MoveFolderDialog as MoveFolderDialogImpl
+    from ssh_manager_app.dialogs_remote import SettingsView as SettingsViewImpl
+    from ssh_manager_app.dialogs_settings_misc import SshConfigInspectDialog as SshConfigInspectDialogImpl
+    from ssh_manager_app.dialogs_toast import ToastNotification as ToastNotificationImpl
+
+    assert MoveFolderDialog is MoveFolderDialogImpl
+    assert SettingsView is SettingsViewImpl
+    assert SshConfigInspectDialog is SshConfigInspectDialogImpl
+    assert ToastNotification is ToastNotificationImpl
+
 def test_main_modules_import_cleanly():
     import importlib
 
