@@ -17,7 +17,7 @@ def preview_toolbar_visibility(app, toolbar_settings: ToolbarSettings) -> None:
 
 def preview_source_visibility(app, source_visibility: SourceVisibilitySettings) -> None:
     app.settings.source_visibility = source_visibility
-    app._sessions = app._build_visible_sessions()
+    app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
     persist_ui_state(app)
 
@@ -203,7 +203,7 @@ def rebuild_sessions(app, *, reload_winscp: bool = False) -> None:
                 parent=app,
             )
             app._winscp_sessions = []
-    app._sessions = app._build_visible_sessions()
+    app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
 
 

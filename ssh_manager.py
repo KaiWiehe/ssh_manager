@@ -140,7 +140,7 @@ class SSHManagerApp(tk.Tk):
         self._app_sessions: list[Session] = load_app_sessions()
         self._notes = load_notes()
         self._ssh_config_sessions = load_ssh_config_sessions()
-        self._sessions = self._build_visible_sessions()
+        self._sessions = build_visible_sessions(self)
 
         # Checkbox-Images (nach Tk-Initialisierung erzeugen!)
         self._img_unchecked, self._img_checked = _create_checkbox_images(self)
@@ -168,9 +168,6 @@ class SSHManagerApp(tk.Tk):
 
     def _clear_search_history(self) -> None:
         clear_search_history(self)
-
-    def _build_visible_sessions(self) -> list[Session]:
-        return build_visible_sessions(self)
 
     def preview_toolbar_visibility(self, toolbar_settings: ToolbarSettings) -> None:
         preview_toolbar_visibility(self, toolbar_settings)
