@@ -4,6 +4,8 @@ Benötigt: Python 3.8+, Windows, Windows Terminal (wt.exe), Git Bash-Profil.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -98,7 +100,9 @@ from ssh_manager_app.actions_open import (
     open_ssh_config_in_vscode,
 )
 
-from ssh_manager_app.dialogs import SettingsView
+if TYPE_CHECKING:
+    from ssh_manager_app.dialogs_remote import SettingsView
+
 
 class SSHManagerApp(tk.Tk):
     """Hauptfenster der SSH-Manager Applikation."""
