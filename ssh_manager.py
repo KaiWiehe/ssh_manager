@@ -178,12 +178,6 @@ class SSHManagerApp(tk.Tk):
     def get_terminal_settings(self) -> WindowsTerminalSettings:
         return self.settings.windows_terminal
 
-    def show_settings_view(self) -> None:
-        show_settings_view(self)
-
-    def show_main_view(self) -> None:
-        show_main_view(self)
-
     def apply_settings(self, settings: AppSettings) -> None:
         apply_settings(self, settings)
 

@@ -74,6 +74,18 @@ def import_settings_dialog_callback(app) -> None:
     import_settings_dialog(app)
 
 
+def show_settings_view_callback(app) -> None:
+    from .actions_ui import show_settings_view
+
+    show_settings_view(app)
+
+
+def show_main_view_callback(app) -> None:
+    from .actions_ui import show_main_view
+
+    show_main_view(app)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -105,7 +117,7 @@ def build_main_ui(self) -> None:
     file_menu.add_command(label="Neue Verbindung", command=self._add_session)
     file_menu.add_command(label="Neu laden", command=lambda: reload_sessions_callback(self))
     file_menu.add_separator()
-    file_menu.add_command(label="Einstellungen", command=self.show_settings_view)
+    file_menu.add_command(label="Einstellungen", command=lambda: show_settings_view_callback(self))
     file_menu.add_command(label="JSONs in VS Code öffnen", command=self._open_appdata_jsons_in_vscode)
     file_menu.add_separator()
     file_menu.add_command(label="Beenden", command=self._on_close)
@@ -133,7 +145,7 @@ def build_main_ui(self) -> None:
     menubar.add_cascade(label="Aktionen", menu=actions_menu)
 
     settings_menu = tk.Menu(menubar, tearoff=False)
-    settings_menu.add_command(label="Einstellungen öffnen", command=self.show_settings_view)
+    settings_menu.add_command(label="Einstellungen öffnen", command=lambda: show_settings_view_callback(self))
     settings_menu.add_command(label="Einstellungen exportieren…", command=lambda: export_settings_dialog_callback(self))
     settings_menu.add_command(label="Einstellungen importieren…", command=lambda: import_settings_dialog_callback(self))
     settings_menu.add_separator()

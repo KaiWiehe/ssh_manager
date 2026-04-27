@@ -148,7 +148,7 @@ class SettingsView(ttk.Frame):
         actions.grid(row=2, column=0, sticky="ew")
         ttk.Separator(actions, orient="horizontal").pack(fill="x", pady=(0, 14))
         ttk.Button(actions, text="Speichern", command=self._save).pack(side="left")
-        ttk.Button(actions, text="Zurück", command=self._app.show_main_view).pack(side="left", padx=(8, 0))
+        ttk.Button(actions, text="Zurück", command=lambda: self._show_main_view()).pack(side="left", padx=(8, 0))
 
         sections = [
             ("general", "Allgemein"),
@@ -318,6 +318,11 @@ class SettingsView(ttk.Frame):
         self.load_from_app()
         ToastNotification(self._app, "Einstellungen importiert")
 
+    def _show_main_view(self) -> None:
+        from .actions_ui import show_main_view
+
+        show_main_view(self._app)
+
     def _show_section(self, key: str) -> None:
         self._active_section = key
         labels = {
@@ -431,7 +436,7 @@ class SettingsView(ttk.Frame):
             messagebox.showwarning("Einstellungen", str(e), parent=self)
             return
         self._app.apply_settings(settings)
-        self._app.show_main_view()
+        self._show_main_view()
 
     def _reset_settings(self) -> None:
         self._app.reset_settings()
