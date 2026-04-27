@@ -80,15 +80,11 @@ from ssh_manager_app.actions_app import (
     import_settings_dialog,
     show_search_history_menu,
 )
-from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.actions_remote import (
-    connect_sessions,
     deploy_ssh_key,
-    quick_connect_session,
     remove_ssh_key,
     open_tunnel,
     open_via_jumphost,
-    resolve_single_session_user,
     resolve_users_for_sessions,
     run_remote_command,
 )
@@ -173,9 +169,6 @@ class SSHManagerApp(tk.Tk):
     def preview_source_visibility(self, source_visibility: SourceVisibilitySettings) -> None:
         preview_source_visibility(self, source_visibility)
 
-    def _edit_session_note(self, session: Session) -> None:
-        edit_session_note(self, session)
-
     def get_default_user(self) -> str:
         return self.settings.default_user
 
@@ -229,18 +222,6 @@ class SSHManagerApp(tk.Tk):
 
     def _collapse_all(self) -> None:
         collapse_all(self)
-
-    def _on_connect(self) -> None:
-        connect_sessions(self, self._tree.get_selected_sessions())
-
-    def _resolve_single_session_user(self, session: Session, title: str = "Benutzername auswählen") -> str | None:
-        return resolve_single_session_user(self, session, title=title)
-
-    def _quick_connect_session(self, session: Session) -> None:
-        quick_connect_session(self, session)
-
-    def _reload_sessions(self) -> None:
-        reload_sessions(self)
 
     def _add_session(self, folder_preset: str = "") -> None:
         add_session(self, folder_preset=folder_preset)

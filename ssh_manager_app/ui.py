@@ -38,6 +38,30 @@ def persist_ui_state_callback(app) -> None:
     persist_ui_state(app)
 
 
+def connect_selected_sessions_callback(app) -> None:
+    from .actions_remote import connect_sessions
+
+    connect_sessions(app, app._tree.get_selected_sessions())
+
+
+def quick_connect_session_callback(app, session) -> None:
+    from .actions_remote import quick_connect_session
+
+    quick_connect_session(app, session)
+
+
+def reload_sessions_callback(app) -> None:
+    from .actions_ui import reload_sessions
+
+    reload_sessions(app)
+
+
+def edit_session_note_callback(app, session) -> None:
+    from .actions_notes import edit_session_note
+
+    edit_session_note(app, session)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -67,7 +91,7 @@ def build_main_ui(self) -> None:
 
     file_menu = tk.Menu(menubar, tearoff=False)
     file_menu.add_command(label="Neue Verbindung", command=self._add_session)
-    file_menu.add_command(label="Neu laden", command=self._reload_sessions)
+    file_menu.add_command(label="Neu laden", command=lambda: reload_sessions_callback(self))
     file_menu.add_separator()
     file_menu.add_command(label="Einstellungen", command=self.show_settings_view)
     file_menu.add_command(label="JSONs in VS Code öffnen", command=self._open_appdata_jsons_in_vscode)
@@ -90,7 +114,7 @@ def build_main_ui(self) -> None:
     menubar.add_cascade(label="Ansicht", menu=view_menu)
 
     actions_menu = tk.Menu(menubar, tearoff=False)
-    actions_menu.add_command(label="Verbinden", command=self._on_connect)
+    actions_menu.add_command(label="Verbinden", command=lambda: connect_selected_sessions_callback(self))
     actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
     actions_menu.add_command(label="Tunnel öffnen", command=self._open_tunnel)
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: self._run_remote_command(self._tree.get_selected_sessions()))
@@ -129,7 +153,7 @@ def build_main_ui(self) -> None:
     self._toolbar_buttons["show_expand_all"] = ttk.Button(toolbar, text="Ausklappen", command=self._expand_all)
     self._toolbar_buttons["show_collapse_all"] = ttk.Button(toolbar, text="Einklappen", command=self._collapse_all)
     self._toolbar_buttons["show_add_connection"] = ttk.Button(toolbar, text="+ Verbindung", command=self._add_session)
-    self._toolbar_buttons["show_reload"] = ttk.Button(toolbar, text="Neu laden", command=self._reload_sessions)
+    self._toolbar_buttons["show_reload"] = ttk.Button(toolbar, text="Neu laden", command=lambda: reload_sessions_callback(self))
     self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=self._open_tunnel)
     self._toolbar_buttons["show_check_hosts"] = ttk.Button(toolbar, text="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
     layout_toolbar_buttons(self)
@@ -142,7 +166,7 @@ def build_main_ui(self) -> None:
         on_selection_changed=self._on_selection_changed,
         initial_open_folders=self._initial_open_folders,
         initial_session_colors=self._initial_session_colors,
-        on_quick_connect=self._quick_connect_session,
+        on_quick_connect=lambda session: quick_connect_session_callback(self, session),
         on_edit_session=self._edit_session,
         on_delete_session=self._delete_session,
         on_delete_folder=self._delete_folder,
@@ -162,7 +186,7 @@ def build_main_ui(self) -> None:
         on_open_via_jumphost=self._open_via_jumphost,
         on_ui_state_changed=lambda: persist_ui_state_callback(self),
         notes_getter=lambda key: self._notes.get(key, ""),
-        on_edit_note=self._edit_session_note,
+        on_edit_note=lambda session: edit_session_note_callback(self, session),
         toolbar_settings=self.settings.toolbar,
     )
     self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
@@ -178,7 +202,7 @@ def build_main_ui(self) -> None:
     self._connect_btn = ttk.Button(
         bottom,
         text="Verbinden",
-        command=self._on_connect,
+        command=lambda: connect_selected_sessions_callback(self),
         state=tk.DISABLED,
     )
     self._connect_btn.grid(row=0, column=0)
