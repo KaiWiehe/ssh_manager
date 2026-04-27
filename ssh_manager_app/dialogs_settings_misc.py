@@ -314,7 +314,9 @@ class SettingsView(ttk.Frame):
         except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
             messagebox.showerror("Import fehlgeschlagen", f"Datei konnte nicht gelesen werden:\n{e}", parent=self)
             return
-        self._app.apply_settings(settings)
+        from .actions_ui import apply_settings
+
+        apply_settings(self._app, settings)
         self.load_from_app()
         ToastNotification(self._app, "Einstellungen importiert")
 
@@ -439,7 +441,9 @@ class SettingsView(ttk.Frame):
         except ValueError as e:
             messagebox.showwarning("Einstellungen", str(e), parent=self)
             return
-        self._app.apply_settings(settings)
+        from .actions_ui import apply_settings
+
+        apply_settings(self._app, settings)
         self._show_main_view()
 
     def _reset_settings(self) -> None:

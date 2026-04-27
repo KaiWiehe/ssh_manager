@@ -64,7 +64,7 @@ def apply_settings(app, settings: AppSettings) -> None:
 
 
 def reset_settings(app) -> None:
-    app.apply_settings(app._default_settings_factory())
+    apply_settings(app, app._default_settings_factory())
     if app._settings_view is not None:
         app._settings_view.load_from_app()
 

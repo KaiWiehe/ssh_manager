@@ -10,7 +10,6 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ssh_manager_app import (
-    AppSettings,
     ToolbarSettings,
     Session,
     WindowsTerminalSettings,
@@ -39,7 +38,6 @@ from ssh_manager_app.ui import build_main_ui, close_app_callback, configure_app_
 from ssh_manager_app.actions_ui import (
     add_search_history_entry,
     apply_search_history_entry,
-    apply_settings,
     build_visible_sessions,
     clear_search_history,
 )
@@ -111,9 +109,6 @@ class SSHManagerApp(tk.Tk):
 
     def get_terminal_settings(self) -> WindowsTerminalSettings:
         return self.settings.windows_terminal
-
-    def apply_settings(self, settings: AppSettings) -> None:
-        apply_settings(self, settings)
 
 
 # ---------------------------------------------------------------------------
