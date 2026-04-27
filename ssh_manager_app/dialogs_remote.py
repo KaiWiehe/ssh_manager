@@ -1,28 +1,795 @@
 from __future__ import annotations
 
-import subprocess
 import tkinter as tk
-import uuid
-from pathlib import Path
-from tkinter import messagebox, scrolledtext, simpledialog, ttk
-from typing import Optional, Callable
+from tkinter import messagebox, scrolledtext, ttk
+from typing import Callable
 
-from . import DEFAULT_USER, QUICK_USERS, Session, WindowsTerminalSettings
-from .constants import _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_FILE
-
+from . import DEFAULT_USER, Session
+from .constants import _SSH_CONFIG_FILE
 from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons
-from .dialogs_user import UserDialog
 
 
-from .dialogs_remote import (
-    JumpHostDialog,
-    RemoteCommandConfirmDialog,
-    RemoteCommandDialog,
-    SshCopyIdDialog,
-    SshRemoveKeyDialog,
-    SshTunnelDialog,
-)
+class JumpHostDialog(tk.Toplevel):
+    """Dialog zum temporären Öffnen einer Session über ProxyJump."""
 
+    def __init__(self, parent: tk.Tk, target_session: Session, sessions: list[Session], open_folders_getter: Callable[[], set[str]] | None = None):
+        super().__init__(parent)
+        self.title("Über Jumphost öffnen")
+        self.resizable(True, True)
+        self.minsize(760, 520)
+        self.result: tuple[str, str, int, str | None] | None = None
+        self.save_result: tuple[str, str, int, str, str] | None = None
+        self._target_session = target_session
+        self._sessions = sessions
+        self._open_folders_getter = open_folders_getter
+
+        self.transient(parent)
+        self.grab_set()
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        self._build()
+        self._center_on_parent(parent)
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self) -> None:
+        frame = ttk.Frame(self, padding=12)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(4, weight=1)
+
+        target_label = f"Ziel: {self._target_session.display_name} ({self._target_session.hostname})"
+        ttk.Label(frame, text=target_label, font=("TkDefaultFont", 10, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        help_text = (
+            "Jumphost frei eingeben oder unten im Baum eine bestehende Verbindung auswählen.\n"
+            "Aus einer Verbindung werden Host, User und Port übernommen, wenn vorhanden."
+        )
+        ttk.Label(frame, text=help_text, foreground="#555555", justify="left").grid(row=1, column=0, sticky="w", pady=(0, 10))
+
+        form = ttk.Frame(frame)
+        form.grid(row=2, column=0, sticky="ew")
+        form.columnconfigure(1, weight=1)
+
+        self._jump_host_var = tk.StringVar()
+        default_user = getattr(parent, "get_default_user", lambda: DEFAULT_USER)()
+        self._jump_user_var = tk.StringVar(value=default_user)
+        self._jump_port_var = tk.StringVar(value="22")
+        self._filter_var = tk.StringVar()
+
+        ttk.Label(form, text="Jumphost:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
+        host_entry = ttk.Entry(form, textvariable=self._jump_host_var)
+        host_entry.grid(row=0, column=1, sticky="ew", pady=4)
+        host_entry.focus()
+
+        ttk.Label(form, text="Jumphost-User:").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 8))
+        ttk.Entry(form, textvariable=self._jump_user_var).grid(row=1, column=1, sticky="ew", pady=4)
+
+        ttk.Label(form, text="Jumphost-Port:").grid(row=2, column=0, sticky="w", pady=4, padx=(0, 8))
+        ttk.Entry(form, textvariable=self._jump_port_var, width=8).grid(row=2, column=1, sticky="w", pady=4)
+
+        ttk.Label(form, text="Filter:").grid(row=3, column=0, sticky="w", pady=(10, 4), padx=(0, 8))
+        filter_entry = ttk.Entry(form, textvariable=self._filter_var)
+        filter_entry.grid(row=3, column=1, sticky="ew", pady=(10, 4))
+        self._filter_var.trace_add("write", lambda *_: self._rebuild_tree())
+
+        tree_frame = ttk.Frame(frame)
+        tree_frame.grid(row=4, column=0, sticky="nsew", pady=(8, 8))
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
+
+        self._tree = ttk.Treeview(tree_frame, columns=("host",), show="tree headings", selectmode="browse")
+        self._tree.heading("#0", text="Verbindungen")
+        self._tree.heading("host", text="Host")
+        self._tree.column("#0", width=320, stretch=True)
+        self._tree.column("host", width=280, stretch=True)
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+        self._tree.bind("<Double-Button-1>", lambda _: self._on_open())
+
+        scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self._tree.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
+        self._tree.configure(yscrollcommand=scroll.set)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=5, column=0, sticky="e", pady=(6, 0))
+        ttk.Button(btn_frame, text="Als SSH-Config speichern…", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Öffnen", command=self._on_open).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel).pack(side="left", padx=4)
+
+        self._session_by_item: dict[str, Session] = {}
+        self._rebuild_tree()
+
+    def _matches_filter(self, session: Session, query: str) -> bool:
+        if not query:
+            return True
+        hay = f"{session.folder_key} {session.display_name} {session.hostname}".lower()
+        return query in hay
+
+    def _ensure_folder(self, folder_key: str, folder_map: dict[str, str]) -> str:
+        if not folder_key:
+            return ""
+        parts = folder_key.split("/")
+        current = ""
+        parent = ""
+        for part in parts:
+            current = part if not current else f"{current}/{part}"
+            if current not in folder_map:
+                folder_map[current] = self._tree.insert(parent, "end", text=part, values=("",), open=False)
+            parent = folder_map[current]
+        return folder_map[current]
+
+    def _rebuild_tree(self) -> None:
+        query = self._filter_var.get().strip().lower()
+        open_folders = self._open_folders_getter() if self._open_folders_getter else set()
+        self._tree.delete(*self._tree.get_children())
+        self._session_by_item.clear()
+        folder_map: dict[str, str] = {}
+        for session in sorted(self._sessions, key=lambda s: (s.folder_key.lower(), s.display_name.lower())):
+            if session.key == self._target_session.key:
+                continue
+            if not self._matches_filter(session, query):
+                continue
+            parent = self._ensure_folder(session.folder_key, folder_map)
+            item = self._tree.insert(parent, "end", text=session.display_name, values=(session.hostname,))
+            self._session_by_item[item] = session
+        for folder_key, iid in folder_map.items():
+            self._tree.item(iid, open=(folder_key in open_folders) or not query)
+
+    def _on_tree_select(self, _event=None) -> None:
+        selected = self._tree.selection()
+        if not selected:
+            return
+        session = self._session_by_item.get(selected[0])
+        if not session:
+            return
+        self._jump_host_var.set(session.hostname or session.display_name)
+        self._jump_user_var.set(session.username or "")
+        self._jump_port_var.set(str(session.port or 22))
+
+    def _validate(self) -> tuple[str, str, int] | None:
+        jump_host = self._jump_host_var.get().strip()
+        if not jump_host:
+            messagebox.showwarning("Kein Jumphost", "Bitte einen Jumphost eingeben oder auswählen.", parent=self)
+            return None
+        if not _HOSTNAME_RE.match(jump_host):
+            messagebox.showwarning("Ungültiger Jumphost", "Nur Buchstaben, Ziffern, Punkte, Doppelpunkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+            return None
+        jump_user = self._jump_user_var.get().strip()
+        if jump_user and not _USERNAME_RE.match(jump_user):
+            messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+            return None
+        try:
+            jump_port = int(self._jump_port_var.get().strip() or "22")
+        except ValueError:
+            messagebox.showwarning("Ungültiger Port", "Jumphost-Port muss eine Zahl sein.", parent=self)
+            return None
+        if not 1 <= jump_port <= 65535:
+            messagebox.showwarning("Ungültiger Port", "Jumphost-Port muss zwischen 1 und 65535 liegen.", parent=self)
+            return None
+        return jump_host, jump_user, jump_port
+
+    def _on_open(self) -> None:
+        validated = self._validate()
+        if not validated:
+            return
+        self.result = validated
+        self.destroy()
+
+    def _on_save(self) -> None:
+        validated = self._validate()
+        if not validated:
+            return
+        alias = simpledialog.askstring("SSH-Config speichern", "Name für den neuen SSH-Config-Host:", parent=self)
+        if alias is None:
+            return
+        alias = alias.strip()
+        if not alias:
+            messagebox.showwarning("Kein Name", "Bitte einen Namen für den SSH-Config-Host eingeben.", parent=self)
+            return
+        jump_host, jump_user, jump_port = validated
+        self.save_result = (alias, jump_host, jump_port, jump_user, self._target_session.key)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.save_result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = min(max(self.winfo_reqwidth(), 760), max(pw - 40, 760))
+        h = min(max(self.winfo_reqheight(), 520), max(ph - 40, 520))
+        x = px + max((pw - w) // 2, 0)
+        y = py + max((ph - h) // 2, 0)
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+
+# ---------------------------------------------------------------------------
+# SshCopyIdDialog
+# ---------------------------------------------------------------------------
+
+
+class SshCopyIdDialog(tk.Toplevel):
+    """
+    Modaler Dialog zur Auswahl von SSH Public Key und Benutzername für ssh-copy-id.
+    Nach Schließen: self.result = (key_filename, user) oder None (Abbrechen).
+    """
+
+    def __init__(self, parent: tk.Tk, target_count: int = 1, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
+        super().__init__(parent)
+        self.title("SSH Key übertragen")
+        self.resizable(False, False)
+        self.result: tuple[str, str] | None = None
+        self._target_count = target_count
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
+
+        self.transient(parent)
+        self.grab_set()
+
+        self._build()
+        self._center_on_parent(parent)
+
+        self.bind("<Return>", lambda _: self._on_ok())
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        # Info bei mehreren Zielen
+        if self._target_count > 1:
+            ttk.Label(
+                frame,
+                text=f"Key wird auf {self._target_count} Host(s) übertragen.",
+                foreground="#555555",
+            ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        # Key-Auswahl
+        ttk.Label(frame, text="Public Key:").grid(row=1, column=0, sticky="w", pady=(0, 4))
+        pub_keys = sorted(p.name for p in (_SSH_CONFIG_FILE.parent).glob("*.pub"))
+        self._key_var = tk.StringVar(value=pub_keys[0] if pub_keys else "")
+        key_cb = ttk.Combobox(
+            frame, textvariable=self._key_var, values=pub_keys, width=30, state="readonly" if pub_keys else "normal"
+        )
+        key_cb.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4))
+        if not pub_keys:
+            ttk.Label(frame, text="Keine *.pub-Dateien in ~/.ssh gefunden.", foreground="red").grid(
+                row=2, column=0, columnspan=2, sticky="w"
+            )
+
+        # Benutzer
+        ttk.Label(frame, text="Quickselect:").grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        self._user_var = tk.StringVar(value=self._default_user)
+        quick_count = max(len(self._quick_users), 2)
+        quick_frame = _build_quickselect_buttons(frame, self._quick_users, self._user_var)
+        quick_frame.grid(row=4, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
+
+        ttk.Label(frame, text="Benutzername:").grid(row=5, column=0, sticky="w", pady=(0, 4))
+        entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
+        entry.grid(row=6, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
+        entry.focus()
+
+        # OK / Abbrechen
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=7, column=0, columnspan=quick_count)
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        key = self._key_var.get().strip()
+        if not key:
+            messagebox.showwarning("Kein Key", "Bitte einen Public Key auswählen.", parent=self)
+            return
+        user = self._user_var.get().strip()
+        if not user:
+            return
+        if not _USERNAME_RE.match(user):
+            messagebox.showwarning(
+                "Ungültiger Benutzername",
+                "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+                parent=self,
+            )
+            return
+        self.result = (key, user)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+# ---------------------------------------------------------------------------
+# SshRemoveKeyDialog
+# ---------------------------------------------------------------------------
+
+
+class SshRemoveKeyDialog(tk.Toplevel):
+    """
+    Modaler Dialog zur Auswahl von SSH Public Key und Benutzername zum Entfernen
+    des Keys aus authorized_keys auf Remote-Hosts.
+    Nach Schließen: self.result = (key_filename, user) oder None (Abbrechen).
+    """
+
+    def __init__(self, parent: tk.Tk, target_count: int = 1, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
+        super().__init__(parent)
+        self.title("SSH Key entfernen")
+        self.resizable(False, False)
+        self.result: tuple[str, str] | None = None
+        self._target_count = target_count
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
+
+        self.transient(parent)
+        self.grab_set()
+
+        self._build()
+        self._center_on_parent(parent)
+
+        self.bind("<Return>", lambda _: self._on_ok())
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        if self._target_count > 1:
+            ttk.Label(
+                frame,
+                text=f"Key wird von {self._target_count} Host(s) entfernt.",
+                foreground="#555555",
+            ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        ttk.Label(frame, text="Public Key:").grid(row=1, column=0, sticky="w", pady=(0, 4))
+        pub_keys = sorted(p.name for p in (_SSH_CONFIG_FILE.parent).glob("*.pub"))
+        self._key_var = tk.StringVar(value=pub_keys[0] if pub_keys else "")
+        key_cb = ttk.Combobox(
+            frame, textvariable=self._key_var, values=pub_keys, width=30, state="readonly" if pub_keys else "normal"
+        )
+        key_cb.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4))
+        if not pub_keys:
+            ttk.Label(frame, text="Keine *.pub-Dateien in ~/.ssh gefunden.", foreground="red").grid(
+                row=2, column=0, columnspan=2, sticky="w"
+            )
+
+        ttk.Label(frame, text="Quickselect:").grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 4))
+        self._user_var = tk.StringVar(value=self._default_user)
+        quick_count = max(len(self._quick_users), 2)
+        for col, username in enumerate(self._quick_users):
+            ttk.Button(
+                frame,
+                text=username,
+                command=lambda u=username: self._user_var.set(u),
+                width=14,
+            ).grid(row=4, column=col, padx=2, pady=(0, 8))
+
+        ttk.Label(frame, text="Benutzername:").grid(row=5, column=0, sticky="w", pady=(0, 4))
+        entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
+        entry.grid(row=6, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
+        entry.focus()
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=7, column=0, columnspan=quick_count)
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        key = self._key_var.get().strip()
+        if not key:
+            messagebox.showwarning("Kein Key", "Bitte einen Public Key auswählen.", parent=self)
+            return
+        user = self._user_var.get().strip()
+        if not user:
+            return
+        if not _USERNAME_RE.match(user):
+            messagebox.showwarning(
+                "Ungültiger Benutzername",
+                "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+                parent=self,
+            )
+            return
+        self.result = (key, user)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+class RemoteCommandDialog(tk.Toplevel):
+    """Dialog für Remote-Befehl und Ausführungsoptionen."""
+
+    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
+        super().__init__(parent)
+        self.title("Befehl ausführen")
+        self.geometry("720x480")
+        self.minsize(620, 420)
+        self.result: tuple[str, str, bool] | None = None
+        self._last_command = last_command
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
+
+        self.transient(parent)
+        self.grab_set()
+        self._build(target_count)
+        self._center_on_parent(parent)
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self, target_count: int) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(3, weight=1)
+
+        ttk.Label(
+            frame,
+            text=f"Remote-Befehl für {target_count} Host(s)",
+            font=("Segoe UI", 11, "bold"),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(
+            frame,
+            text="Der Befehl wird als mehrzeiliges Remote-Script per SSH ausgeführt.",
+            foreground="#666666",
+        ).grid(row=1, column=0, sticky="w", pady=(0, 12))
+
+        mode_frame = ttk.LabelFrame(frame, text="Benutzer-Auswahl", padding=12)
+        mode_frame.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        mode_frame.columnconfigure(0, weight=1)
+        self._user_mode = tk.StringVar(value="all")
+        ttk.Radiobutton(
+            mode_frame,
+            text="Ein Benutzer für alle Hosts",
+            variable=self._user_mode,
+            value="all",
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Radiobutton(
+            mode_frame,
+            text="Benutzer pro Host auswählen",
+            variable=self._user_mode,
+            value="per_host",
+        ).grid(row=1, column=0, sticky="w", pady=(4, 8))
+
+        ttk.Label(mode_frame, text="Quickselect:").grid(row=2, column=0, sticky="w", pady=(0, 4))
+        self._user_var = tk.StringVar(value=self._default_user)
+        quick_frame = _build_quickselect_buttons(mode_frame, self._quick_users, self._user_var)
+        quick_frame.grid(row=3, column=0, sticky="ew", pady=(0, 6))
+
+        user_entry_frame = ttk.Frame(mode_frame)
+        user_entry_frame.grid(row=4, column=0, sticky="ew")
+        user_entry_frame.columnconfigure(1, weight=1)
+        ttk.Label(user_entry_frame, text="Benutzername:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        ttk.Entry(user_entry_frame, textvariable=self._user_var).grid(row=0, column=1, sticky="ew")
+
+        script_frame = ttk.LabelFrame(frame, text="Remote-Befehl", padding=8)
+        script_frame.grid(row=3, column=0, sticky="nsew")
+        script_frame.columnconfigure(0, weight=1)
+        script_frame.rowconfigure(0, weight=1)
+        self._command_text = scrolledtext.ScrolledText(script_frame, wrap="word", height=12)
+        self._command_text.grid(row=0, column=0, sticky="nsew")
+        if self._last_command:
+            self._command_text.insert("1.0", self._last_command)
+        self._command_text.focus()
+
+        options = ttk.Frame(frame)
+        options.grid(row=4, column=0, sticky="ew", pady=(12, 0))
+        self._close_on_success = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            options,
+            text="Tab direkt schließen, wenn der Befehl erfolgreich war",
+            variable=self._close_on_success,
+        ).pack(anchor="w")
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=5, column=0, pady=(14, 0))
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        command = self._command_text.get("1.0", "end").strip()
+        if not command:
+            messagebox.showwarning("Kein Befehl", "Bitte einen Befehl eingeben.", parent=self)
+            return
+        user_value = self._user_var.get().strip()
+        if self._user_mode.get() == "all":
+            if not user_value:
+                messagebox.showwarning("Kein Benutzername", "Bitte einen Benutzernamen eingeben oder per Quickselect wählen.", parent=self)
+                return
+            if not _USERNAME_RE.match(user_value):
+                messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+                return
+        self.result = (self._user_mode.get(), command, self._close_on_success.get())
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+
+class RemoteCommandConfirmDialog(tk.Toplevel):
+    """Bestätigungsdialog für Remote-Befehle."""
+
+    def __init__(self, parent: tk.Tk, command: str, session_users: list[tuple[Session, str]], close_on_success: bool):
+        super().__init__(parent)
+        self.title("Remote-Befehl bestätigen")
+        self.geometry("760x520")
+        self.minsize(680, 420)
+        self.result = False
+
+        self.transient(parent)
+        self.grab_set()
+        self._build(command, session_users, close_on_success)
+        self._center_on_parent(parent)
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self, command: str, session_users: list[tuple[Session, str]], close_on_success: bool) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(3, weight=1)
+
+        ttk.Label(
+            frame,
+            text=f"Befehl auf {len(session_users)} Host(s) ausführen?",
+            font=("Segoe UI", 11, "bold"),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        behavior = "Tabs schließen sich bei Erfolg direkt." if close_on_success else "Tabs bleiben nach dem Befehl offen."
+        ttk.Label(frame, text=behavior, foreground="#666666").grid(row=1, column=0, sticky="w", pady=(0, 12))
+
+        hosts_frame = ttk.LabelFrame(frame, text="Hosts", padding=8)
+        hosts_frame.grid(row=2, column=0, sticky="nsew", pady=(0, 12))
+        hosts_frame.columnconfigure(0, weight=1)
+        hosts_frame.rowconfigure(0, weight=1)
+        hosts_text = scrolledtext.ScrolledText(hosts_frame, wrap="word", height=10)
+        hosts_text.grid(row=0, column=0, sticky="nsew")
+        hosts_text.insert(
+            "1.0",
+            "\n".join(
+                f"- {session.display_name} ({session.hostname})  User: {user}"
+                for session, user in session_users
+            ),
+        )
+        hosts_text.configure(state="disabled")
+
+        cmd_frame = ttk.LabelFrame(frame, text="Befehl", padding=8)
+        cmd_frame.grid(row=3, column=0, sticky="nsew")
+        cmd_frame.columnconfigure(0, weight=1)
+        cmd_frame.rowconfigure(0, weight=1)
+        cmd_text = scrolledtext.ScrolledText(cmd_frame, wrap="word", height=8)
+        cmd_text.grid(row=0, column=0, sticky="nsew")
+        cmd_text.insert("1.0", command)
+        cmd_text.configure(state="disabled")
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=4, column=0, pady=(14, 0))
+        ttk.Button(btn_frame, text="Ausführen", command=self._on_ok, width=12).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        self.result = True
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = False
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+# ---------------------------------------------------------------------------
+# SshTunnelDialog
+# ---------------------------------------------------------------------------
+
+
+class SshTunnelDialog(tk.Toplevel):
+    """
+    Modaler Dialog für SSH Local Port Forwarding (-N -L).
+    Nach Schließen: self.result = (ssh_server, local_port, remote_host, remote_port, user) oder None.
+    remote_host ist 'localhost' wenn kein Jumphost-Ziel angegeben wurde (direkter Tunnel).
+    """
+
+    def __init__(self, parent: tk.Tk, session: Session | None = None, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
+        super().__init__(parent)
+        self.title("Tunnel öffnen")
+        self.resizable(False, False)
+        self.result: tuple[str, int, str, int, str] | None = None
+        self._session = session
+        self._quick_users = quick_users or list(QUICK_USERS)
+        self._default_user = default_user or DEFAULT_USER
+
+        self.transient(parent)
+        self.grab_set()
+        self._build()
+        self._center_on_parent(parent)
+        self.bind("<Return>", lambda _: self._on_ok())
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        # Erklärung
+        ttk.Label(
+            frame,
+            text="SSH verbindet sich zum Server und leitet einen lokalen Port weiter.\nDirekt (kein Jumphost) oder zu einem internen Server dahinter.",
+            foreground="#555555",
+            justify="left",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
+
+        # SSH-Server
+        ttk.Label(frame, text="SSH-Server:").grid(row=1, column=0, sticky="w", pady=(0, 4))
+        prefill = self._session.hostname if self._session else ""
+        self._jumphost_var = tk.StringVar(value=prefill)
+        ttk.Entry(frame, textvariable=self._jumphost_var, width=30).grid(
+            row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
+        )
+        ttk.Label(frame, text="Server, zu dem SSH sich verbindet.", foreground="#888888").grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(0, 10)
+        )
+
+        ttk.Separator(frame, orient="horizontal").grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+
+        # Port Forwarding
+        ttk.Label(frame, text="Lokaler Port:").grid(row=4, column=0, sticky="w", pady=(0, 4))
+        self._local_port_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=self._local_port_var, width=10).grid(
+            row=4, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
+        )
+        ttk.Label(frame, text="Port auf deinem PC (z. B. 3306).", foreground="#888888").grid(
+            row=5, column=0, columnspan=2, sticky="w", pady=(0, 8)
+        )
+
+        ttk.Label(frame, text="Zielserver: (optional)").grid(row=6, column=0, sticky="w", pady=(0, 4))
+        self._remote_host_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=self._remote_host_var, width=30).grid(
+            row=6, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
+        )
+
+        ttk.Label(frame, text="Zielport:").grid(row=7, column=0, sticky="w", pady=(0, 4))
+        self._remote_port_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=self._remote_port_var, width=10).grid(
+            row=7, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
+        )
+        ttk.Label(
+            frame,
+            text="Leer lassen = direkter Tunnel (Port des SSH-Servers selbst).\nFür Jumphost-Tunnel: z. B. db.intern / 3306",
+            foreground="#888888",
+        ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        ttk.Separator(frame, orient="horizontal").grid(row=9, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+
+        # Benutzer
+        ttk.Label(frame, text="Quickselect:").grid(row=10, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        self._user_var = tk.StringVar(value=self._default_user)
+        quick_count = max(len(self._quick_users), 2)
+        quick_frame = _build_quickselect_buttons(frame, self._quick_users, self._user_var)
+        quick_frame.grid(row=11, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
+
+        ttk.Label(frame, text="Benutzername:").grid(row=12, column=0, sticky="w", pady=(0, 4))
+        entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
+        entry.grid(row=13, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
+        entry.focus()
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=14, column=0, columnspan=quick_count)
+        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+
+    def _parse_port(self, var: tk.StringVar, label: str) -> int | None:
+        try:
+            port = int(var.get().strip())
+        except ValueError:
+            messagebox.showwarning("Ungültiger Port", f"{label} muss eine Zahl sein.", parent=self)
+            return None
+        if not 1 <= port <= 65535:
+            messagebox.showwarning("Ungültiger Port", f"{label} muss zwischen 1 und 65535 liegen.", parent=self)
+            return None
+        return port
+
+    def _on_ok(self) -> None:
+        ssh_server = self._jumphost_var.get().strip()
+        if not ssh_server:
+            messagebox.showwarning("Kein SSH-Server", "Bitte einen SSH-Server eingeben.", parent=self)
+            return
+        if not _HOSTNAME_RE.match(ssh_server):
+            messagebox.showwarning("Ungültiger SSH-Server", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+            return
+        local_port = self._parse_port(self._local_port_var, "Lokaler Port")
+        if local_port is None:
+            return
+        remote_host = self._remote_host_var.get().strip() or "localhost"
+        if not _HOSTNAME_RE.match(remote_host):
+            messagebox.showwarning("Ungültiger Zielserver", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
+            return
+        remote_port = self._parse_port(self._remote_port_var, "Zielport")
+        if remote_port is None:
+            return
+        user = self._user_var.get().strip()
+        if not user:
+            return
+        if not _USERNAME_RE.match(user):
+            messagebox.showwarning(
+                "Ungültiger Benutzername",
+                "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+                parent=self,
+            )
+            return
+        self.result = (ssh_server, local_port, remote_host, remote_port, user)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+# ---------------------------------------------------------------------------
+# SessionEditDialog
+# ---------------------------------------------------------------------------
 class SessionEditDialog(tk.Toplevel):
     """
     Modaler Dialog zum Anlegen oder Bearbeiten einer eigenen Session.
@@ -804,5 +1571,3 @@ class SettingsView(ttk.Frame):
 
     def _reset_view_state(self) -> None:
         self._app.reset_view_state()
-
-
