@@ -3,6 +3,7 @@ from __future__ import annotations
 from tkinter import messagebox, simpledialog
 
 from .actions_app import get_all_folder_names, get_ssh_aliases
+from .actions_ui import rebuild_sessions
 from .constants import _APPDATA_DIR
 from .dialogs_move_folder import MoveFolderDialog
 from .dialogs_session_edit import SessionEditDialog
@@ -28,7 +29,7 @@ def add_session(app, folder_preset: str = "") -> None:
         app._notes.pop(dialog.result.key, None)
     save_notes(app._notes)
     save_app_sessions(app._app_sessions)
-    app._rebuild_sessions()
+    rebuild_sessions(app)
 
 
 def edit_session(app, session: Session) -> None:
@@ -47,7 +48,7 @@ def edit_session(app, session: Session) -> None:
         app._notes.pop(dialog.result.key, None)
     save_notes(app._notes)
     save_app_sessions(app._app_sessions)
-    app._rebuild_sessions()
+    rebuild_sessions(app)
 
 
 def duplicate_app_session(app, session: Session) -> None:
@@ -58,7 +59,7 @@ def duplicate_app_session(app, session: Session) -> None:
         return
     app._app_sessions.append(dialog.result)
     save_app_sessions(app._app_sessions)
-    app._rebuild_sessions()
+    rebuild_sessions(app)
 
 
 def move_session(app, session: Session) -> None:
@@ -81,7 +82,7 @@ def move_session(app, session: Session) -> None:
             )
             break
     save_app_sessions(app._app_sessions)
-    app._rebuild_sessions()
+    rebuild_sessions(app)
 
 
 def move_sessions(app, sessions: list[Session]) -> None:
@@ -104,7 +105,7 @@ def move_sessions(app, sessions: list[Session]) -> None:
                 source=existing.source,
             )
     save_app_sessions(app._app_sessions)
-    app._rebuild_sessions()
+    rebuild_sessions(app)
 
 
 def delete_session(app, session: Session) -> None:
@@ -117,7 +118,7 @@ def delete_session(app, session: Session) -> None:
         return
     app._app_sessions = [existing for existing in app._app_sessions if existing.key != session.key]
     save_app_sessions(app._app_sessions)
-    app._rebuild_sessions()
+    rebuild_sessions(app)
 
 
 def delete_folder(app, sessions: list[Session], folder_key: str) -> None:
@@ -131,7 +132,7 @@ def delete_folder(app, sessions: list[Session], folder_key: str) -> None:
     keys_to_delete = {session.key for session in sessions}
     app._app_sessions = [existing for existing in app._app_sessions if existing.key not in keys_to_delete]
     save_app_sessions(app._app_sessions)
-    app._rebuild_sessions()
+    rebuild_sessions(app)
 
 
 def rename_folder(app, folder_key: str) -> None:
@@ -157,7 +158,7 @@ def rename_folder(app, folder_key: str) -> None:
             session.folder_path = folder_path[:depth] + [new_name] + folder_path[depth + 1:]
 
     save_app_sessions(app._app_sessions)
-    app._rebuild_sessions()
+    rebuild_sessions(app)
 
 
 def duplicate_ssh_alias(app, session: Session) -> None:
@@ -173,7 +174,7 @@ def duplicate_ssh_alias(app, session: Session) -> None:
         return
     app._app_sessions.append(dialog.result)
     save_app_sessions(app._app_sessions)
-    app._rebuild_sessions()
+    rebuild_sessions(app)
 
 
 def open_appdata_jsons_in_vscode(app) -> None:

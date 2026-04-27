@@ -239,9 +239,6 @@ class SSHManagerApp(tk.Tk):
     def _quick_connect_session(self, session: Session) -> None:
         quick_connect_session(self, session)
 
-    def _rebuild_sessions(self, *, reload_winscp: bool = False) -> None:
-        rebuild_sessions(self, reload_winscp=reload_winscp)
-
     def _reload_sessions(self) -> None:
         reload_sessions(self)
 

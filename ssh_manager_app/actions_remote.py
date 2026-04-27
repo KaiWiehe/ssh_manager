@@ -11,6 +11,7 @@ from .core import (
     build_ssh_remove_key_command,
     build_ssh_tunnel_command,
 )
+from .actions_ui import rebuild_sessions
 from .dialogs_remote import (
     JumpHostDialog,
     RemoteCommandConfirmDialog,
@@ -209,7 +210,7 @@ def open_via_jumphost(app, session: Session) -> None:
         except OSError as exc:
             messagebox.showerror("SSH-Config", f"Fehler beim Schreiben von ~/.ssh/config:\n{exc}", parent=app)
             return
-        app._rebuild_sessions(reload_winscp=True)
+        rebuild_sessions(app, reload_winscp=True)
         ToastNotification(app, f"SSH-Config '{alias}' gespeichert")
         return
 
