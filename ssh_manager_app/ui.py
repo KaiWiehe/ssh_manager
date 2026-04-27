@@ -182,6 +182,18 @@ def open_via_jumphost_callback(app, session) -> None:
     open_via_jumphost(app, session)
 
 
+def add_session_callback(app, folder_preset="") -> None:
+    from .actions_sessions import add_session
+
+    add_session(app, folder_preset=folder_preset)
+
+
+def open_appdata_jsons_in_vscode_callback(app) -> None:
+    from .actions_sessions import open_appdata_jsons_in_vscode
+
+    open_appdata_jsons_in_vscode(app)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -210,11 +222,11 @@ def build_main_ui(self) -> None:
     self.config(menu=menubar)
 
     file_menu = tk.Menu(menubar, tearoff=False)
-    file_menu.add_command(label="Neue Verbindung", command=self._add_session)
+    file_menu.add_command(label="Neue Verbindung", command=lambda: add_session_callback(self))
     file_menu.add_command(label="Neu laden", command=lambda: reload_sessions_callback(self))
     file_menu.add_separator()
     file_menu.add_command(label="Einstellungen", command=lambda: show_settings_view_callback(self))
-    file_menu.add_command(label="JSONs in VS Code öffnen", command=self._open_appdata_jsons_in_vscode)
+    file_menu.add_command(label="JSONs in VS Code öffnen", command=lambda: open_appdata_jsons_in_vscode_callback(self))
     file_menu.add_separator()
     file_menu.add_command(label="Beenden", command=self._on_close)
     menubar.add_cascade(label="Datei", menu=file_menu)
@@ -272,7 +284,7 @@ def build_main_ui(self) -> None:
     self._toolbar_buttons["show_deselect_all"] = ttk.Button(toolbar, text="Alle abwählen", command=self._deselect_all)
     self._toolbar_buttons["show_expand_all"] = ttk.Button(toolbar, text="Ausklappen", command=self._expand_all)
     self._toolbar_buttons["show_collapse_all"] = ttk.Button(toolbar, text="Einklappen", command=self._collapse_all)
-    self._toolbar_buttons["show_add_connection"] = ttk.Button(toolbar, text="+ Verbindung", command=self._add_session)
+    self._toolbar_buttons["show_add_connection"] = ttk.Button(toolbar, text="+ Verbindung", command=lambda: add_session_callback(self))
     self._toolbar_buttons["show_reload"] = ttk.Button(toolbar, text="Neu laden", command=lambda: reload_sessions_callback(self))
     self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=lambda: open_tunnel_callback(self))
     self._toolbar_buttons["show_check_hosts"] = ttk.Button(toolbar, text="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
@@ -291,7 +303,7 @@ def build_main_ui(self) -> None:
         on_delete_session=lambda session: delete_session_callback(self, session),
         on_delete_folder=lambda sessions, folder_key: delete_folder_callback(self, sessions, folder_key),
         on_rename_folder=lambda folder_key: rename_folder_callback(self, folder_key),
-        on_add_session_in_folder=self._add_session,
+        on_add_session_in_folder=lambda folder_key: add_session_callback(self, folder_key),
         on_duplicate_ssh_alias=lambda session: duplicate_ssh_alias_callback(self, session),
         on_inspect_ssh_config=lambda session: inspect_ssh_config_callback(self, session),
         on_duplicate_app_session=lambda session: duplicate_app_session_callback(self, session),

@@ -176,13 +176,6 @@ class SSHManagerApp(tk.Tk):
     def _collapse_all(self) -> None:
         collapse_all(self)
 
-    def _add_session(self, folder_preset: str = "") -> None:
-        add_session(self, folder_preset=folder_preset)
-
-    def _open_appdata_jsons_in_vscode(self) -> None:
-        """Öffnet den SSH-Manager-AppData-Ordner mit JSON-Dateien in VS Code."""
-        open_appdata_jsons_in_vscode(self)
-
     def _on_close(self) -> None:
         close_app(self)
 
