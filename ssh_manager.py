@@ -12,7 +12,6 @@ from ssh_manager_app import (
     AppSettings,
     REGISTRY_PATH,
     ToolbarSettings,
-    WindowsTerminalSettings,
     SourceVisibilitySettings,
     Session,
     WINDOW_MIN_SIZE,
@@ -51,10 +50,13 @@ from ssh_manager_app.actions_sessions import (
     open_appdata_jsons_in_vscode,
 )
 from ssh_manager_app.actions_remote import (
+    connect_sessions,
     deploy_ssh_key,
+    quick_connect_session,
     remove_ssh_key,
     open_tunnel,
     open_via_jumphost,
+    resolve_single_session_user,
     resolve_users_for_sessions,
     run_remote_command,
 )
@@ -110,6 +112,7 @@ class SSHManagerApp(tk.Tk):
         elif self.settings.startup_expand_mode == "collapsed":
             self._initial_open_folders = set()
         self._toolbar_buttons: dict[str, ttk.Button] = {}
+        self._terminal_launcher = TerminalLauncher
         self._main_frame: ttk.Frame | None = None
         self._settings_view: SettingsView | None = None
         build_main_ui(self)
@@ -370,37 +373,13 @@ class SSHManagerApp(tk.Tk):
         self._tree.collapse_all()
 
     def _on_connect(self) -> None:
-        selected = self._tree.get_selected_sessions()
-        if not selected:
-            return
-        dialog = UserDialog(self, quick_users=self.get_quick_users(), default_user=self.get_default_user())
-        self.wait_window(dialog)
-        if dialog.result is None:
-            return  # Abbrechen gedrückt
-        user = dialog.result
-        try:
-            TerminalLauncher.launch(selected, user, self._tree.get_session_colors(), terminal_settings=self.get_terminal_settings())
-        except Exception as e:
-            messagebox.showerror("Fehler beim Starten", str(e))
+        connect_sessions(self, self._tree.get_selected_sessions())
 
     def _resolve_single_session_user(self, session: Session, title: str = "Benutzername auswählen") -> str | None:
-        """Löst den Benutzernamen für genau eine Session auf."""
-        if session.is_ssh_config_session and session.username:
-            return session.username
-        dialog = UserDialog(self, title=title, quick_users=self.get_quick_users(), default_user=self.get_default_user())
-        self.wait_window(dialog)
-        return dialog.result
+        return resolve_single_session_user(self, session, title=title)
 
     def _quick_connect_session(self, session: Session) -> None:
-        """Öffnet eine einzelne Session direkt (via Doppelklick oder Kontextmenü)."""
-        colors = self._tree.get_session_colors()
-        user = self._resolve_single_session_user(session)
-        if user is None and not (session.is_ssh_config_session and session.username):
-            return
-        try:
-            TerminalLauncher.launch([session], user or "", colors, terminal_settings=self.get_terminal_settings())
-        except Exception as e:
-            messagebox.showerror("Fehler beim Starten", str(e))
+        quick_connect_session(self, session)
 
     def _get_all_folder_names(self) -> list[str]:
         """Gibt alle bekannten Ordnernamen aus allen Session-Quellen zurück."""

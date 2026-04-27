@@ -15,6 +15,53 @@ from .dialogs import JumpHostDialog, RemoteCommandConfirmDialog, RemoteCommandDi
 from .models import Session
 
 
+def connect_sessions(app, sessions: list[Session]) -> None:
+    """Öffnet mehrere ausgewählte Sessions im Terminal mit gemeinsamem Benutzer."""
+    if not sessions:
+        return
+    dialog = UserDialog(app, quick_users=app.get_quick_users(), default_user=app.get_default_user())
+    app.wait_window(dialog)
+    if dialog.result is None:
+        return
+    try:
+        app._terminal_launcher.launch(
+            sessions,
+            dialog.result,
+            app._tree.get_session_colors(),
+            terminal_settings=app.get_terminal_settings(),
+        )
+    except Exception as exc:
+        messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
+
+
+
+def resolve_single_session_user(app, session: Session, title: str = "Benutzername auswählen") -> str | None:
+    """Löst den Benutzernamen für genau eine Session auf."""
+    if session.is_ssh_config_session and session.username:
+        return session.username
+    dialog = UserDialog(app, title=title, quick_users=app.get_quick_users(), default_user=app.get_default_user())
+    app.wait_window(dialog)
+    return dialog.result
+
+
+
+def quick_connect_session(app, session: Session) -> None:
+    """Öffnet eine einzelne Session direkt, etwa via Doppelklick oder Kontextmenü."""
+    user = resolve_single_session_user(app, session)
+    if user is None and not (session.is_ssh_config_session and session.username):
+        return
+    try:
+        app._terminal_launcher.launch(
+            [session],
+            user or "",
+            app._tree.get_session_colors(),
+            terminal_settings=app.get_terminal_settings(),
+        )
+    except Exception as exc:
+        messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
+
+
+
 def deploy_ssh_key(app, sessions: list[Session]) -> None:
     """Öffnet den ssh-copy-id Dialog und startet den Key-Transfer im Terminal."""
     dialog = SshCopyIdDialog(app, target_count=len(sessions), quick_users=app.get_quick_users(), default_user=app.get_default_user())
@@ -142,7 +189,7 @@ def open_via_jumphost(app, session: Session) -> None:
 
     if dialog.save_result is not None:
         alias, jump_host, jump_port, jump_user, _target_key = dialog.save_result
-        target_user = app._resolve_single_session_user(session, title=f"Benutzername für {session.display_name}")
+        target_user = resolve_single_session_user(app, session, title=f"Benutzername für {session.display_name}")
         if target_user is None:
             return
         try:
@@ -161,7 +208,7 @@ def open_via_jumphost(app, session: Session) -> None:
         return
 
     jump_host, jump_user, jump_port = dialog.result
-    target_user = app._resolve_single_session_user(session, title=f"Benutzername für {session.display_name}")
+    target_user = resolve_single_session_user(app, session, title=f"Benutzername für {session.display_name}")
     if target_user is None:
         return
     try:
