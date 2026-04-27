@@ -51,48 +51,13 @@ from ssh_manager_app.actions_ui import (
     on_selection_changed,
     preview_source_visibility,
     preview_toolbar_visibility,
-    rebuild_sessions,
-    reload_sessions,
     reset_session_colors,
     reset_settings,
     reset_view_state,
     select_all,
-    show_main_view,
-    show_settings_view,
 )
-from ssh_manager_app.actions_sessions import (
-    add_session,
-    edit_session,
-    duplicate_app_session,
-    move_session,
-    move_sessions,
-    delete_session,
-    delete_folder,
-    rename_folder,
-    duplicate_ssh_alias,
-    open_appdata_jsons_in_vscode,
-)
-from ssh_manager_app.actions_app import (
-    close_app,
-    export_settings_dialog,
-    get_all_folder_names,
-    get_ssh_aliases,
-    import_settings_dialog,
-    show_search_history_menu,
-)
-from ssh_manager_app.actions_remote import (
-    deploy_ssh_key,
-    remove_ssh_key,
-    open_tunnel,
-    open_via_jumphost,
-    resolve_users_for_sessions,
-    run_remote_command,
-)
-from ssh_manager_app.actions_open import (
-    inspect_ssh_config,
-    open_in_winscp,
-    open_ssh_config_in_vscode,
-)
+from ssh_manager_app.actions_sessions import add_session, open_appdata_jsons_in_vscode
+from ssh_manager_app.actions_app import close_app, get_all_folder_names, get_ssh_aliases, show_search_history_menu
 
 if TYPE_CHECKING:
     from ssh_manager_app.dialogs_settings_misc import SettingsView
@@ -217,9 +182,6 @@ class SSHManagerApp(tk.Tk):
     def _open_appdata_jsons_in_vscode(self) -> None:
         """Öffnet den SSH-Manager-AppData-Ordner mit JSON-Dateien in VS Code."""
         open_appdata_jsons_in_vscode(self)
-
-    def _resolve_users_for_sessions(self, sessions: list[Session], mode: str) -> list[tuple[Session, str]] | None:
-        return resolve_users_for_sessions(self, sessions, mode)
 
     def _on_close(self) -> None:
         close_app(self)
