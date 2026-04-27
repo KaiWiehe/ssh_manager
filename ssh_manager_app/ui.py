@@ -7,6 +7,31 @@ from .dialogs import SettingsView
 from .tree import SessionTree
 
 
+TOOLBAR_BUTTON_ORDER = [
+    "show_select_all",
+    "show_deselect_all",
+    "show_expand_all",
+    "show_collapse_all",
+    "show_add_connection",
+    "show_reload",
+    "show_open_tunnel",
+    "show_check_hosts",
+]
+
+
+def layout_toolbar_buttons(app) -> None:
+    col = 2
+    for key in TOOLBAR_BUTTON_ORDER:
+        btn = app._toolbar_buttons[key]
+        btn.grid_forget()
+        if getattr(app.settings.toolbar, key):
+            padx = (8, 2) if key == "show_add_connection" else (2, 2)
+            if key == "show_check_hosts":
+                padx = (2, 0)
+            btn.grid(row=0, column=col, padx=padx)
+            col += 1
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -101,7 +126,7 @@ def build_main_ui(self) -> None:
     self._toolbar_buttons["show_reload"] = ttk.Button(toolbar, text="Neu laden", command=self._reload_sessions)
     self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=self._open_tunnel)
     self._toolbar_buttons["show_check_hosts"] = ttk.Button(toolbar, text="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
-    self._layout_toolbar_buttons()
+    layout_toolbar_buttons(self)
 
     self._tree = SessionTree(
         self._main_frame,

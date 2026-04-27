@@ -34,7 +34,7 @@ from ssh_manager_app.core import (
     _create_checkbox_images,
 )
 
-from ssh_manager_app.ui import build_main_ui, configure_app_styles
+from ssh_manager_app.ui import build_main_ui, configure_app_styles, layout_toolbar_buttons
 from ssh_manager_app.actions_ui import (
     add_search_history_entry,
     apply_search_history_entry,
@@ -169,26 +169,7 @@ class SSHManagerApp(tk.Tk):
         return build_visible_sessions(self)
 
     def _layout_toolbar_buttons(self) -> None:
-        col = 2
-        order = [
-            "show_select_all",
-            "show_deselect_all",
-            "show_expand_all",
-            "show_collapse_all",
-            "show_add_connection",
-            "show_reload",
-            "show_open_tunnel",
-            "show_check_hosts",
-        ]
-        for key in order:
-            btn = self._toolbar_buttons[key]
-            btn.grid_forget()
-            if getattr(self.settings.toolbar, key):
-                padx = (8, 2) if key == "show_add_connection" else (2, 2)
-                if key == "show_check_hosts":
-                    padx = (2, 0)
-                btn.grid(row=0, column=col, padx=padx)
-                col += 1
+        layout_toolbar_buttons(self)
 
     def preview_toolbar_visibility(self, toolbar_settings: ToolbarSettings) -> None:
         preview_toolbar_visibility(self, toolbar_settings)

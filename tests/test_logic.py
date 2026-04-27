@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import winreg
 from ssh_manager_app.actions_app import get_all_folder_names, get_ssh_aliases
 from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
+from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, build_wt_command, parse_session_key
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
@@ -533,3 +534,33 @@ def test_add_search_history_entry_deduplicates_limits_and_persists():
         "item-8",
     ]
     assert persist_mock.call_count == 2
+
+
+
+def test_layout_toolbar_buttons_places_only_enabled_buttons_in_order():
+    app = MagicMock()
+    app.settings = AppSettings()
+    app.settings.toolbar.show_select_all = True
+    app.settings.toolbar.show_deselect_all = False
+    app.settings.toolbar.show_expand_all = True
+    app.settings.toolbar.show_collapse_all = False
+    app.settings.toolbar.show_add_connection = True
+    app.settings.toolbar.show_reload = True
+    app.settings.toolbar.show_open_tunnel = False
+    app.settings.toolbar.show_check_hosts = True
+
+    app._toolbar_buttons = {key: MagicMock() for key in TOOLBAR_BUTTON_ORDER}
+
+    layout_toolbar_buttons(app)
+
+    for button in app._toolbar_buttons.values():
+        button.grid_forget.assert_called_once()
+
+    assert app._toolbar_buttons["show_select_all"].grid.call_args.kwargs == {"row": 0, "column": 2, "padx": (2, 2)}
+    app._toolbar_buttons["show_deselect_all"].grid.assert_not_called()
+    assert app._toolbar_buttons["show_expand_all"].grid.call_args.kwargs == {"row": 0, "column": 3, "padx": (2, 2)}
+    app._toolbar_buttons["show_collapse_all"].grid.assert_not_called()
+    assert app._toolbar_buttons["show_add_connection"].grid.call_args.kwargs == {"row": 0, "column": 4, "padx": (8, 2)}
+    assert app._toolbar_buttons["show_reload"].grid.call_args.kwargs == {"row": 0, "column": 5, "padx": (2, 2)}
+    app._toolbar_buttons["show_open_tunnel"].grid.assert_not_called()
+    assert app._toolbar_buttons["show_check_hosts"].grid.call_args.kwargs == {"row": 0, "column": 6, "padx": (2, 0)}
