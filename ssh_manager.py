@@ -42,12 +42,6 @@ from ssh_manager_app.actions_ui import (
     apply_settings,
     build_visible_sessions,
     clear_search_history,
-    collapse_all,
-    deselect_all,
-    expand_all,
-    invert_selection,
-    on_selection_changed,
-    select_all,
 )
 from ssh_manager_app.actions_sessions import add_session, open_appdata_jsons_in_vscode
 from ssh_manager_app.actions_app import get_all_folder_names, get_ssh_aliases, show_search_history_menu
@@ -120,24 +114,6 @@ class SSHManagerApp(tk.Tk):
 
     def apply_settings(self, settings: AppSettings) -> None:
         apply_settings(self, settings)
-
-    def _invert_selection(self) -> None:
-        invert_selection(self)
-
-    def _on_selection_changed(self, count: int) -> None:
-        on_selection_changed(self, count)
-
-    def _select_all(self) -> None:
-        select_all(self)
-
-    def _deselect_all(self) -> None:
-        deselect_all(self)
-
-    def _expand_all(self) -> None:
-        expand_all(self)
-
-    def _collapse_all(self) -> None:
-        collapse_all(self)
 
 
 # ---------------------------------------------------------------------------

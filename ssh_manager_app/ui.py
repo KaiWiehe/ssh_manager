@@ -242,6 +242,42 @@ def reset_view_state_callback(app) -> None:
     reset_view_state(app)
 
 
+def invert_selection_callback(app) -> None:
+    from .actions_ui import invert_selection
+
+    invert_selection(app)
+
+
+def on_selection_changed_callback(app, count: int) -> None:
+    from .actions_ui import on_selection_changed
+
+    on_selection_changed(app, count)
+
+
+def select_all_callback(app) -> None:
+    from .actions_ui import select_all
+
+    select_all(app)
+
+
+def deselect_all_callback(app) -> None:
+    from .actions_ui import deselect_all
+
+    deselect_all(app)
+
+
+def expand_all_callback(app) -> None:
+    from .actions_ui import expand_all
+
+    expand_all(app)
+
+
+def collapse_all_callback(app) -> None:
+    from .actions_ui import collapse_all
+
+    collapse_all(app)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -280,14 +316,14 @@ def build_main_ui(self) -> None:
     menubar.add_cascade(label="Datei", menu=file_menu)
 
     selection_menu = tk.Menu(menubar, tearoff=False)
-    selection_menu.add_command(label="Alle auswählen", command=self._select_all)
-    selection_menu.add_command(label="Alle abwählen", command=self._deselect_all)
-    selection_menu.add_command(label="Auswahl umkehren", command=self._invert_selection)
+    selection_menu.add_command(label="Alle auswählen", command=lambda: select_all_callback(self))
+    selection_menu.add_command(label="Alle abwählen", command=lambda: deselect_all_callback(self))
+    selection_menu.add_command(label="Auswahl umkehren", command=lambda: invert_selection_callback(self))
     menubar.add_cascade(label="Auswahl", menu=selection_menu)
 
     view_menu = tk.Menu(menubar, tearoff=False)
-    view_menu.add_command(label="Ausklappen", command=self._expand_all)
-    view_menu.add_command(label="Einklappen", command=self._collapse_all)
+    view_menu.add_command(label="Ausklappen", command=lambda: expand_all_callback(self))
+    view_menu.add_command(label="Einklappen", command=lambda: collapse_all_callback(self))
     view_menu.add_separator()
     view_menu.add_command(label="Farben zurücksetzen", command=lambda: reset_session_colors_callback(self))
     view_menu.add_command(label="Ansicht auf Startzustand zurücksetzen", command=lambda: reset_view_state_callback(self))
@@ -328,10 +364,10 @@ def build_main_ui(self) -> None:
     self._search_history_btn = ttk.Button(search_wrap, text="▾", width=2, command=lambda: show_search_history_menu_callback(self))
     self._search_history_btn.grid(row=0, column=1, padx=(2, 0))
 
-    self._toolbar_buttons["show_select_all"] = ttk.Button(toolbar, text="Alle auswählen", command=self._select_all)
-    self._toolbar_buttons["show_deselect_all"] = ttk.Button(toolbar, text="Alle abwählen", command=self._deselect_all)
-    self._toolbar_buttons["show_expand_all"] = ttk.Button(toolbar, text="Ausklappen", command=self._expand_all)
-    self._toolbar_buttons["show_collapse_all"] = ttk.Button(toolbar, text="Einklappen", command=self._collapse_all)
+    self._toolbar_buttons["show_select_all"] = ttk.Button(toolbar, text="Alle auswählen", command=lambda: select_all_callback(self))
+    self._toolbar_buttons["show_deselect_all"] = ttk.Button(toolbar, text="Alle abwählen", command=lambda: deselect_all_callback(self))
+    self._toolbar_buttons["show_expand_all"] = ttk.Button(toolbar, text="Ausklappen", command=lambda: expand_all_callback(self))
+    self._toolbar_buttons["show_collapse_all"] = ttk.Button(toolbar, text="Einklappen", command=lambda: collapse_all_callback(self))
     self._toolbar_buttons["show_add_connection"] = ttk.Button(toolbar, text="+ Verbindung", command=lambda: add_session_callback(self))
     self._toolbar_buttons["show_reload"] = ttk.Button(toolbar, text="Neu laden", command=lambda: reload_sessions_callback(self))
     self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=lambda: open_tunnel_callback(self))
@@ -343,7 +379,7 @@ def build_main_ui(self) -> None:
         sessions=self._sessions,
         img_unchecked=self._img_unchecked,
         img_checked=self._img_checked,
-        on_selection_changed=self._on_selection_changed,
+        on_selection_changed=lambda count: on_selection_changed_callback(self, count),
         initial_open_folders=self._initial_open_folders,
         initial_session_colors=self._initial_session_colors,
         on_quick_connect=lambda session: quick_connect_session_callback(self, session),
