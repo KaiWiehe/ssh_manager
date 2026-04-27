@@ -224,6 +224,24 @@ def preview_source_visibility_callback(app, source_visibility) -> None:
     preview_source_visibility(app, source_visibility)
 
 
+def reset_settings_callback(app) -> None:
+    from .actions_ui import reset_settings
+
+    reset_settings(app)
+
+
+def reset_session_colors_callback(app) -> None:
+    from .actions_ui import reset_session_colors
+
+    reset_session_colors(app)
+
+
+def reset_view_state_callback(app) -> None:
+    from .actions_ui import reset_view_state
+
+    reset_view_state(app)
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -271,8 +289,8 @@ def build_main_ui(self) -> None:
     view_menu.add_command(label="Ausklappen", command=self._expand_all)
     view_menu.add_command(label="Einklappen", command=self._collapse_all)
     view_menu.add_separator()
-    view_menu.add_command(label="Farben zurücksetzen", command=self._reset_session_colors)
-    view_menu.add_command(label="Ansicht auf Startzustand zurücksetzen", command=self.reset_view_state)
+    view_menu.add_command(label="Farben zurücksetzen", command=lambda: reset_session_colors_callback(self))
+    view_menu.add_command(label="Ansicht auf Startzustand zurücksetzen", command=lambda: reset_view_state_callback(self))
     menubar.add_cascade(label="Ansicht", menu=view_menu)
 
     actions_menu = tk.Menu(menubar, tearoff=False)
@@ -287,7 +305,7 @@ def build_main_ui(self) -> None:
     settings_menu.add_command(label="Einstellungen exportieren…", command=lambda: export_settings_dialog_callback(self))
     settings_menu.add_command(label="Einstellungen importieren…", command=lambda: import_settings_dialog_callback(self))
     settings_menu.add_separator()
-    settings_menu.add_command(label="Einstellungen zurücksetzen", command=self.reset_settings)
+    settings_menu.add_command(label="Einstellungen zurücksetzen", command=lambda: reset_settings_callback(self))
     menubar.add_cascade(label="Einstellungen", menu=settings_menu)
 
     self._main_frame = ttk.Frame(self)

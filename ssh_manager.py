@@ -47,9 +47,6 @@ from ssh_manager_app.actions_ui import (
     expand_all,
     invert_selection,
     on_selection_changed,
-    reset_session_colors,
-    reset_settings,
-    reset_view_state,
     select_all,
 )
 from ssh_manager_app.actions_sessions import add_session, open_appdata_jsons_in_vscode
@@ -123,15 +120,6 @@ class SSHManagerApp(tk.Tk):
 
     def apply_settings(self, settings: AppSettings) -> None:
         apply_settings(self, settings)
-
-    def reset_settings(self) -> None:
-        reset_settings(self)
-
-    def _reset_session_colors(self) -> None:
-        reset_session_colors(self)
-
-    def reset_view_state(self) -> None:
-        reset_view_state(self)
 
     def _invert_selection(self) -> None:
         invert_selection(self)

@@ -443,8 +443,12 @@ class SettingsView(ttk.Frame):
         self._show_main_view()
 
     def _reset_settings(self) -> None:
-        self._app.reset_settings()
+        from .actions_ui import reset_settings
+
+        reset_settings(self._app)
         self.load_from_app()
 
     def _reset_view_state(self) -> None:
-        self._app.reset_view_state()
+        from .actions_ui import reset_view_state
+
+        reset_view_state(self._app)
