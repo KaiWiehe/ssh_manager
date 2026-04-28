@@ -17,7 +17,7 @@ from ssh_manager_app.actions_app import (
     import_settings_dialog,
     show_search_history_menu,
 )
-from ssh_manager_app.actions_remote import connect_sessions, open_tunnel
+from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, quick_connect_session
 from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
@@ -709,3 +709,38 @@ def test_open_tunnel_uses_app_settings_directly():
         terminal_settings=app.settings.windows_terminal,
     )
     popen.assert_called_once_with("wt cmd")
+
+
+def test_quick_connect_session_uses_terminal_settings_from_app_settings():
+    app = MagicMock()
+    app.settings = AppSettings(default_user="kai")
+    app._tree.get_session_colors.return_value = {"s1": "#abcdef"}
+    session = Session("s1", "srv1", [], "10.0.0.1")
+
+    with patch("ssh_manager_app.actions_remote.resolve_single_session_user", return_value="root"):
+        quick_connect_session(app, session)
+
+    app._terminal_launcher.launch.assert_called_once_with(
+        [session],
+        "root",
+        {"s1": "#abcdef"},
+        terminal_settings=app.settings.windows_terminal,
+    )
+
+
+def test_deploy_ssh_key_uses_app_settings_directly():
+    app = MagicMock()
+    app.settings = AppSettings(quick_users=["root", "ops"], default_user="ops")
+    sessions = [Session("s1", "srv1", [], "10.0.0.1")]
+
+    dialog = MagicMock()
+    dialog.result = ("id_ed25519.pub", "ops")
+
+    with patch("ssh_manager_app.actions_remote.SshCopyIdDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_remote.build_ssh_copy_id_command", return_value="copy-cmd") as build_cmd, \
+         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+        deploy_ssh_key(app, sessions)
+
+    dialog_cls.assert_called_once_with(app, target_count=1, quick_users=["root", "ops"], default_user="ops")
+    build_cmd.assert_called_once_with(sessions, "id_ed25519.pub", "ops", terminal_settings=app.settings.windows_terminal)
+    popen.assert_called_once_with("copy-cmd", shell=True)
