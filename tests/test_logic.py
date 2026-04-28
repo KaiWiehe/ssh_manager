@@ -20,11 +20,12 @@ from ssh_manager_app.actions_app import (
 from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
-from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
+from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions, preview_source_visibility, preview_toolbar_visibility, reset_settings, reset_session_colors, reset_view_state, update_notes_info
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, build_wt_command, parse_session_key
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
+from ssh_manager_app.tree import _session_values_text
 from ssh_manager_app.storage import (
     load_filezilla_config_sessions,
     load_notes,
@@ -300,6 +301,25 @@ def test_palette_entries_have_name_and_hex():
         assert hex_color.startswith("#") and len(hex_color) == 7
 
 
+def test_session_values_text_joins_hostnames():
+    sessions = [
+        Session("k1", "App", [], "10.0.0.1"),
+        Session("k2", "DB", [], "db.internal"),
+    ]
+
+    assert _session_values_text(sessions, "hostname") == "10.0.0.1\ndb.internal"
+
+
+def test_session_values_text_joins_names_and_skips_empty_values():
+    sessions = [
+        Session("k1", "App", [], "10.0.0.1"),
+        Session("k2", "", [], "10.0.0.2"),
+        Session("k3", "DB", [], "10.0.0.3"),
+    ]
+
+    assert _session_values_text(sessions, "display_name") == "App\nDB"
+
+
 def _mock_ssh_config(content: str):
     m = MagicMock()
     m.read_text.return_value = content
@@ -548,6 +568,103 @@ def test_add_search_history_entry_deduplicates_limits_and_persists():
 
 
 
+def test_preview_toolbar_visibility_updates_toolbar_and_tree():
+    app = MagicMock()
+    app.settings = AppSettings()
+    toolbar = app.settings.toolbar
+    app._tree = MagicMock()
+
+    preview_toolbar_visibility(app, toolbar)
+
+    assert app.settings.toolbar is toolbar
+    app._tree.update_toolbar_settings.assert_called_once_with(toolbar)
+
+
+def test_preview_source_visibility_rebuilds_sessions_and_persists_state():
+    app = MagicMock()
+    app.settings = AppSettings()
+    source_visibility = app.settings.source_visibility
+    app._winscp_sessions = [Session("w1", "winscp", [], "10.0.0.1", source="winscp")]
+    app._app_sessions = [Session("a1", "app", [], "10.0.0.2", source="app")]
+    app._ssh_config_sessions = [Session("s1", "ssh", [], "10.0.0.3", source="ssh_config")]
+    app._filezilla_sessions = [Session("f1", "fz", [], "10.0.0.4", source="filezilla_config")]
+    app._tree = MagicMock()
+    new_sessions = [Session("x", "visible", [], "10.0.0.5")]
+
+    with patch("ssh_manager_app.actions_ui.build_visible_sessions", return_value=new_sessions) as build_visible, \
+         patch("ssh_manager_app.actions_ui.persist_ui_state") as persist_mock:
+        preview_source_visibility(app, source_visibility)
+
+    build_visible.assert_called_once_with(app)
+    assert app._sessions == new_sessions
+    app._tree.refresh.assert_called_once_with(new_sessions)
+    persist_mock.assert_called_once_with(app)
+
+
+def test_reset_settings_restores_defaults_and_reload_settings_view():
+    app = MagicMock()
+    default_settings = AppSettings()
+    app._default_settings_factory.return_value = default_settings
+    app._settings_view = MagicMock()
+
+    with patch("ssh_manager_app.actions_ui.apply_settings") as apply_settings:
+        reset_settings(app)
+
+    apply_settings.assert_called_once_with(app, default_settings)
+    app._settings_view.load_from_app.assert_called_once_with()
+
+
+def test_reset_session_colors_clears_each_color_and_shows_toast():
+    app = MagicMock()
+    app._tree.get_session_colors.return_value = {"s1": "#111111", "s2": "#222222"}
+
+    with patch("ssh_manager_app.actions_ui.ToastNotification") as toast:
+        reset_session_colors(app)
+
+    app._tree.set_session_color.assert_any_call("s1", None)
+    app._tree.set_session_color.assert_any_call("s2", None)
+    assert app._tree.set_session_color.call_count == 2
+    toast.assert_called_once_with(app, "Farben zurückgesetzt")
+
+
+def test_reset_view_state_restores_initial_tree_state_and_colors():
+    app = MagicMock()
+    app._search_var = MagicMock()
+    app._sessions = [Session("s1", "srv1", [], "10.0.0.1")]
+    app._initial_open_folders = {"Prod"}
+    app._initial_session_colors = {"s1": "#123456", "s2": "#654321"}
+    app._tree.get_session_colors.return_value = {"s1": "#abcdef", "s3": "#000000"}
+
+    with patch("ssh_manager_app.actions_ui.ToastNotification") as toast:
+        reset_view_state(app)
+
+    app._search_var.set.assert_called_once_with("")
+    app._tree.populate.assert_called_once_with(app._sessions, open_folders={"Prod"})
+    app._tree.set_session_color.assert_any_call("s1", "#123456")
+    app._tree.set_session_color.assert_any_call("s2", "#654321")
+    app._tree.set_session_color.assert_any_call("s3", None)
+    assert app._tree.set_session_color.call_count == 3
+    toast.assert_called_once_with(app, "Ansicht auf Startzustand zurückgesetzt")
+
+
+def test_update_notes_info_uses_note_text_when_present():
+    app = MagicMock()
+    app._notes_info_var = MagicMock()
+    app._notes = {"s1": "  wichtig  "}
+    session = Session("s1", "srv1", [], "10.0.0.1")
+
+    update_notes_info(app, session)
+
+    app._notes_info_var.set.assert_called_once_with("Notiz für srv1: wichtig")
+
+
+def test_update_notes_info_shows_placeholder_without_session():
+    app = MagicMock()
+    app._notes_info_var = MagicMock()
+
+    update_notes_info(app, None)
+
+    app._notes_info_var.set.assert_called_once_with("Notizinfo: Zeige den Mauszeiger auf Name oder Notiz, oder nutze Rechtsklick → Notiz bearbeiten…")
 
 
 def test_edit_session_note_saves_note_and_refreshes_ui():
