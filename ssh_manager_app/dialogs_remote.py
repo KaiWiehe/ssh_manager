@@ -53,7 +53,7 @@ class JumpHostDialog(tk.Toplevel):
         form.columnconfigure(1, weight=1)
 
         self._jump_host_var = tk.StringVar()
-        default_user = getattr(parent, "get_default_user", lambda: DEFAULT_USER)()
+        default_user = getattr(getattr(parent, "settings", None), "default_user", DEFAULT_USER)
         self._jump_user_var = tk.StringVar(value=default_user)
         self._jump_port_var = tk.StringVar(value="22")
         self._filter_var = tk.StringVar()

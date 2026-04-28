@@ -12,7 +12,6 @@ from tkinter import messagebox, ttk
 from ssh_manager_app import (
     ToolbarSettings,
     Session,
-    WindowsTerminalSettings,
     WINDOW_MIN_SIZE,
     WINDOW_TITLE,
     REGISTRY_PATH,
@@ -100,15 +99,6 @@ class SSHManagerApp(tk.Tk):
         self._settings_view: SettingsView | None = None
         build_main_ui(self)
         self.protocol("WM_DELETE_WINDOW", lambda: close_app_callback(self))
-
-    def get_default_user(self) -> str:
-        return self.settings.default_user
-
-    def get_quick_users(self) -> list[str]:
-        return list(self.settings.quick_users)
-
-    def get_terminal_settings(self) -> WindowsTerminalSettings:
-        return self.settings.windows_terminal
 
 
 # ---------------------------------------------------------------------------
