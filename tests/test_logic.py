@@ -17,7 +17,7 @@ from ssh_manager_app.actions_app import (
     import_settings_dialog,
     show_search_history_menu,
 )
-from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, quick_connect_session, remove_ssh_key, run_remote_command
+from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
@@ -799,3 +799,35 @@ def test_run_remote_command_uses_app_settings_directly():
         terminal_settings=app.settings.windows_terminal,
     )
     popen.assert_called_once_with("remote-cmd", shell=True)
+
+
+def test_open_via_jumphost_uses_terminal_settings_from_app_settings():
+    app = MagicMock()
+    app.settings = AppSettings(default_user="ops")
+    app._sessions = []
+    app._tree.get_open_folders.return_value = {"Prod"}
+    app._tree.get_session_colors.return_value = {"s1": "#654321"}
+    session = Session("s1", "srv1", ["Prod"], "10.0.0.1")
+
+    dialog = MagicMock()
+    dialog.save_result = None
+    dialog.result = ("jump.example", "jumper", 2222)
+
+    with patch("ssh_manager_app.actions_remote.JumpHostDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_remote.resolve_single_session_user", return_value="ops") as resolve_user, \
+         patch("ssh_manager_app.actions_remote.build_jump_wt_command", return_value="jump-cmd") as build_cmd, \
+         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+        open_via_jumphost(app, session)
+
+    dialog_cls.assert_called_once_with(app, session, app._sessions, open_folders_getter=app._tree.get_open_folders)
+    resolve_user.assert_called_once_with(app, session, title="Benutzername für srv1")
+    build_cmd.assert_called_once_with(
+        session,
+        "ops",
+        "jump.example",
+        "jumper",
+        2222,
+        "#654321",
+        terminal_settings=app.settings.windows_terminal,
+    )
+    popen.assert_called_once_with("jump-cmd", shell=True)
