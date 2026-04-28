@@ -548,6 +548,18 @@ def test_add_search_history_entry_deduplicates_limits_and_persists():
 
 
 
+def test_ssh_manager_app_stays_thin_bootstrap_shell():
+    from ssh_manager import SSHManagerApp
+
+    method_names = [
+        name
+        for name, value in SSHManagerApp.__dict__.items()
+        if callable(value) and getattr(value, "__module__", None) == "ssh_manager"
+    ]
+
+    assert method_names == ["__init__"]
+
+
 def test_dialog_exports_use_split_modules():
     from ssh_manager_app.dialogs import (
         JumpHostDialog,
