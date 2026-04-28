@@ -20,7 +20,7 @@ from ssh_manager_app.actions_app import (
 from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
-from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions, preview_source_visibility, preview_toolbar_visibility, reset_settings, reset_session_colors, reset_view_state
+from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, build_wt_command, parse_session_key
@@ -645,6 +645,112 @@ def test_reset_view_state_restores_initial_tree_state_and_colors():
     app._tree.set_session_color.assert_any_call("s3", None)
     assert app._tree.set_session_color.call_count == 3
     toast.assert_called_once_with(app, "Ansicht auf Startzustand zurückgesetzt")
+
+
+def test_show_settings_view_switches_from_main_to_settings():
+    app = MagicMock()
+    app._settings_view = MagicMock()
+    app._main_frame = MagicMock()
+
+    show_settings_view(app)
+
+    app._settings_view.load_from_app.assert_called_once_with()
+    app._main_frame.grid_remove.assert_called_once_with()
+    app._settings_view.grid.assert_called_once_with(row=0, column=0, sticky="nsew")
+
+
+def test_show_main_view_restores_main_frame_and_layout():
+    app = MagicMock()
+    app._settings_view = MagicMock()
+    app._main_frame = MagicMock()
+
+    with patch("ssh_manager_app.actions_ui.layout_toolbar_buttons") as layout:
+        show_main_view(app)
+
+    app._settings_view.grid_remove.assert_called_once_with()
+    app._main_frame.grid.assert_called_once_with()
+    layout.assert_called_once_with(app)
+
+
+def test_apply_settings_persists_and_focuses_search():
+    app = MagicMock()
+    settings = AppSettings()
+
+    with patch("ssh_manager_app.actions_ui.save_settings") as save_settings, \
+         patch("ssh_manager_app.actions_ui.layout_toolbar_buttons") as layout, \
+         patch("ssh_manager_app.actions_ui.ToastNotification") as toast:
+        apply_settings(app, settings)
+
+    assert app.settings is settings
+    save_settings.assert_called_once_with(settings)
+    layout.assert_called_once_with(app)
+    app._search_entry.focus_set.assert_called_once_with()
+    toast.assert_called_once_with(app, "Einstellungen gespeichert")
+
+
+def test_on_selection_changed_updates_connect_button_state():
+    app = MagicMock()
+
+    on_selection_changed(app, 3)
+    on_selection_changed(app, 0)
+
+    assert app._connect_btn.config.call_args_list[0].kwargs == {"text": "Verbinden (3 ausgewählt)", "state": tk.NORMAL}
+    assert app._connect_btn.config.call_args_list[1].kwargs == {"text": "Verbinden", "state": tk.DISABLED}
+
+
+def test_on_search_changed_filters_persists_and_schedules_history_entry():
+    app = MagicMock()
+    app._search_var.get.return_value = "  prod  "
+    app._search_history_after_id = "after-1"
+    app.after.return_value = "after-2"
+
+    with patch("ssh_manager_app.actions_ui.persist_ui_state") as persist_mock:
+        on_search_changed(app)
+
+    app._tree.filter.assert_called_once_with("  prod  ")
+    persist_mock.assert_called_once_with(app)
+    app.after_cancel.assert_called_once_with("after-1")
+    app.after.assert_called_once()
+    assert app._search_history_after_id == "after-2"
+
+
+def test_on_search_changed_clears_pending_history_for_short_queries():
+    app = MagicMock()
+    app._search_var.get.return_value = "x"
+    app._search_history_after_id = None
+
+    with patch("ssh_manager_app.actions_ui.persist_ui_state") as persist_mock:
+        on_search_changed(app)
+
+    app._tree.filter.assert_called_once_with("x")
+    persist_mock.assert_called_once_with(app)
+    app.after.assert_not_called()
+    assert app._search_history_after_id is None
+
+
+def test_selection_helpers_delegate_to_tree():
+    app = MagicMock()
+
+    select_all(app)
+    deselect_all(app)
+    expand_all(app)
+    collapse_all(app)
+
+    app._tree.set_all_checked.assert_any_call(True)
+    app._tree.set_all_checked.assert_any_call(False)
+    app._tree.expand_all.assert_called_once_with()
+    app._tree.collapse_all.assert_called_once_with()
+
+
+def test_reload_sessions_rebuilds_and_shows_toast():
+    app = MagicMock()
+
+    with patch("ssh_manager_app.actions_ui.rebuild_sessions") as rebuild, \
+         patch("ssh_manager_app.actions_ui.ToastNotification") as toast:
+        reload_sessions(app)
+
+    rebuild.assert_called_once_with(app, reload_winscp=True)
+    toast.assert_called_once_with(app, "Verbindungen neu geladen")
 
 
 def test_edit_session_note_saves_note_and_refreshes_ui():
