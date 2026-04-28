@@ -17,6 +17,7 @@ from ssh_manager_app.actions_app import (
     import_settings_dialog,
     show_search_history_menu,
 )
+from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
@@ -546,6 +547,44 @@ def test_add_search_history_entry_deduplicates_limits_and_persists():
 
 
 
+
+
+def test_inspect_ssh_config_opens_dialog_for_session_alias():
+    app = MagicMock()
+    session = Session("s1", "prod-alias", [], "prod-alias", source="ssh_config")
+
+    with patch("ssh_manager_app.actions_open.SshConfigInspectDialog") as dialog_cls:
+        inspect_ssh_config(app, session)
+
+    dialog_cls.assert_called_once_with(app, "prod-alias")
+
+
+def test_open_ssh_config_in_vscode_launches_code_with_shell():
+    app = MagicMock()
+
+    with patch("ssh_manager_app.actions_open.subprocess.Popen") as popen:
+        open_ssh_config_in_vscode(app)
+
+    popen.assert_called_once()
+    args, kwargs = popen.call_args
+    assert args[0].startswith('code "')
+    assert kwargs == {"shell": True}
+
+
+def test_open_in_winscp_opens_all_selected_sessions():
+    app = MagicMock()
+    sessions = [
+        Session("s1", "srv1", ["Prod"], "10.0.0.1"),
+        Session("s2", "srv2", ["Prod", "Db"], "10.0.0.2"),
+    ]
+
+    with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
+         patch("ssh_manager_app.actions_open.subprocess.Popen") as popen:
+        open_in_winscp(app, sessions)
+
+    assert popen.call_count == 2
+    assert popen.call_args_list[0].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/srv1"]
+    assert popen.call_args_list[1].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/Db/srv2"]
 
 
 def test_ssh_manager_app_stays_thin_bootstrap_shell():
