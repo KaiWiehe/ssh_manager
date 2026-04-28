@@ -206,6 +206,63 @@ def test_resolve_jump_host_default_user_prefers_parent_settings_and_falls_back_t
     assert _resolve_jump_host_default_user(parent) == DEFAULT_USER
 
 
+def test_jump_host_dialog_validate_rejects_invalid_port_range():
+    from ssh_manager_app.dialogs_remote import JumpHostDialog
+
+    dialog = JumpHostDialog.__new__(JumpHostDialog)
+    dialog._jump_host_var = MagicMock(); dialog._jump_host_var.get.return_value = "jump.example"
+    dialog._jump_user_var = MagicMock(); dialog._jump_user_var.get.return_value = "jumper"
+    dialog._jump_port_var = MagicMock(); dialog._jump_port_var.get.return_value = "70000"
+
+    with patch("ssh_manager_app.dialogs_remote.messagebox.showwarning") as showwarning:
+        result = JumpHostDialog._validate(dialog)
+
+    assert result is None
+    showwarning.assert_called_once_with(
+        "Ungültiger Port",
+        "Jumphost-Port muss zwischen 1 und 65535 liegen.",
+        parent=dialog,
+    )
+
+
+
+def test_jump_host_dialog_on_cancel_clears_results_and_destroys():
+    from ssh_manager_app.dialogs_remote import JumpHostDialog
+
+    dialog = JumpHostDialog.__new__(JumpHostDialog)
+    dialog.result = ("jump.example", "jumper", 22)
+    dialog.save_result = ("alias", "jump.example", 22, "jumper", "target")
+    dialog.destroy = MagicMock()
+
+    JumpHostDialog._on_cancel(dialog)
+
+    assert dialog.result is None
+    assert dialog.save_result is None
+    dialog.destroy.assert_called_once_with()
+
+
+
+def test_jump_host_dialog_center_on_parent_clamps_size_and_sets_geometry():
+    from ssh_manager_app.dialogs_remote import JumpHostDialog
+
+    dialog = JumpHostDialog.__new__(JumpHostDialog)
+    dialog.update_idletasks = MagicMock()
+    dialog.winfo_reqwidth = MagicMock(return_value=1200)
+    dialog.winfo_reqheight = MagicMock(return_value=900)
+    dialog.geometry = MagicMock()
+    parent = SimpleNamespace(
+        winfo_width=lambda: 1000,
+        winfo_height=lambda: 800,
+        winfo_x=lambda: 10,
+        winfo_y=lambda: 20,
+    )
+
+    JumpHostDialog._center_on_parent(dialog, parent)
+
+    dialog.geometry.assert_called_once_with("960x760+30+40")
+
+
+
 def test_ssh_copy_id_dialog_init_uses_default_quick_users():
     from ssh_manager_app.dialogs_remote import SshCopyIdDialog
 
