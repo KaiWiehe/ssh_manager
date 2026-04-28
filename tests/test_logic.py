@@ -120,6 +120,32 @@ def test_user_dialog_center_on_parent_positions_geometry():
     dialog.geometry.assert_called_once_with("+310+270")
 
 
+def test_user_dialog_on_ok_keeps_dialog_open_for_empty_username():
+    dialog = UserDialog.__new__(UserDialog)
+    dialog._user_var = MagicMock()
+    dialog._user_var.get.return_value = "   "
+    dialog.destroy = MagicMock()
+    dialog.result = None
+
+    with patch("ssh_manager_app.dialogs_base.messagebox.showwarning") as showwarning:
+        UserDialog._on_ok(dialog)
+
+    showwarning.assert_not_called()
+    assert dialog.result is None
+    dialog.destroy.assert_not_called()
+
+
+def test_user_dialog_on_cancel_sets_none_and_destroys():
+    dialog = UserDialog.__new__(UserDialog)
+    dialog.result = "ops"
+    dialog.destroy = MagicMock()
+
+    UserDialog._on_cancel(dialog)
+
+    assert dialog.result is None
+    dialog.destroy.assert_called_once_with()
+
+
 def test_parse_session_key_with_folder():
     folder, name = parse_session_key("Extern/Bundo")
     assert folder == ["Extern"]
