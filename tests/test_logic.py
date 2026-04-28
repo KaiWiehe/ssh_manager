@@ -20,7 +20,7 @@ from ssh_manager_app.actions_app import (
 from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
-from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions, preview_source_visibility, preview_toolbar_visibility, reset_settings, reset_session_colors, reset_view_state, update_notes_info
+from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions, preview_source_visibility, preview_toolbar_visibility, reset_settings, reset_session_colors, reset_view_state
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, build_wt_command, parse_session_key
@@ -647,26 +647,6 @@ def test_reset_view_state_restores_initial_tree_state_and_colors():
     toast.assert_called_once_with(app, "Ansicht auf Startzustand zurückgesetzt")
 
 
-def test_update_notes_info_uses_note_text_when_present():
-    app = MagicMock()
-    app._notes_info_var = MagicMock()
-    app._notes = {"s1": "  wichtig  "}
-    session = Session("s1", "srv1", [], "10.0.0.1")
-
-    update_notes_info(app, session)
-
-    app._notes_info_var.set.assert_called_once_with("Notiz für srv1: wichtig")
-
-
-def test_update_notes_info_shows_placeholder_without_session():
-    app = MagicMock()
-    app._notes_info_var = MagicMock()
-
-    update_notes_info(app, None)
-
-    app._notes_info_var.set.assert_called_once_with("Notizinfo: Zeige den Mauszeiger auf Name oder Notiz, oder nutze Rechtsklick → Notiz bearbeiten…")
-
-
 def test_edit_session_note_saves_note_and_refreshes_ui():
     app = MagicMock()
     app._notes = {}
@@ -705,7 +685,6 @@ def test_edit_session_note_saves_note_and_refreshes_ui():
          patch("ssh_manager_app.actions_notes.ttk.Button", side_effect=fake_button), \
          patch("ssh_manager_app.actions_notes.tk.Text", return_value=text_widget), \
          patch("ssh_manager_app.actions_notes.save_notes") as save_notes, \
-         patch("ssh_manager_app.actions_notes.update_notes_info") as update_notes_info, \
          patch("ssh_manager_app.actions_notes.persist_ui_state") as persist_ui_state, \
          patch("ssh_manager_app.actions_notes.ToastNotification") as toast:
         edit_session_note(app, session)
@@ -713,7 +692,6 @@ def test_edit_session_note_saves_note_and_refreshes_ui():
     assert app._notes == {"s1": "neue notiz"}
     save_notes.assert_called_once_with(app._notes)
     app._tree.refresh.assert_called_once_with(app._sessions)
-    update_notes_info.assert_called_once_with(app, session)
     persist_ui_state.assert_called_once_with(app)
     toast.assert_called_once_with(app, "Notiz gespeichert")
 
@@ -756,7 +734,6 @@ def test_edit_session_note_cancel_keeps_existing_notes():
          patch("ssh_manager_app.actions_notes.ttk.Button", side_effect=fake_button), \
          patch("ssh_manager_app.actions_notes.tk.Text", return_value=text_widget), \
          patch("ssh_manager_app.actions_notes.save_notes") as save_notes, \
-         patch("ssh_manager_app.actions_notes.update_notes_info") as update_notes_info, \
          patch("ssh_manager_app.actions_notes.persist_ui_state") as persist_ui_state, \
          patch("ssh_manager_app.actions_notes.ToastNotification") as toast:
         edit_session_note(app, session)
@@ -764,7 +741,6 @@ def test_edit_session_note_cancel_keeps_existing_notes():
     assert app._notes == {"s1": "alt"}
     save_notes.assert_not_called()
     app._tree.refresh.assert_not_called()
-    update_notes_info.assert_not_called()
     persist_ui_state.assert_not_called()
     toast.assert_not_called()
 

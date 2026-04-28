@@ -407,12 +407,8 @@ def build_main_ui(self) -> None:
     )
     self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
 
-    self._notes_info_var = tk.StringVar(value="Notizinfo: Zeige den Mauszeiger auf Name oder Notiz, oder nutze Rechtsklick → Notiz bearbeiten…")
-    notes_info = ttk.Label(self._main_frame, textvariable=self._notes_info_var, anchor="w", relief="sunken", padding=(8, 4))
-    notes_info.grid(row=2, column=0, sticky="ew", padx=8, pady=(4, 0))
-
     bottom = ttk.Frame(self._main_frame, padding=(8, 6))
-    bottom.grid(row=3, column=0, sticky="ew")
+    bottom.grid(row=2, column=0, sticky="ew")
     bottom.columnconfigure(0, weight=1)
 
     self._connect_btn = ttk.Button(

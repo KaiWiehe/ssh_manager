@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 
 from .dialogs_toast import ToastNotification
-from .models import AppSettings, Session, SourceVisibilitySettings, ToolbarSettings
+from .models import AppSettings, SourceVisibilitySettings, ToolbarSettings
 from .storage import load_filezilla_config_sessions, load_ssh_config_sessions, save_settings, save_ui_state
 from .ui import layout_toolbar_buttons
 
@@ -90,20 +90,6 @@ def reset_view_state(app) -> None:
 
 def invert_selection(app) -> None:
     app._tree.invert_checked()
-
-
-
-def update_notes_info(app, session: Session | None = None) -> None:
-    if not hasattr(app, "_notes_info_var"):
-        return
-    if session is None:
-        app._notes_info_var.set("Notizinfo: Zeige den Mauszeiger auf Name oder Notiz, oder nutze Rechtsklick → Notiz bearbeiten…")
-        return
-    note = app._notes.get(session.key, "").strip()
-    if note:
-        app._notes_info_var.set(f"Notiz für {session.display_name}: {note}")
-    else:
-        app._notes_info_var.set(f"Notiz für {session.display_name}: Keine Notiz hinterlegt")
 
 
 
