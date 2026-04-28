@@ -18,7 +18,7 @@ from ssh_manager_app.actions_app import (
     show_search_history_menu,
 )
 from ssh_manager_app.actions_notes import edit_session_note
-from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, edit_session, move_session, move_sessions
+from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
@@ -903,6 +903,60 @@ def test_delete_folder_removes_matching_sessions_and_rebuilds():
     assert app._app_sessions == [keep]
     save_sessions.assert_called_once_with(app._app_sessions)
     rebuild.assert_called_once_with(app)
+
+
+def test_rename_folder_updates_matching_path_segment_and_rebuilds():
+    app = MagicMock()
+    first = Session("s1", "srv1", ["Root", "Old", "Leaf"], "10.0.0.1", source="app")
+    second = Session("s2", "srv2", ["Root", "Old"], "10.0.0.2", source="app")
+    keep = Session("s3", "srv3", ["Other", "Old"], "10.0.0.3", source="app")
+    app._app_sessions = [first, second, keep]
+
+    with patch("ssh_manager_app.actions_sessions.simpledialog.askstring", return_value=" New ") as askstring, \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        rename_folder(app, "Root/Old")
+
+    askstring.assert_called_once_with("Ordner umbenennen", "Neuer Name für 'Old':", initialvalue="Old", parent=app)
+    assert app._app_sessions[0].folder_path == ["Root", "New", "Leaf"]
+    assert app._app_sessions[1].folder_path == ["Root", "New"]
+    assert app._app_sessions[2].folder_path == ["Other", "Old"]
+    save_sessions.assert_called_once_with(app._app_sessions)
+    rebuild.assert_called_once_with(app)
+
+
+def test_duplicate_ssh_alias_creates_app_session_and_rebuilds():
+    app = MagicMock()
+    app._app_sessions = []
+    source = Session("ssh1", "prod-alias", ["SSH config"], "prod-alias", source="ssh_config")
+    duplicate = Session("app1", "prod-alias-copy", ["App"], "prod-alias", source="app")
+    dialog = MagicMock()
+    dialog.result = duplicate
+
+    with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["App"]), \
+         patch("ssh_manager_app.actions_sessions.get_ssh_aliases", return_value=["prod-alias"]) as get_aliases, \
+         patch("ssh_manager_app.actions_sessions.SessionEditDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        duplicate_ssh_alias(app, source)
+
+    get_aliases.assert_called_once_with(app)
+    dialog_cls.assert_called_once_with(app, ["App"], ssh_aliases=["prod-alias"], alias_preset="prod-alias")
+    assert app._app_sessions == [duplicate]
+    save_sessions.assert_called_once_with(app._app_sessions)
+    rebuild.assert_called_once_with(app)
+
+
+def test_open_appdata_jsons_in_vscode_uses_popen_shell():
+    app = MagicMock()
+    appdata_dir = MagicMock()
+    appdata_dir.__str__.return_value = "/tmp/appdata"
+
+    with patch("ssh_manager_app.actions_sessions._APPDATA_DIR", appdata_dir):
+        open_appdata_jsons_in_vscode(app)
+
+    appdata_dir.mkdir.assert_called_once_with(parents=True, exist_ok=True)
+    app._popen_shell.assert_called_once_with('code "/tmp/appdata"')
 
 
 def test_edit_session_note_saves_note_and_refreshes_ui():
