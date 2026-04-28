@@ -19,12 +19,13 @@ from ssh_manager_app.actions_app import (
 )
 from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.dialogs_base import UserDialog, _build_quickselect_buttons
+from ssh_manager_app.dialogs_session_edit import SessionEditDialog
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
-from ssh_manager_app.constants import DEFAULT_USER, PALETTE, QUICK_USERS, _SSH_CONFIG_DEFAULT_FOLDER
+from ssh_manager_app.constants import DEFAULT_USER, PALETTE, QUICK_USERS, _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, _build_jump_ssh_command, _build_ssh_command, _shell_single_quote, _ssh_target, _terminal_profile_flag, _terminal_title_flag, build_wt_command, parse_session_key
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
 from ssh_manager_app.tree import _session_values_text
@@ -185,6 +186,83 @@ def test_ssh_copy_id_dialog_init_uses_default_quick_users():
     assert dialog._quick_users == QUICK_USERS
     assert dialog._quick_users is not QUICK_USERS
     assert dialog._default_user == DEFAULT_USER
+
+
+def test_session_edit_dialog_on_ok_alias_creates_alias_copy_session():
+    dialog = SessionEditDialog.__new__(SessionEditDialog)
+    dialog._alias_var = MagicMock()
+    dialog._alias_var.get.return_value = "prod-alias"
+    dialog._alias_folder_var = MagicMock()
+    dialog._alias_folder_var.get.return_value = "Prod/Sub"
+    dialog._existing_session = None
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_session_edit.uuid.uuid4", return_value="uuid-1"):
+        SessionEditDialog._on_ok_alias(dialog)
+
+    assert dialog.result == Session(
+        key=_SSH_ALIAS_PREFIX + "uuid-1",
+        display_name="prod-alias",
+        folder_path=["Prod", "Sub"],
+        hostname="prod-alias",
+        username="",
+        port=22,
+        source="ssh_alias",
+    )
+    dialog.destroy.assert_called_once_with()
+
+
+def test_session_edit_dialog_on_ok_verbindung_validates_and_builds_session():
+    dialog = SessionEditDialog.__new__(SessionEditDialog)
+    dialog._name_var = MagicMock(); dialog._name_var.get.return_value = "Srv 1"
+    dialog._host_var = MagicMock(); dialog._host_var.get.return_value = "host.example"
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "deploy"
+    dialog._folder_var = MagicMock(); dialog._folder_var.get.return_value = "Prod/App"
+    dialog._port_var = MagicMock(); dialog._port_var.get.return_value = "2222"
+    dialog._note_text = MagicMock(); dialog._note_text.get.return_value = " note text \n"
+    dialog._existing_session = None
+    dialog._duplicate = False
+    dialog.result = None
+    dialog.note_result = ""
+    dialog.destroy = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_session_edit.uuid.uuid4", return_value="uuid-2"):
+        SessionEditDialog._on_ok_verbindung(dialog)
+
+    assert dialog.result == Session(
+        key=_APP_PREFIX + "uuid-2",
+        display_name="Srv 1",
+        folder_path=["Prod", "App"],
+        hostname="host.example",
+        username="deploy",
+        port=2222,
+        source="app",
+    )
+    assert dialog.note_result == "note text"
+    dialog.destroy.assert_called_once_with()
+
+
+def test_session_edit_dialog_on_ok_verbindung_rejects_invalid_hostname():
+    dialog = SessionEditDialog.__new__(SessionEditDialog)
+    dialog._name_var = MagicMock(); dialog._name_var.get.return_value = "Srv 1"
+    dialog._host_var = MagicMock(); dialog._host_var.get.return_value = "bad host!"
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "deploy"
+    dialog._folder_var = MagicMock(); dialog._folder_var.get.return_value = "Prod"
+    dialog._port_var = MagicMock(); dialog._port_var.get.return_value = "22"
+    dialog.destroy = MagicMock()
+    dialog.result = None
+
+    with patch("ssh_manager_app.dialogs_session_edit.messagebox.showwarning") as showwarning:
+        SessionEditDialog._on_ok_verbindung(dialog)
+
+    showwarning.assert_called_once_with(
+        "Ungültiger Hostname",
+        "Nur Buchstaben, Ziffern, Punkte, Bindestriche, Unterstriche und Doppelpunkte erlaubt.",
+        parent=dialog,
+    )
+    assert dialog.result is None
+    dialog.destroy.assert_not_called()
 
 
 def test_terminal_profile_flag_falls_back_to_git_bash():
