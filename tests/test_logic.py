@@ -17,6 +17,7 @@ from ssh_manager_app.actions_app import (
     import_settings_dialog,
     show_search_history_menu,
 )
+from ssh_manager_app.actions_remote import connect_sessions, open_tunnel
 from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
@@ -656,3 +657,55 @@ def test_show_search_history_menu_shows_placeholder_when_empty():
     menu.add_command.assert_called_once_with(label="Kein Suchverlauf", state=tk.DISABLED)
     menu.add_separator.assert_not_called()
     menu.tk_popup.assert_called_once_with(5, 18)
+
+
+def test_connect_sessions_uses_app_settings_directly():
+    app = MagicMock()
+    app.settings = AppSettings(quick_users=["alice", "bob"], default_user="alice")
+    app._tree.get_session_colors.return_value = {"s1": "#123456"}
+    session = Session("s1", "srv1", [], "10.0.0.1")
+
+    dialog = MagicMock()
+    dialog.result = "bob"
+
+    with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog) as dialog_cls:
+        connect_sessions(app, [session])
+
+    dialog_cls.assert_called_once_with(app, quick_users=["alice", "bob"], default_user="alice")
+    app.wait_window.assert_called_once_with(dialog)
+    app._terminal_launcher.launch.assert_called_once_with(
+        [session],
+        "bob",
+        {"s1": "#123456"},
+        terminal_settings=app.settings.windows_terminal,
+    )
+
+
+def test_open_tunnel_uses_app_settings_directly():
+    app = MagicMock()
+    app.settings = AppSettings(quick_users=["root", "deploy"], default_user="deploy")
+    app.settings.windows_terminal.profile_name = "Custom Bash"
+
+    dialog = MagicMock()
+    dialog.result = ("jump.example", 9000, "db.internal", 5432, "deploy")
+
+    with patch("ssh_manager_app.actions_remote.SshTunnelDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_remote.build_ssh_tunnel_command", return_value="wt cmd") as build_cmd, \
+         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+        open_tunnel(app)
+
+    dialog_cls.assert_called_once_with(
+        app,
+        session=None,
+        quick_users=["root", "deploy"],
+        default_user="deploy",
+    )
+    build_cmd.assert_called_once_with(
+        "jump.example",
+        9000,
+        "db.internal",
+        5432,
+        "deploy",
+        terminal_settings=app.settings.windows_terminal,
+    )
+    popen.assert_called_once_with("wt cmd")
