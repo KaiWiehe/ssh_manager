@@ -375,6 +375,75 @@ def test_ssh_remove_key_dialog_on_cancel_clears_result_and_destroys():
 
 
 
+def test_remote_command_confirm_dialog_ok_and_cancel_toggle_result():
+    from ssh_manager_app.dialogs_remote import RemoteCommandConfirmDialog
+
+    dialog = RemoteCommandConfirmDialog.__new__(RemoteCommandConfirmDialog)
+    dialog.result = False
+    dialog.destroy = MagicMock()
+
+    RemoteCommandConfirmDialog._on_ok(dialog)
+
+    assert dialog.result is True
+    dialog.destroy.assert_called_once_with()
+
+    dialog = RemoteCommandConfirmDialog.__new__(RemoteCommandConfirmDialog)
+    dialog.result = True
+    dialog.destroy = MagicMock()
+
+    RemoteCommandConfirmDialog._on_cancel(dialog)
+
+    assert dialog.result is False
+    dialog.destroy.assert_called_once_with()
+
+
+
+def test_ssh_tunnel_dialog_on_ok_accepts_valid_input():
+    from ssh_manager_app.dialogs_remote import SshTunnelDialog
+
+    dialog = SshTunnelDialog.__new__(SshTunnelDialog)
+    dialog._jumphost_var = MagicMock(); dialog._jumphost_var.get.return_value = "ssh.example"
+    dialog._local_port_var = MagicMock(); dialog._local_port_var.get.return_value = "15432"
+    dialog._remote_host_var = MagicMock(); dialog._remote_host_var.get.return_value = "db.internal"
+    dialog._remote_port_var = MagicMock(); dialog._remote_port_var.get.return_value = "5432"
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "deploy"
+    dialog._parse_port = MagicMock(side_effect=[15432, 5432])
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    SshTunnelDialog._on_ok(dialog)
+
+    assert dialog.result == ("ssh.example", 15432, "db.internal", 5432, "deploy")
+    dialog.destroy.assert_called_once_with()
+
+
+
+def test_ssh_tunnel_dialog_on_ok_rejects_invalid_target_host():
+    from ssh_manager_app.dialogs_remote import SshTunnelDialog
+
+    dialog = SshTunnelDialog.__new__(SshTunnelDialog)
+    dialog._jumphost_var = MagicMock(); dialog._jumphost_var.get.return_value = "ssh.example"
+    dialog._local_port_var = MagicMock()
+    dialog._remote_host_var = MagicMock(); dialog._remote_host_var.get.return_value = "bad host!"
+    dialog._remote_port_var = MagicMock()
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "deploy"
+    dialog._parse_port = MagicMock(return_value=15432)
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_remote.messagebox.showwarning") as showwarning:
+        SshTunnelDialog._on_ok(dialog)
+
+    assert dialog.result is None
+    showwarning.assert_called_once_with(
+        "Ungültiger Zielserver",
+        "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+        parent=dialog,
+    )
+    dialog.destroy.assert_not_called()
+
+
+
 def test_session_edit_dialog_on_ok_alias_creates_alias_copy_session():
     dialog = SessionEditDialog.__new__(SessionEditDialog)
     dialog._alias_var = MagicMock()
