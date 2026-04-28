@@ -171,6 +171,38 @@ def test_user_dialog_on_cancel_sets_none_and_destroys():
     dialog.destroy.assert_called_once_with()
 
 
+def test_move_folder_dialog_on_ok_rejects_blank_folder_name():
+    dialog = MoveFolderDialog.__new__(MoveFolderDialog)
+    dialog._folder_var = MagicMock()
+    dialog._folder_var.get.return_value = "   "
+    dialog.destroy = MagicMock()
+    dialog.result = None
+
+    with patch("ssh_manager_app.dialogs_move_folder.messagebox.showwarning") as showwarning:
+        MoveFolderDialog._on_ok(dialog)
+
+    showwarning.assert_called_once_with(
+        "Fehlendes Feld",
+        "Bitte einen Ordner eingeben.",
+        parent=dialog,
+    )
+    assert dialog.result is None
+    dialog.destroy.assert_not_called()
+
+
+def test_move_folder_dialog_on_ok_accepts_trimmed_folder_name():
+    dialog = MoveFolderDialog.__new__(MoveFolderDialog)
+    dialog._folder_var = MagicMock()
+    dialog._folder_var.get.return_value = "  Team/Sub  "
+    dialog.destroy = MagicMock()
+    dialog.result = None
+
+    MoveFolderDialog._on_ok(dialog)
+
+    assert dialog.result == "Team/Sub"
+    dialog.destroy.assert_called_once_with()
+
+
 def test_jump_host_dialog_on_save_prompts_for_alias_and_stores_result():
     from ssh_manager_app.dialogs_remote import JumpHostDialog
 
