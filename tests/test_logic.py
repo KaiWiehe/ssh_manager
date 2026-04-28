@@ -18,6 +18,7 @@ from ssh_manager_app.actions_app import (
     show_search_history_menu,
 )
 from ssh_manager_app.actions_notes import edit_session_note
+from ssh_manager_app.actions_sessions import add_session, delete_session, edit_session
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
@@ -751,6 +752,76 @@ def test_reload_sessions_rebuilds_and_shows_toast():
 
     rebuild.assert_called_once_with(app, reload_winscp=True)
     toast.assert_called_once_with(app, "Verbindungen neu geladen")
+
+
+def test_add_session_appends_result_saves_and_rebuilds():
+    app = MagicMock()
+    app._app_sessions = []
+    app._notes = {}
+    new_session = Session("s1", "srv1", ["Prod"], "10.0.0.1", source="app")
+    dialog = MagicMock()
+    dialog.result = new_session
+    dialog.note_result = "wichtig"
+
+    with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["Prod"]) as get_folders, \
+         patch("ssh_manager_app.actions_sessions.get_ssh_aliases", return_value=["alias1"]) as get_aliases, \
+         patch("ssh_manager_app.actions_sessions.SessionEditDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_sessions.save_notes") as save_notes, \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        add_session(app, folder_preset="Prod")
+
+    get_folders.assert_called_once_with(app)
+    get_aliases.assert_called_once_with(app)
+    dialog_cls.assert_called_once_with(app, ["Prod"], ssh_aliases=["alias1"], folder_preset="Prod")
+    app.wait_window.assert_called_once_with(dialog)
+    assert app._app_sessions == [new_session]
+    assert app._notes == {"s1": "wichtig"}
+    save_notes.assert_called_once_with(app._notes)
+    save_sessions.assert_called_once_with(app._app_sessions)
+    rebuild.assert_called_once_with(app)
+
+
+def test_edit_session_replaces_existing_session_and_updates_note():
+    app = MagicMock()
+    original = Session("s1", "srv1", ["Prod"], "10.0.0.1", source="app")
+    updated = Session("s1", "srv1-new", ["Ops"], "10.0.0.9", source="app")
+    app._app_sessions = [original]
+    app._notes = {"s1": "alt"}
+    dialog = MagicMock()
+    dialog.result = updated
+    dialog.note_result = "neu"
+
+    with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["Prod", "Ops"]), \
+         patch("ssh_manager_app.actions_sessions.SessionEditDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_sessions.save_notes") as save_notes, \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        edit_session(app, original)
+
+    dialog_cls.assert_called_once_with(app, ["Prod", "Ops"], session=original, note="alt")
+    assert app._app_sessions == [updated]
+    assert app._notes == {"s1": "neu"}
+    save_notes.assert_called_once_with(app._notes)
+    save_sessions.assert_called_once_with(app._app_sessions)
+    rebuild.assert_called_once_with(app)
+
+
+def test_delete_session_removes_confirmed_session_and_rebuilds():
+    app = MagicMock()
+    keep = Session("s2", "srv2", [], "10.0.0.2", source="app")
+    victim = Session("s1", "srv1", [], "10.0.0.1", source="app")
+    app._app_sessions = [victim, keep]
+
+    with patch("ssh_manager_app.actions_sessions.messagebox.askyesno", return_value=True) as askyesno, \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        delete_session(app, victim)
+
+    askyesno.assert_called_once_with("Verbindung löschen", "Verbindung 'srv1' wirklich löschen?", parent=app)
+    assert app._app_sessions == [keep]
+    save_sessions.assert_called_once_with(app._app_sessions)
+    rebuild.assert_called_once_with(app)
 
 
 def test_edit_session_note_saves_note_and_refreshes_ui():
