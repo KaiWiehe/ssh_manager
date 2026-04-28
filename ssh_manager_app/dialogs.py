@@ -1,3 +1,4 @@
+from .dialogs_base import UserDialog
 from .dialogs_move_folder import MoveFolderDialog
 from .dialogs_remote import (
     JumpHostDialog,
@@ -10,7 +11,6 @@ from .dialogs_remote import (
 from .dialogs_session_edit import SessionEditDialog
 from .dialogs_settings_misc import SettingsView, SshConfigInspectDialog
 from .dialogs_toast import ToastNotification
-from .dialogs_user import UserDialog
 
 __all__ = [
     "JumpHostDialog",

@@ -1375,7 +1375,7 @@ def test_dialog_exports_use_split_modules():
     from ssh_manager_app.dialogs_settings_misc import SettingsView as SettingsViewImpl
     from ssh_manager_app.dialogs_settings_misc import SshConfigInspectDialog as SshConfigInspectDialogImpl
     from ssh_manager_app.dialogs_toast import ToastNotification as ToastNotificationImpl
-    from ssh_manager_app.dialogs_user import UserDialog as UserDialogImpl
+    from ssh_manager_app.dialogs_base import UserDialog as UserDialogImpl
 
     assert JumpHostDialog is JumpHostDialogImpl
     assert MoveFolderDialog is MoveFolderDialogImpl

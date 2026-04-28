@@ -8,10 +8,8 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from . import AppSettings, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, settings_to_dict
 from .constants import _SSH_CONFIG_FILE
-from .storage import load_settings_from_path
-
-
 from .dialogs_toast import ToastNotification
+from .storage import load_settings_from_path
 
 
 class SshConfigInspectDialog(tk.Toplevel):
