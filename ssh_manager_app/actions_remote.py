@@ -29,7 +29,10 @@ def connect_sessions(app, sessions: list[Session]) -> None:
     """Öffnet mehrere ausgewählte Sessions im Terminal mit gemeinsamem Benutzer."""
     if not sessions:
         return
-    dialog = UserDialog(app, quick_users=app.get_quick_users(), default_user=app.get_default_user())
+    quick_users = list(app.settings.quick_users)
+    default_user = app.settings.default_user
+    terminal_settings = app.settings.windows_terminal
+    dialog = UserDialog(app, quick_users=quick_users, default_user=default_user)
     app.wait_window(dialog)
     if dialog.result is None:
         return
@@ -38,7 +41,7 @@ def connect_sessions(app, sessions: list[Session]) -> None:
             sessions,
             dialog.result,
             app._tree.get_session_colors(),
-            terminal_settings=app.get_terminal_settings(),
+            terminal_settings=terminal_settings,
         )
     except Exception as exc:
         messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
@@ -49,7 +52,7 @@ def resolve_single_session_user(app, session: Session, title: str = "Benutzernam
     """Löst den Benutzernamen für genau eine Session auf."""
     if session.is_ssh_config_session and session.username:
         return session.username
-    dialog = UserDialog(app, title=title, quick_users=app.get_quick_users(), default_user=app.get_default_user())
+    dialog = UserDialog(app, title=title, quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
     app.wait_window(dialog)
     return dialog.result
 
@@ -65,7 +68,7 @@ def quick_connect_session(app, session: Session) -> None:
             [session],
             user or "",
             app._tree.get_session_colors(),
-            terminal_settings=app.get_terminal_settings(),
+            terminal_settings=app.settings.windows_terminal,
         )
     except Exception as exc:
         messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
@@ -74,13 +77,13 @@ def quick_connect_session(app, session: Session) -> None:
 
 def deploy_ssh_key(app, sessions: list[Session]) -> None:
     """Öffnet den ssh-copy-id Dialog und startet den Key-Transfer im Terminal."""
-    dialog = SshCopyIdDialog(app, target_count=len(sessions), quick_users=app.get_quick_users(), default_user=app.get_default_user())
+    dialog = SshCopyIdDialog(app, target_count=len(sessions), quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
     app.wait_window(dialog)
     if dialog.result is None:
         return
     key_filename, user = dialog.result
     try:
-        cmd = build_ssh_copy_id_command(sessions, key_filename, user, terminal_settings=app.get_terminal_settings())
+        cmd = build_ssh_copy_id_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
         subprocess.Popen(cmd, shell=True)
     except OSError as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}")
@@ -88,13 +91,13 @@ def deploy_ssh_key(app, sessions: list[Session]) -> None:
 
 def remove_ssh_key(app, sessions: list[Session]) -> None:
     """Öffnet den Remove-Key Dialog und entfernt den Key remote via SSH."""
-    dialog = SshRemoveKeyDialog(app, target_count=len(sessions), quick_users=app.get_quick_users(), default_user=app.get_default_user())
+    dialog = SshRemoveKeyDialog(app, target_count=len(sessions), quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
     app.wait_window(dialog)
     if dialog.result is None:
         return
     key_filename, user = dialog.result
     try:
-        cmd = build_ssh_remove_key_command(sessions, key_filename, user, terminal_settings=app.get_terminal_settings())
+        cmd = build_ssh_remove_key_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
         subprocess.Popen(cmd, shell=True)
     except OSError as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}")
@@ -105,15 +108,15 @@ def open_tunnel(app, session: Session | None = None) -> None:
     dialog = SshTunnelDialog(
         app,
         session=session,
-        quick_users=app.get_quick_users(),
-        default_user=app.get_default_user(),
+        quick_users=list(app.settings.quick_users),
+        default_user=app.settings.default_user,
     )
     app.wait_window(dialog)
     if dialog.result is None:
         return
     jumphost, local_port, remote_host, remote_port, user = dialog.result
     try:
-        cmd = build_ssh_tunnel_command(jumphost, local_port, remote_host, remote_port, user, terminal_settings=app.get_terminal_settings())
+        cmd = build_ssh_tunnel_command(jumphost, local_port, remote_host, remote_port, user, terminal_settings=app.settings.windows_terminal)
         subprocess.Popen(cmd)
     except OSError as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}")
@@ -162,8 +165,8 @@ def run_remote_command(app, sessions: list[Session]) -> None:
         app,
         target_count=len(runnable),
         last_command=app._initial_toolbar_search_texts.get("last_remote_command", ""),
-        quick_users=app.get_quick_users(),
-        default_user=app.get_default_user(),
+        quick_users=list(app.settings.quick_users),
+        default_user=app.settings.default_user,
     )
     app.wait_window(dialog)
     if dialog.result is None:
@@ -184,7 +187,7 @@ def run_remote_command(app, sessions: list[Session]) -> None:
         [(session, user, command) for session, user in session_users],
         close_on_success=close_on_success,
         session_colors=app._tree.get_session_colors(),
-        terminal_settings=app.get_terminal_settings(),
+        terminal_settings=app.settings.windows_terminal,
     )
     try:
         subprocess.Popen(cmd, shell=True)
@@ -229,7 +232,7 @@ def open_via_jumphost(app, session: Session) -> None:
             jump_user or None,
             jump_port,
             app._tree.get_session_colors().get(session.key),
-            terminal_settings=app.get_terminal_settings(),
+            terminal_settings=app.settings.windows_terminal,
         )
         subprocess.Popen(cmd, shell=True)
     except OSError as exc:
