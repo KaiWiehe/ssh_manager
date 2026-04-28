@@ -39,11 +39,13 @@ from ssh_manager_app.storage import (
     load_app_sessions,
     load_filezilla_config_sessions,
     load_notes,
+    load_settings,
     load_settings_from_path,
     load_ssh_config_sessions,
     load_ui_state,
     save_app_sessions,
     save_notes,
+    save_settings,
     save_ui_state,
 )
 
@@ -1200,6 +1202,28 @@ def test_build_wt_command_ssh_alias_session():
     s = Session("__sshalias__abc", "prodbox", ["Prod"], "prodbox", source="ssh_alias")
     cmd = build_wt_command([s], "ignored-user")
     assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh prodbox'
+
+
+def test_load_settings_falls_back_to_defaults_on_invalid_json():
+    with patch("ssh_manager_app.storage.load_settings_from_path", side_effect=json.JSONDecodeError("bad", "{}", 0)):
+        settings = load_settings()
+
+    assert settings == AppSettings()
+
+
+
+def test_save_settings_writes_json_file():
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_path = Path(tmp) / "settings.json"
+        settings = AppSettings(default_user="deploy")
+
+        with patch("ssh_manager_app.storage._SETTINGS_FILE", fake_path):
+            save_settings(settings)
+            raw = json.loads(fake_path.read_text(encoding="utf-8"))
+
+    assert raw["default_user"] == "deploy"
+    assert raw["windows_terminal"]["profile_name"] == settings.windows_terminal.profile_name
+
 
 
 def test_load_settings_from_path_reads_column_order_and_visibility():
