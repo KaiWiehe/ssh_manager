@@ -17,7 +17,7 @@ from ssh_manager_app.actions_app import (
     import_settings_dialog,
     show_search_history_menu,
 )
-from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, quick_connect_session
+from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, quick_connect_session, remove_ssh_key, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
@@ -744,3 +744,58 @@ def test_deploy_ssh_key_uses_app_settings_directly():
     dialog_cls.assert_called_once_with(app, target_count=1, quick_users=["root", "ops"], default_user="ops")
     build_cmd.assert_called_once_with(sessions, "id_ed25519.pub", "ops", terminal_settings=app.settings.windows_terminal)
     popen.assert_called_once_with("copy-cmd", shell=True)
+
+
+def test_remove_ssh_key_uses_app_settings_directly():
+    app = MagicMock()
+    app.settings = AppSettings(quick_users=["root", "ops"], default_user="ops")
+    sessions = [Session("s1", "srv1", [], "10.0.0.1")]
+
+    dialog = MagicMock()
+    dialog.result = ("id_ed25519.pub", "ops")
+
+    with patch("ssh_manager_app.actions_remote.SshRemoveKeyDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_remote.build_ssh_remove_key_command", return_value="remove-cmd") as build_cmd, \
+         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+        remove_ssh_key(app, sessions)
+
+    dialog_cls.assert_called_once_with(app, target_count=1, quick_users=["root", "ops"], default_user="ops")
+    build_cmd.assert_called_once_with(sessions, "id_ed25519.pub", "ops", terminal_settings=app.settings.windows_terminal)
+    popen.assert_called_once_with("remove-cmd", shell=True)
+
+
+def test_run_remote_command_uses_app_settings_directly():
+    app = MagicMock()
+    app.settings = AppSettings(quick_users=["root", "ops"], default_user="ops")
+    app._initial_toolbar_search_texts = {"last_remote_command": "uptime"}
+    app._tree.get_session_colors.return_value = {"s1": "#123456"}
+    sessions = [Session("s1", "srv1", [], "10.0.0.1")]
+
+    dialog = MagicMock()
+    dialog.result = ("all", "whoami", True)
+    confirm = MagicMock()
+    confirm.result = True
+
+    with patch("ssh_manager_app.actions_remote.RemoteCommandDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_remote.resolve_users_for_sessions", return_value=[(sessions[0], "ops")]) as resolve_users, \
+         patch("ssh_manager_app.actions_remote.RemoteCommandConfirmDialog", return_value=confirm) as confirm_cls, \
+         patch("ssh_manager_app.actions_remote.build_remote_command_wt_command", return_value="remote-cmd") as build_cmd, \
+         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+        run_remote_command(app, sessions)
+
+    dialog_cls.assert_called_once_with(
+        app,
+        target_count=1,
+        last_command="uptime",
+        quick_users=["root", "ops"],
+        default_user="ops",
+    )
+    resolve_users.assert_called_once_with(app, sessions, "all")
+    confirm_cls.assert_called_once_with(app, "whoami", [(sessions[0], "ops")], True)
+    build_cmd.assert_called_once_with(
+        [(sessions[0], "ops", "whoami")],
+        close_on_success=True,
+        session_colors={"s1": "#123456"},
+        terminal_settings=app.settings.windows_terminal,
+    )
+    popen.assert_called_once_with("remote-cmd", shell=True)
