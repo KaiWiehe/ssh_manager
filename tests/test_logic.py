@@ -17,7 +17,7 @@ from ssh_manager_app.actions_app import (
     import_settings_dialog,
     show_search_history_menu,
 )
-from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, run_remote_command
+from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, build_visible_sessions
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
@@ -855,3 +855,43 @@ def test_open_via_jumphost_save_result_rebuilds_sessions_and_shows_toast():
     append_alias.assert_called_once_with("alias-prod", session, "ops", "jump.example", "jumper", 2222)
     rebuild_sessions.assert_called_once_with(app, reload_winscp=True)
     toast.assert_called_once_with(app, "SSH-Config 'alias-prod' gespeichert")
+
+
+def test_resolve_single_session_user_returns_ssh_config_username_without_dialog():
+    app = MagicMock()
+    app.settings = AppSettings(quick_users=["root"], default_user="root")
+    session = Session("s1", "alias1", [], "alias1", username="deploy", source="ssh_config")
+
+    result = resolve_single_session_user(app, session)
+
+    assert result == "deploy"
+    app.wait_window.assert_not_called()
+
+
+def test_resolve_users_for_sessions_all_mode_uses_shared_user_for_missing_hosts():
+    app = MagicMock()
+    ssh_cfg = Session("s1", "cfg", [], "cfg", username="deploy", source="ssh_config")
+    regular = Session("s2", "srv2", [], "10.0.0.2")
+    dialog = MagicMock()
+    dialog.result = "ops"
+
+    with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog) as dialog_cls:
+        result = resolve_users_for_sessions(app, [ssh_cfg, regular], "all")
+
+    dialog_cls.assert_called_once_with(app, title="Benutzername für alle Hosts")
+    app.wait_window.assert_called_once_with(dialog)
+    assert result == [(ssh_cfg, "deploy"), (regular, "ops")]
+
+
+def test_resolve_users_for_sessions_per_host_mode_returns_none_on_cancel():
+    app = MagicMock()
+    regular = Session("s2", "srv2", [], "10.0.0.2")
+    dialog = MagicMock()
+    dialog.result = None
+
+    with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog) as dialog_cls:
+        result = resolve_users_for_sessions(app, [regular], "per_host")
+
+    dialog_cls.assert_called_once_with(app, title="Benutzername für srv2")
+    app.wait_window.assert_called_once_with(dialog)
+    assert result is None
