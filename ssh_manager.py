@@ -10,7 +10,6 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ssh_manager_app import (
-    ToolbarSettings,
     Session,
     WINDOW_MIN_SIZE,
     WINDOW_TITLE,
@@ -34,14 +33,7 @@ from ssh_manager_app.core import (
 )
 
 from ssh_manager_app.ui import build_main_ui, close_app_callback, configure_app_styles
-from ssh_manager_app.actions_ui import (
-    add_search_history_entry,
-    apply_search_history_entry,
-    build_visible_sessions,
-    clear_search_history,
-)
-from ssh_manager_app.actions_sessions import add_session, open_appdata_jsons_in_vscode
-from ssh_manager_app.actions_app import get_all_folder_names, get_ssh_aliases, show_search_history_menu
+from ssh_manager_app.actions_ui import build_visible_sessions
 
 if TYPE_CHECKING:
     from ssh_manager_app.dialogs_settings_misc import SettingsView
