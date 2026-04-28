@@ -18,7 +18,7 @@ from ssh_manager_app.actions_app import (
     show_search_history_menu,
 )
 from ssh_manager_app.actions_notes import edit_session_note
-from ssh_manager_app.dialogs_base import _build_quickselect_buttons
+from ssh_manager_app.dialogs_base import UserDialog, _build_quickselect_buttons
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
@@ -68,6 +68,56 @@ def test_build_quickselect_buttons_creates_wrapped_buttons_and_sets_target():
 
     button_commands[1]()
     target_var.set.assert_called_once_with("ops")
+
+
+def test_user_dialog_on_ok_rejects_invalid_username():
+    dialog = UserDialog.__new__(UserDialog)
+    dialog._user_var = MagicMock()
+    dialog._user_var.get.return_value = "bad user!"
+    dialog.destroy = MagicMock()
+    dialog.result = None
+
+    with patch("ssh_manager_app.dialogs_base.messagebox.showwarning") as showwarning:
+        UserDialog._on_ok(dialog)
+
+    showwarning.assert_called_once_with(
+        "Ungültiger Benutzername",
+        "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+        parent=dialog,
+    )
+    assert dialog.result is None
+    dialog.destroy.assert_not_called()
+
+
+def test_user_dialog_on_ok_accepts_trimmed_username():
+    dialog = UserDialog.__new__(UserDialog)
+    dialog._user_var = MagicMock()
+    dialog._user_var.get.return_value = "  deploy-user  "
+    dialog.destroy = MagicMock()
+    dialog.result = None
+
+    UserDialog._on_ok(dialog)
+
+    assert dialog.result == "deploy-user"
+    dialog.destroy.assert_called_once_with()
+
+
+def test_user_dialog_center_on_parent_positions_geometry():
+    dialog = UserDialog.__new__(UserDialog)
+    dialog.update_idletasks = MagicMock()
+    dialog.winfo_reqwidth = MagicMock(return_value=200)
+    dialog.winfo_reqheight = MagicMock(return_value=100)
+    dialog.geometry = MagicMock()
+    parent = MagicMock()
+    parent.winfo_width.return_value = 800
+    parent.winfo_height.return_value = 600
+    parent.winfo_x.return_value = 10
+    parent.winfo_y.return_value = 20
+
+    UserDialog._center_on_parent(dialog, parent)
+
+    dialog.update_idletasks.assert_called_once_with()
+    dialog.geometry.assert_called_once_with("+310+270")
 
 
 def test_parse_session_key_with_folder():
