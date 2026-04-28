@@ -10,6 +10,12 @@ from .dialogs_toast import ToastNotification
 from .models import Session
 
 
+def _resolve_jump_host_default_user(parent: tk.Tk) -> str:
+    settings = getattr(parent, "settings", None)
+    default_user = getattr(settings, "default_user", DEFAULT_USER)
+    return default_user or DEFAULT_USER
+
+
 class JumpHostDialog(tk.Toplevel):
     """Dialog zum temporären Öffnen einer Session über ProxyJump."""
 
@@ -53,8 +59,7 @@ class JumpHostDialog(tk.Toplevel):
         form.columnconfigure(1, weight=1)
 
         self._jump_host_var = tk.StringVar()
-        default_user = getattr(getattr(parent, "settings", None), "default_user", DEFAULT_USER)
-        self._jump_user_var = tk.StringVar(value=default_user)
+        self._jump_user_var = tk.StringVar(value=_resolve_jump_host_default_user(parent))
         self._jump_port_var = tk.StringVar(value="22")
         self._filter_var = tk.StringVar()
 

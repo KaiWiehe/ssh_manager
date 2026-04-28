@@ -186,6 +186,20 @@ def test_jump_host_dialog_on_save_prompts_for_alias_and_stores_result():
     dialog.destroy.assert_called_once_with()
 
 
+def test_resolve_jump_host_default_user_prefers_parent_settings_and_falls_back_to_builtin_default():
+    from ssh_manager_app.dialogs_remote import _resolve_jump_host_default_user
+
+    parent = MagicMock()
+    parent.settings = MagicMock(default_user="ops")
+    assert _resolve_jump_host_default_user(parent) == "ops"
+
+    parent.settings.default_user = ""
+    assert _resolve_jump_host_default_user(parent) == DEFAULT_USER
+
+    del parent.settings
+    assert _resolve_jump_host_default_user(parent) == DEFAULT_USER
+
+
 def test_ssh_copy_id_dialog_init_uses_default_quick_users():
     from ssh_manager_app.dialogs_remote import SshCopyIdDialog
 
@@ -336,6 +350,39 @@ def test_session_edit_dialog_on_ok_verbindung_rejects_invalid_port():
     showwarning.assert_called_once_with("Ungültiger Port", "Port muss eine Zahl zwischen 1 und 65535 sein.", parent=dialog)
     assert dialog.result is None
     dialog.destroy.assert_not_called()
+
+
+def test_session_edit_dialog_on_ok_dispatches_by_mode():
+    alias_dialog = SessionEditDialog.__new__(SessionEditDialog)
+    alias_dialog._mode_var = MagicMock(); alias_dialog._mode_var.get.return_value = "alias"
+    alias_dialog._on_ok_alias = MagicMock()
+    alias_dialog._on_ok_verbindung = MagicMock()
+
+    SessionEditDialog._on_ok(alias_dialog)
+
+    alias_dialog._on_ok_alias.assert_called_once_with()
+    alias_dialog._on_ok_verbindung.assert_not_called()
+
+    app_dialog = SessionEditDialog.__new__(SessionEditDialog)
+    app_dialog._mode_var = MagicMock(); app_dialog._mode_var.get.return_value = "verbindung"
+    app_dialog._on_ok_alias = MagicMock()
+    app_dialog._on_ok_verbindung = MagicMock()
+
+    SessionEditDialog._on_ok(app_dialog)
+
+    app_dialog._on_ok_verbindung.assert_called_once_with()
+    app_dialog._on_ok_alias.assert_not_called()
+
+
+def test_session_edit_dialog_on_cancel_clears_result_and_destroys():
+    dialog = SessionEditDialog.__new__(SessionEditDialog)
+    dialog.result = Session("s1", "srv1", [], "10.0.0.1")
+    dialog.destroy = MagicMock()
+
+    SessionEditDialog._on_cancel(dialog)
+
+    assert dialog.result is None
+    dialog.destroy.assert_called_once_with()
 
 
 def test_terminal_profile_flag_falls_back_to_git_bash():
