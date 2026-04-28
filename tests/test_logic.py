@@ -959,6 +959,72 @@ def test_open_appdata_jsons_in_vscode_uses_popen_shell():
     app._popen_shell.assert_called_once_with('code "/tmp/appdata"')
 
 
+def test_add_session_returns_early_on_cancel():
+    app = MagicMock()
+    app._app_sessions = []
+    app._notes = {}
+    dialog = MagicMock()
+    dialog.result = None
+    dialog.note_result = None
+
+    with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=[]), \
+         patch("ssh_manager_app.actions_sessions.get_ssh_aliases", return_value=[]), \
+         patch("ssh_manager_app.actions_sessions.SessionEditDialog", return_value=dialog), \
+         patch("ssh_manager_app.actions_sessions.save_notes") as save_notes, \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        add_session(app)
+
+    assert app._app_sessions == []
+    assert app._notes == {}
+    save_notes.assert_not_called()
+    save_sessions.assert_not_called()
+    rebuild.assert_not_called()
+
+
+def test_delete_session_returns_early_when_not_confirmed():
+    app = MagicMock()
+    session = Session("s1", "srv1", [], "10.0.0.1", source="app")
+    app._app_sessions = [session]
+
+    with patch("ssh_manager_app.actions_sessions.messagebox.askyesno", return_value=False), \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        delete_session(app, session)
+
+    assert app._app_sessions == [session]
+    save_sessions.assert_not_called()
+    rebuild.assert_not_called()
+
+
+def test_rename_folder_returns_early_when_name_unchanged():
+    app = MagicMock()
+    session = Session("s1", "srv1", ["Root", "Old"], "10.0.0.1", source="app")
+    app._app_sessions = [session]
+
+    with patch("ssh_manager_app.actions_sessions.simpledialog.askstring", return_value="Old"), \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        rename_folder(app, "Root/Old")
+
+    assert app._app_sessions[0].folder_path == ["Root", "Old"]
+    save_sessions.assert_not_called()
+    rebuild.assert_not_called()
+
+
+def test_open_appdata_jsons_in_vscode_shows_error_on_oserror():
+    app = MagicMock()
+    appdata_dir = MagicMock()
+    appdata_dir.__str__.return_value = "/tmp/appdata"
+    app._popen_shell.side_effect = OSError("boom")
+
+    with patch("ssh_manager_app.actions_sessions._APPDATA_DIR", appdata_dir), \
+         patch("ssh_manager_app.actions_sessions.messagebox.showerror") as showerror:
+        open_appdata_jsons_in_vscode(app)
+
+    showerror.assert_called_once_with("VS Code nicht gefunden", "Fehler beim Öffnen:\nboom")
+
+
 def test_edit_session_note_saves_note_and_refreshes_ui():
     app = MagicMock()
     app._notes = {}
