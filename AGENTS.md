@@ -72,10 +72,34 @@ notes.json / settings  ──┘
 **`ssh_manager_app/tree.py`**
 - `SessionTree(ttk.Frame)` – Haupt-Treeview mit Checkboxen, Farben, Kontextmenüs und Notes-Tooltip/Info-Anbindung
 
-**`ssh_manager_app/dialogs.py`**
-- Dialog-Klassen
+**`ssh_manager_app/dialogs_base.py`**
+- `UserDialog`
+- `_build_quickselect_buttons()`
+- `resolve_user_dialog_defaults()`
+
+**`ssh_manager_app/dialogs_move_folder.py`**
+- `MoveFolderDialog`
+
+**`ssh_manager_app/dialogs_remote.py`**
+- `JumpHostDialog`
+- `RemoteCommandDialog`
+- `RemoteCommandConfirmDialog`
+- `SshCopyIdDialog`
+- `SshRemoveKeyDialog`
+- `SshTunnelDialog`
+
+**`ssh_manager_app/dialogs_session_edit.py`**
+- `SessionEditDialog`
+
+**`ssh_manager_app/dialogs_settings_misc.py`**
 - `SettingsView`
+- `SshConfigInspectDialog`
+
+**`ssh_manager_app/dialogs_toast.py`**
 - `ToastNotification`
+
+**`ssh_manager_app/dialogs.py`**
+- nur Kompatibilitäts-Aggregator für bestehende Imports
 
 **`ssh_manager_app/ui.py`**
 - `configure_app_styles()`

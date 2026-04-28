@@ -21,7 +21,6 @@ from ssh_manager_app import (
     load_settings,
     load_ssh_config_sessions,
     load_ui_state,
-    save_app_sessions,
 )
 
 from ssh_manager_app.constants import _SSH_CONFIG_DEFAULT_FOLDER
