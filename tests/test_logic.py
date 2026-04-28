@@ -18,7 +18,7 @@ from ssh_manager_app.actions_app import (
     show_search_history_menu,
 )
 from ssh_manager_app.actions_notes import edit_session_note
-from ssh_manager_app.actions_sessions import add_session, delete_session, edit_session
+from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, edit_session, move_session, move_sessions
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
@@ -819,6 +819,87 @@ def test_delete_session_removes_confirmed_session_and_rebuilds():
         delete_session(app, victim)
 
     askyesno.assert_called_once_with("Verbindung löschen", "Verbindung 'srv1' wirklich löschen?", parent=app)
+    assert app._app_sessions == [keep]
+    save_sessions.assert_called_once_with(app._app_sessions)
+    rebuild.assert_called_once_with(app)
+
+
+def test_duplicate_app_session_appends_copy_and_rebuilds():
+    app = MagicMock()
+    original = Session("s1", "srv1", ["Prod"], "10.0.0.1", source="app")
+    duplicate = Session("s2", "srv1 copy", ["Prod"], "10.0.0.1", source="app")
+    app._app_sessions = [original]
+    dialog = MagicMock()
+    dialog.result = duplicate
+
+    with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["Prod"]), \
+         patch("ssh_manager_app.actions_sessions.SessionEditDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        duplicate_app_session(app, original)
+
+    dialog_cls.assert_called_once_with(app, ["Prod"], session=original, duplicate=True)
+    assert app._app_sessions == [original, duplicate]
+    save_sessions.assert_called_once_with(app._app_sessions)
+    rebuild.assert_called_once_with(app)
+
+
+def test_move_session_updates_folder_and_rebuilds():
+    app = MagicMock()
+    session = Session("s1", "srv1", ["Old"], "10.0.0.1", source="app")
+    other = Session("s2", "srv2", ["Keep"], "10.0.0.2", source="app")
+    app._app_sessions = [session, other]
+    dialog = MagicMock()
+    dialog.result = "New/Sub"
+
+    with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["Old", "New/Sub"]), \
+         patch("ssh_manager_app.actions_sessions.MoveFolderDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        move_session(app, session)
+
+    dialog_cls.assert_called_once_with(app, ["Old", "New/Sub"], "Old")
+    assert app._app_sessions[0].folder_path == ["New", "Sub"]
+    assert app._app_sessions[1] is other
+    save_sessions.assert_called_once_with(app._app_sessions)
+    rebuild.assert_called_once_with(app)
+
+
+def test_move_sessions_updates_all_selected_sessions():
+    app = MagicMock()
+    first = Session("s1", "srv1", ["Old"], "10.0.0.1", source="app")
+    second = Session("s2", "srv2", ["Old"], "10.0.0.2", source="app")
+    untouched = Session("s3", "srv3", ["Keep"], "10.0.0.3", source="app")
+    app._app_sessions = [first, second, untouched]
+    dialog = MagicMock()
+    dialog.result = "Shared/Folder"
+
+    with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["Old", "Shared/Folder"]), \
+         patch("ssh_manager_app.actions_sessions.MoveFolderDialog", return_value=dialog), \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        move_sessions(app, [first, second])
+
+    assert app._app_sessions[0].folder_path == ["Shared", "Folder"]
+    assert app._app_sessions[1].folder_path == ["Shared", "Folder"]
+    assert app._app_sessions[2] is untouched
+    save_sessions.assert_called_once_with(app._app_sessions)
+    rebuild.assert_called_once_with(app)
+
+
+def test_delete_folder_removes_matching_sessions_and_rebuilds():
+    app = MagicMock()
+    first = Session("s1", "srv1", ["Old"], "10.0.0.1", source="app")
+    second = Session("s2", "srv2", ["Old"], "10.0.0.2", source="app")
+    keep = Session("s3", "srv3", ["Keep"], "10.0.0.3", source="app")
+    app._app_sessions = [first, second, keep]
+
+    with patch("ssh_manager_app.actions_sessions.messagebox.askyesno", return_value=True) as askyesno, \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
+        delete_folder(app, [first, second], "Old")
+
+    askyesno.assert_called_once_with("Ordner löschen", "Ordner 'Old' und alle 2 Verbindung(en) darin löschen?", parent=app)
     assert app._app_sessions == [keep]
     save_sessions.assert_called_once_with(app._app_sessions)
     rebuild.assert_called_once_with(app)
