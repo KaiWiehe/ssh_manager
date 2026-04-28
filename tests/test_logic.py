@@ -552,6 +552,38 @@ def test_remote_command_dialog_on_cancel_clears_result_and_destroys():
 
 
 
+def test_ssh_tunnel_dialog_parse_port_rejects_non_numeric_value():
+    from ssh_manager_app.dialogs_remote import SshTunnelDialog
+
+    dialog = SshTunnelDialog.__new__(SshTunnelDialog)
+    var = MagicMock(); var.get.return_value = "abc"
+
+    with patch("ssh_manager_app.dialogs_remote.messagebox.showwarning") as showwarning:
+        result = SshTunnelDialog._parse_port(dialog, var, "Lokaler Port")
+
+    assert result is None
+    showwarning.assert_called_once_with(
+        "Ungültiger Port",
+        "Lokaler Port muss eine Zahl sein.",
+        parent=dialog,
+    )
+
+
+
+def test_ssh_tunnel_dialog_on_cancel_clears_result_and_destroys():
+    from ssh_manager_app.dialogs_remote import SshTunnelDialog
+
+    dialog = SshTunnelDialog.__new__(SshTunnelDialog)
+    dialog.result = ("ssh.example", 15432, "db.internal", 5432, "deploy")
+    dialog.destroy = MagicMock()
+
+    SshTunnelDialog._on_cancel(dialog)
+
+    assert dialog.result is None
+    dialog.destroy.assert_called_once_with()
+
+
+
 def test_session_edit_dialog_on_ok_alias_creates_alias_copy_session():
     dialog = SessionEditDialog.__new__(SessionEditDialog)
     dialog._alias_var = MagicMock()
