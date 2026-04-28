@@ -13,13 +13,48 @@ from ssh_manager_app.storage import (
     load_app_sessions,
     load_filezilla_config_sessions,
     load_notes,
+    load_settings,
     load_settings_from_path,
     load_ssh_config_sessions,
     load_ui_state,
     save_app_sessions,
     save_notes,
+    save_settings,
     save_ui_state,
 )
+
+
+def test_load_settings_returns_defaults_on_invalid_json():
+    with tempfile.TemporaryDirectory() as tmp:
+        settings_file = Path(tmp) / "settings.json"
+        settings_file.write_text("{kaputt", encoding="utf-8")
+        with patch("ssh_manager_app.storage._SETTINGS_FILE", settings_file):
+            settings = load_settings()
+
+    defaults = default_settings()
+    assert settings == defaults
+
+
+def test_save_settings_writes_nested_settings_payload():
+    with tempfile.TemporaryDirectory() as tmp:
+        settings_file = Path(tmp) / "settings.json"
+        settings = default_settings()
+        settings.quick_users = ["alice", "bob"]
+        settings.default_user = "alice"
+        settings.toolbar.show_notes_column = False
+        settings.windows_terminal.profile_name = "PowerShell"
+        settings.source_visibility.show_filezilla_config = True
+
+        with patch("ssh_manager_app.storage._SETTINGS_FILE", settings_file):
+            save_settings(settings)
+
+        raw = json.loads(settings_file.read_text(encoding="utf-8"))
+
+    assert raw["quick_users"] == ["alice", "bob"]
+    assert raw["default_user"] == "alice"
+    assert raw["toolbar"]["show_notes_column"] is False
+    assert raw["windows_terminal"]["profile_name"] == "PowerShell"
+    assert raw["source_visibility"]["show_filezilla_config"] is True
 
 
 def test_load_settings_from_path_invalid_quick_users_falls_back_to_defaults():
