@@ -5,7 +5,7 @@ import uuid
 from tkinter import messagebox, ttk
 from typing import Optional
 
-from . import DEFAULT_USER, Session
+from . import Session
 from .constants import _APP_PREFIX, _SSH_ALIAS_PREFIX
 from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE
 

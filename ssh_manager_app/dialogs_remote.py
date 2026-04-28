@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import messagebox, scrolledtext, simpledialog, ttk
 from typing import Callable
 
-from . import DEFAULT_USER, Session
+from . import DEFAULT_USER, QUICK_USERS, Session
 from .constants import _SSH_CONFIG_FILE
 from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons
 from .dialogs_toast import ToastNotification

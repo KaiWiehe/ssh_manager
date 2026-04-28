@@ -24,7 +24,7 @@ from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, ope
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
-from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
+from ssh_manager_app.constants import DEFAULT_USER, PALETTE, QUICK_USERS, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, _build_jump_ssh_command, _build_ssh_command, _shell_single_quote, _ssh_target, _terminal_profile_flag, _terminal_title_flag, build_wt_command, parse_session_key
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
 from ssh_manager_app.tree import _session_values_text
@@ -144,6 +144,47 @@ def test_user_dialog_on_cancel_sets_none_and_destroys():
 
     assert dialog.result is None
     dialog.destroy.assert_called_once_with()
+
+
+def test_jump_host_dialog_on_save_prompts_for_alias_and_stores_result():
+    from ssh_manager_app.dialogs_remote import JumpHostDialog
+
+    dialog = JumpHostDialog.__new__(JumpHostDialog)
+    dialog._validate = MagicMock(return_value=("jump.example", "jumper", 2200))
+    dialog._target_session = Session("target", "prod", [], "prod.example")
+    dialog.destroy = MagicMock()
+    dialog.save_result = None
+
+    with patch("ssh_manager_app.dialogs_remote.simpledialog.askstring", return_value="  jump-prod  ") as askstring:
+        JumpHostDialog._on_save(dialog)
+
+    askstring.assert_called_once_with(
+        "SSH-Config speichern",
+        "Name für den neuen SSH-Config-Host:",
+        parent=dialog,
+    )
+    assert dialog.save_result == ("jump-prod", "jump.example", 2200, "jumper", "target")
+    dialog.destroy.assert_called_once_with()
+
+
+def test_ssh_copy_id_dialog_init_uses_default_quick_users():
+    from ssh_manager_app.dialogs_remote import SshCopyIdDialog
+
+    parent = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_remote.tk.Toplevel.__init__", return_value=None), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.title"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.resizable"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.transient"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.grab_set"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.bind"), \
+         patch.object(SshCopyIdDialog, "_build"), \
+         patch.object(SshCopyIdDialog, "_center_on_parent"):
+        dialog = SshCopyIdDialog(parent, quick_users=None, default_user="")
+
+    assert dialog._quick_users == QUICK_USERS
+    assert dialog._quick_users is not QUICK_USERS
+    assert dialog._default_user == DEFAULT_USER
 
 
 def test_terminal_profile_flag_falls_back_to_git_bash():
