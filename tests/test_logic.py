@@ -3,6 +3,7 @@ import tkinter as tk
 import os
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 
 import pytest
 from pathlib import Path
@@ -1300,6 +1301,26 @@ def test_load_app_sessions_returns_empty_list_on_invalid_payload():
             loaded = load_app_sessions()
 
     assert loaded == []
+
+
+
+def test_load_filezilla_config_sessions_returns_empty_when_file_missing():
+    with patch.dict(os.environ, {"APPDATA": "/tmp/nonexistent-appdata"}, clear=False), \
+         patch("pathlib.Path.exists", return_value=False):
+        sessions = load_filezilla_config_sessions()
+
+    assert sessions == []
+
+
+
+def test_load_filezilla_config_sessions_returns_empty_on_parse_error():
+    with patch.dict(os.environ, {"APPDATA": "/tmp/appdata"}, clear=False), \
+         patch("pathlib.Path.exists", return_value=True), \
+         patch("pathlib.Path.read_text", return_value="<broken"), \
+         patch("ssh_manager_app.storage.ET.fromstring", side_effect=ET.ParseError("bad xml")):
+        sessions = load_filezilla_config_sessions()
+
+    assert sessions == []
 
 
 
