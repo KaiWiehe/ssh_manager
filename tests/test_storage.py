@@ -216,6 +216,34 @@ def test_save_and_load_app_sessions_roundtrip_for_app_and_alias_sources():
     assert loaded[0].folder_path == ["Team"]
     assert loaded[1].port == 2222
 
+def test_save_app_sessions_skips_unsupported_sources():
+    with tempfile.TemporaryDirectory() as tmp:
+        sessions_file = Path(tmp) / "app_sessions.json"
+        with patch("ssh_manager_app.storage._APP_SESSIONS_FILE", sessions_file):
+            from ssh_manager_app.models import Session
+
+            save_app_sessions(
+                [
+                    Session(
+                        key="__app__server-1",
+                        display_name="Server 1",
+                        folder_path=["Team"],
+                        hostname="10.0.0.1",
+                        source="app",
+                    ),
+                    Session(
+                        key="__winscp__legacy-1",
+                        display_name="Legacy",
+                        folder_path=["Legacy"],
+                        hostname="10.0.0.2",
+                        source="winscp",
+                    ),
+                ]
+            )
+            loaded = load_app_sessions()
+
+    assert [s.key for s in loaded] == ["__app__server-1"]
+
 
 def test_load_filezilla_config_sessions_parses_nested_folders_and_ignores_unsupported_protocols():
     with tempfile.TemporaryDirectory() as tmp:
