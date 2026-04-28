@@ -18,6 +18,7 @@ from ssh_manager_app.actions_app import (
     show_search_history_menu,
 )
 from ssh_manager_app.actions_notes import edit_session_note
+from ssh_manager_app.dialogs_base import _build_quickselect_buttons
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
@@ -36,6 +37,37 @@ from ssh_manager_app.storage import (
     save_notes,
     save_ui_state,
 )
+
+
+def test_build_quickselect_buttons_creates_wrapped_buttons_and_sets_target():
+    parent = MagicMock()
+    frame = MagicMock()
+    target_var = MagicMock()
+    button_commands = []
+    grid_calls = []
+
+    def fake_button(*_args, **kwargs):
+        button_commands.append(kwargs["command"])
+        btn = MagicMock()
+        btn.grid.side_effect = lambda **grid_kwargs: grid_calls.append(grid_kwargs)
+        return btn
+
+    with patch("ssh_manager_app.dialogs_base.ttk.Frame", return_value=frame) as frame_cls, \
+         patch("ssh_manager_app.dialogs_base.ttk.Button", side_effect=fake_button):
+        result = _build_quickselect_buttons(parent, ["root", "ops", "deploy"], target_var, columns=2, width=10)
+
+    frame_cls.assert_called_once_with(parent)
+    frame.columnconfigure.assert_any_call(0, weight=1)
+    frame.columnconfigure.assert_any_call(1, weight=1)
+    assert result is frame
+    assert grid_calls == [
+        {"row": 0, "column": 0, "padx": 2, "pady": 2, "sticky": "ew"},
+        {"row": 0, "column": 1, "padx": 2, "pady": 2, "sticky": "ew"},
+        {"row": 1, "column": 0, "padx": 2, "pady": 2, "sticky": "ew"},
+    ]
+
+    button_commands[1]()
+    target_var.set.assert_called_once_with("ops")
 
 
 def test_parse_session_key_with_folder():
