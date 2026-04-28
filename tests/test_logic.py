@@ -587,6 +587,43 @@ def test_open_in_winscp_opens_all_selected_sessions():
     assert popen.call_args_list[1].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/Db/srv2"]
 
 
+def test_open_ssh_config_in_vscode_shows_error_on_oserror():
+    app = MagicMock()
+
+    with patch("ssh_manager_app.actions_open.subprocess.Popen", side_effect=OSError("boom")), \
+         patch("ssh_manager_app.actions_open.messagebox.showerror") as showerror:
+        open_ssh_config_in_vscode(app)
+
+    showerror.assert_called_once_with("VS Code nicht gefunden", "Fehler beim Öffnen:\nboom", parent=app)
+
+
+def test_open_in_winscp_shows_error_when_winscp_missing():
+    app = MagicMock()
+    sessions = [Session("s1", "srv1", [], "10.0.0.1")]
+
+    with patch("ssh_manager_app.actions_open._find_winscp", return_value=""), \
+         patch("ssh_manager_app.actions_open.messagebox.showerror") as showerror:
+        open_in_winscp(app, sessions)
+
+    showerror.assert_called_once_with(
+        "WinSCP nicht gefunden",
+        "WinSCP.exe wurde nicht gefunden.\nBitte WinSCP installieren oder zum PATH hinzufügen.",
+        parent=app,
+    )
+
+
+def test_open_in_winscp_shows_error_on_launch_failure():
+    app = MagicMock()
+    sessions = [Session("s1", "srv1", ["Prod"], "10.0.0.1")]
+
+    with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
+         patch("ssh_manager_app.actions_open.subprocess.Popen", side_effect=OSError("broken")), \
+         patch("ssh_manager_app.actions_open.messagebox.showerror") as showerror:
+        open_in_winscp(app, sessions)
+
+    showerror.assert_called_once_with("Fehler", "Fehler beim Starten von WinSCP:\nbroken", parent=app)
+
+
 def test_ssh_manager_app_stays_thin_bootstrap_shell():
     from ssh_manager import SSHManagerApp
 
