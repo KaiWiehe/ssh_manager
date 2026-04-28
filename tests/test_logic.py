@@ -25,7 +25,7 @@ from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, ope
 from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import PALETTE, _SSH_CONFIG_DEFAULT_FOLDER
-from ssh_manager_app.core import RegistryReader, build_wt_command, parse_session_key
+from ssh_manager_app.core import RegistryReader, _build_jump_ssh_command, _build_ssh_command, _shell_single_quote, _ssh_target, _terminal_profile_flag, _terminal_title_flag, build_wt_command, parse_session_key
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
 from ssh_manager_app.tree import _session_values_text
 from ssh_manager_app.storage import (
@@ -144,6 +144,35 @@ def test_user_dialog_on_cancel_sets_none_and_destroys():
 
     assert dialog.result is None
     dialog.destroy.assert_called_once_with()
+
+
+def test_terminal_profile_flag_falls_back_to_git_bash():
+    assert _terminal_profile_flag("") == '-p "Git Bash" '
+    assert _terminal_profile_flag("  Custom  ") == '-p "Custom" '
+
+
+def test_terminal_title_flag_supports_name_host_and_user_host_modes():
+    session = Session("s1", "prod", [], "10.0.0.1", username="deploy")
+
+    assert _terminal_title_flag(session, "", "name_host") == '--title "prod (10.0.0.1)" '
+    assert _terminal_title_flag(session, "ops", "user_host") == '--title "ops@10.0.0.1" '
+    assert _terminal_title_flag(session, "", "unknown") == ""
+
+
+def test_build_ssh_helpers_cover_regular_and_ssh_config_sessions():
+    regular = Session("s1", "srv1", [], "10.0.0.1", username="deploy", port=2222, source="app")
+    ssh_cfg = Session("s2", "prod-alias", [], "prod-alias", username="root", source="ssh_config")
+
+    assert _build_ssh_command(regular, "ops") == "ssh -p 2222 ops@10.0.0.1"
+    assert _build_ssh_command(ssh_cfg, "ignored") == "ssh prod-alias"
+    assert _build_jump_ssh_command(regular, "ops", "jump.example", "jumper", 2200) == "ssh -J -p 2200 jumper@jump.example -p 2222 ops@10.0.0.1"
+    assert _build_jump_ssh_command(ssh_cfg, "ops", "jump.example") == "ssh -J jump.example prod-alias"
+
+
+def test_shell_quote_and_ssh_target_helpers_escape_and_format():
+    assert _shell_single_quote("it's") == "'it'\"'\"'s'"
+    assert _ssh_target("host", " user ", 2222) == "-p 2222 user@host"
+    assert _ssh_target("host", "", 22) == "host"
 
 
 def test_parse_session_key_with_folder():
