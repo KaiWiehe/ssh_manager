@@ -831,3 +831,27 @@ def test_open_via_jumphost_uses_terminal_settings_from_app_settings():
         terminal_settings=app.settings.windows_terminal,
     )
     popen.assert_called_once_with("jump-cmd", shell=True)
+
+
+def test_open_via_jumphost_save_result_rebuilds_sessions_and_shows_toast():
+    app = MagicMock()
+    app.settings = AppSettings(default_user="ops")
+    app._sessions = []
+    app._tree.get_open_folders.return_value = {"Prod"}
+    session = Session("s1", "srv1", ["Prod"], "10.0.0.1")
+
+    dialog = MagicMock()
+    dialog.save_result = ("alias-prod", "jump.example", 2222, "jumper", "target-key")
+    dialog.result = None
+
+    with patch("ssh_manager_app.actions_remote.JumpHostDialog", return_value=dialog), \
+         patch("ssh_manager_app.actions_remote.resolve_single_session_user", return_value="ops") as resolve_user, \
+         patch("ssh_manager_app.actions_remote._append_ssh_config_alias") as append_alias, \
+         patch("ssh_manager_app.actions_remote.rebuild_sessions") as rebuild_sessions, \
+         patch("ssh_manager_app.actions_remote.ToastNotification") as toast:
+        open_via_jumphost(app, session)
+
+    resolve_user.assert_called_once_with(app, session, title="Benutzername für srv1")
+    append_alias.assert_called_once_with("alias-prod", session, "ops", "jump.example", "jumper", 2222)
+    rebuild_sessions.assert_called_once_with(app, reload_winscp=True)
+    toast.assert_called_once_with(app, "SSH-Config 'alias-prod' gespeichert")
