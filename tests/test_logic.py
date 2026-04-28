@@ -265,6 +265,39 @@ def test_session_edit_dialog_on_ok_verbindung_rejects_invalid_hostname():
     dialog.destroy.assert_not_called()
 
 
+def test_session_edit_dialog_on_ok_alias_rejects_missing_folder():
+    dialog = SessionEditDialog.__new__(SessionEditDialog)
+    dialog._alias_var = MagicMock(); dialog._alias_var.get.return_value = "prod-alias"
+    dialog._alias_folder_var = MagicMock(); dialog._alias_folder_var.get.return_value = "   "
+    dialog.destroy = MagicMock()
+    dialog.result = None
+
+    with patch("ssh_manager_app.dialogs_session_edit.messagebox.showwarning") as showwarning:
+        SessionEditDialog._on_ok_alias(dialog)
+
+    showwarning.assert_called_once_with("Fehlendes Feld", "Bitte einen Ordner eingeben.", parent=dialog)
+    assert dialog.result is None
+    dialog.destroy.assert_not_called()
+
+
+def test_session_edit_dialog_on_ok_verbindung_rejects_invalid_port():
+    dialog = SessionEditDialog.__new__(SessionEditDialog)
+    dialog._name_var = MagicMock(); dialog._name_var.get.return_value = "Srv 1"
+    dialog._host_var = MagicMock(); dialog._host_var.get.return_value = "host.example"
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "deploy"
+    dialog._folder_var = MagicMock(); dialog._folder_var.get.return_value = "Prod"
+    dialog._port_var = MagicMock(); dialog._port_var.get.return_value = "70000"
+    dialog.destroy = MagicMock()
+    dialog.result = None
+
+    with patch("ssh_manager_app.dialogs_session_edit.messagebox.showwarning") as showwarning:
+        SessionEditDialog._on_ok_verbindung(dialog)
+
+    showwarning.assert_called_once_with("Ungültiger Port", "Port muss eine Zahl zwischen 1 und 65535 sein.", parent=dialog)
+    assert dialog.result is None
+    dialog.destroy.assert_not_called()
+
+
 def test_terminal_profile_flag_falls_back_to_git_bash():
     assert _terminal_profile_flag("") == '-p "Git Bash" '
     assert _terminal_profile_flag("  Custom  ") == '-p "Custom" '
