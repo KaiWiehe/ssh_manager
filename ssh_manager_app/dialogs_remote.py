@@ -4,10 +4,10 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext, simpledialog, ttk
 from typing import Callable
 
-from . import DEFAULT_USER, QUICK_USERS, Session
-from .constants import _SSH_CONFIG_FILE
-from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons
+from .constants import DEFAULT_USER, QUICK_USERS, _SSH_CONFIG_FILE
+from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons, resolve_user_dialog_defaults
 from .dialogs_toast import ToastNotification
+from .models import Session
 
 
 class JumpHostDialog(tk.Toplevel):
@@ -227,8 +227,7 @@ class SshCopyIdDialog(tk.Toplevel):
         self.resizable(False, False)
         self.result: tuple[str, str] | None = None
         self._target_count = target_count
-        self._quick_users = quick_users or list(QUICK_USERS)
-        self._default_user = default_user or DEFAULT_USER
+        self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
 
         self.transient(parent)
         self.grab_set()
@@ -336,8 +335,7 @@ class SshRemoveKeyDialog(tk.Toplevel):
         self.resizable(False, False)
         self.result: tuple[str, str] | None = None
         self._target_count = target_count
-        self._quick_users = quick_users or list(QUICK_USERS)
-        self._default_user = default_user or DEFAULT_USER
+        self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
 
         self.transient(parent)
         self.grab_set()
@@ -375,13 +373,8 @@ class SshRemoveKeyDialog(tk.Toplevel):
         ttk.Label(frame, text="Quickselect:").grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 4))
         self._user_var = tk.StringVar(value=self._default_user)
         quick_count = max(len(self._quick_users), 2)
-        for col, username in enumerate(self._quick_users):
-            ttk.Button(
-                frame,
-                text=username,
-                command=lambda u=username: self._user_var.set(u),
-                width=14,
-            ).grid(row=4, column=col, padx=2, pady=(0, 8))
+        quick_frame = _build_quickselect_buttons(frame, self._quick_users, self._user_var)
+        quick_frame.grid(row=4, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
 
         ttk.Label(frame, text="Benutzername:").grid(row=5, column=0, sticky="w", pady=(0, 4))
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
@@ -438,8 +431,7 @@ class RemoteCommandDialog(tk.Toplevel):
         self.minsize(620, 420)
         self.result: tuple[str, str, bool] | None = None
         self._last_command = last_command
-        self._quick_users = quick_users or list(QUICK_USERS)
-        self._default_user = default_user or DEFAULT_USER
+        self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
 
         self.transient(parent)
         self.grab_set()
@@ -647,8 +639,7 @@ class SshTunnelDialog(tk.Toplevel):
         self.resizable(False, False)
         self.result: tuple[str, int, str, int, str] | None = None
         self._session = session
-        self._quick_users = quick_users or list(QUICK_USERS)
-        self._default_user = default_user or DEFAULT_USER
+        self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
 
         self.transient(parent)
         self.grab_set()

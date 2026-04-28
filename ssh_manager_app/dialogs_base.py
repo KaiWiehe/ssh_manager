@@ -4,10 +4,19 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Optional
 
-from . import DEFAULT_USER, QUICK_USERS
+from .constants import DEFAULT_USER, QUICK_USERS
 
 _USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._-]+$")
 _HOSTNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._:-]+$")
+
+
+def resolve_user_dialog_defaults(
+    quick_users: list[str] | None = None,
+    default_user: str | None = None,
+) -> tuple[list[str], str]:
+    resolved_quick_users = list(quick_users) if quick_users else list(QUICK_USERS)
+    resolved_default_user = default_user or DEFAULT_USER
+    return resolved_quick_users, resolved_default_user
 
 
 def _build_quickselect_buttons(parent: ttk.Frame, usernames: list[str], target_var: tk.StringVar, columns: int = 4, width: int = 14) -> ttk.Frame:
@@ -38,8 +47,7 @@ class UserDialog(tk.Toplevel):
         self.title(title)
         self.resizable(False, False)
         self.result: Optional[str] = None
-        self._quick_users = quick_users or list(QUICK_USERS)
-        self._default_user = default_user or DEFAULT_USER
+        self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
 
         # Modal machen
         self.transient(parent)

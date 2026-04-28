@@ -18,7 +18,7 @@ from ssh_manager_app.actions_app import (
     show_search_history_menu,
 )
 from ssh_manager_app.actions_notes import edit_session_note
-from ssh_manager_app.dialogs_base import UserDialog, _build_quickselect_buttons
+from ssh_manager_app.dialogs_base import UserDialog, _build_quickselect_buttons, resolve_user_dialog_defaults
 from ssh_manager_app.dialogs_session_edit import SessionEditDialog
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
@@ -69,6 +69,24 @@ def test_build_quickselect_buttons_creates_wrapped_buttons_and_sets_target():
 
     button_commands[1]()
     target_var.set.assert_called_once_with("ops")
+
+
+def test_resolve_user_dialog_defaults_returns_copied_fallbacks():
+    quick_users, default_user = resolve_user_dialog_defaults(None, "")
+
+    assert quick_users == QUICK_USERS
+    assert quick_users is not QUICK_USERS
+    assert default_user == DEFAULT_USER
+
+
+def test_resolve_user_dialog_defaults_preserves_explicit_values():
+    source_quick_users = ["ops", "deploy"]
+
+    quick_users, default_user = resolve_user_dialog_defaults(source_quick_users, "root")
+
+    assert quick_users == source_quick_users
+    assert quick_users is not source_quick_users
+    assert default_user == "root"
 
 
 def test_user_dialog_on_ok_rejects_invalid_username():
@@ -186,6 +204,28 @@ def test_ssh_copy_id_dialog_init_uses_default_quick_users():
     assert dialog._quick_users == QUICK_USERS
     assert dialog._quick_users is not QUICK_USERS
     assert dialog._default_user == DEFAULT_USER
+
+
+def test_ssh_remove_key_dialog_init_copies_explicit_quick_users():
+    from ssh_manager_app.dialogs_remote import SshRemoveKeyDialog
+
+    parent = MagicMock()
+    source_quick_users = ["ops", "deploy"]
+
+    with patch("ssh_manager_app.dialogs_remote.tk.Toplevel.__init__", return_value=None), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.title"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.resizable"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.transient"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.grab_set"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.bind"), \
+         patch.object(SshRemoveKeyDialog, "_build"), \
+         patch.object(SshRemoveKeyDialog, "_center_on_parent"):
+        dialog = SshRemoveKeyDialog(parent, quick_users=source_quick_users, default_user="root")
+
+    assert dialog._quick_users == source_quick_users
+    assert dialog._quick_users is not source_quick_users
+    assert dialog._default_user == "root"
+
 
 
 def test_session_edit_dialog_on_ok_alias_creates_alias_copy_session():
