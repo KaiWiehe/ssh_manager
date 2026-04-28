@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -19,7 +20,9 @@ from ssh_manager_app.actions_app import (
 )
 from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.dialogs_base import UserDialog, _build_quickselect_buttons, resolve_user_dialog_defaults
+from ssh_manager_app.dialogs_move_folder import MoveFolderDialog
 from ssh_manager_app.dialogs_session_edit import SessionEditDialog
+from ssh_manager_app.dialogs_toast import ToastNotification
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
@@ -383,6 +386,103 @@ def test_session_edit_dialog_on_cancel_clears_result_and_destroys():
 
     assert dialog.result is None
     dialog.destroy.assert_called_once_with()
+
+
+def test_move_folder_dialog_on_ok_accepts_trimmed_folder():
+    dialog = MoveFolderDialog.__new__(MoveFolderDialog)
+    dialog._folder_var = MagicMock(); dialog._folder_var.get.return_value = "  Prod/Sub  "
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    MoveFolderDialog._on_ok(dialog)
+
+    assert dialog.result == "Prod/Sub"
+    dialog.destroy.assert_called_once_with()
+
+
+def test_move_folder_dialog_on_ok_rejects_empty_folder():
+    dialog = MoveFolderDialog.__new__(MoveFolderDialog)
+    dialog._folder_var = MagicMock(); dialog._folder_var.get.return_value = "   "
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_move_folder.messagebox.showwarning") as showwarning:
+        MoveFolderDialog._on_ok(dialog)
+
+    showwarning.assert_called_once_with("Fehlendes Feld", "Bitte einen Ordner eingeben.", parent=dialog)
+    assert dialog.result is None
+    dialog.destroy.assert_not_called()
+
+
+def test_move_folder_dialog_on_cancel_clears_result_and_destroys():
+    dialog = MoveFolderDialog.__new__(MoveFolderDialog)
+    dialog.result = "Prod"
+    dialog.destroy = MagicMock()
+
+    MoveFolderDialog._on_cancel(dialog)
+
+    assert dialog.result is None
+    dialog.destroy.assert_called_once_with()
+
+
+def test_move_folder_dialog_center_on_parent_sets_geometry():
+    dialog = MoveFolderDialog.__new__(MoveFolderDialog)
+    dialog.update_idletasks = MagicMock()
+    dialog.winfo_reqwidth = MagicMock(return_value=120)
+    dialog.winfo_reqheight = MagicMock(return_value=80)
+    dialog.geometry = MagicMock()
+    parent = SimpleNamespace(
+        winfo_width=lambda: 400,
+        winfo_height=lambda: 300,
+        winfo_x=lambda: 50,
+        winfo_y=lambda: 30,
+    )
+
+    MoveFolderDialog._center_on_parent(dialog, parent)
+
+    dialog.geometry.assert_called_once_with("+190+140")
+
+
+def test_toast_notification_places_itself_and_schedules_destroy():
+    toast = ToastNotification.__new__(ToastNotification)
+    toast.withdraw = MagicMock()
+    toast.overrideredirect = MagicMock()
+    toast.attributes = MagicMock()
+    toast.update_idletasks = MagicMock()
+    toast.winfo_reqwidth = MagicMock(return_value=180)
+    toast.winfo_reqheight = MagicMock(return_value=40)
+    toast.geometry = MagicMock()
+    toast.deiconify = MagicMock()
+    toast.after = MagicMock()
+    toast.destroy = MagicMock()
+    parent = SimpleNamespace(
+        update_idletasks=MagicMock(),
+        winfo_rootx=lambda: 100,
+        winfo_rooty=lambda: 200,
+        winfo_width=lambda: 500,
+    )
+
+    with patch("ssh_manager_app.dialogs_toast.tk.Toplevel.__init__", return_value=None), \
+         patch("ssh_manager_app.dialogs_toast.ttk.Frame") as frame_cls, \
+         patch("ssh_manager_app.dialogs_toast.ttk.Label") as label_cls:
+        frame = MagicMock()
+        frame_cls.return_value = frame
+        label = MagicMock()
+        label_cls.return_value = label
+
+        ToastNotification.__init__(toast, parent, "Saved", duration_ms=1500)
+
+    toast.withdraw.assert_called_once_with()
+    toast.overrideredirect.assert_called_once_with(True)
+    toast.attributes.assert_called_once_with("-topmost", True)
+    frame_cls.assert_called_once_with(toast, padding=(12, 8), style="Toast.TFrame")
+    frame.pack.assert_called_once_with(fill="both", expand=True)
+    label_cls.assert_called_once_with(frame, text="Saved", style="Toast.TLabel")
+    label.pack.assert_called_once_with()
+    parent.update_idletasks.assert_called_once_with()
+    toast.geometry.assert_called_once_with("180x40+404+216")
+    toast.deiconify.assert_called_once_with()
+    toast.after.assert_called_once_with(1500, toast.destroy)
 
 
 def test_terminal_profile_flag_falls_back_to_git_bash():
