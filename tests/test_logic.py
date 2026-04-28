@@ -881,6 +881,40 @@ def test_show_search_history_menu_shows_placeholder_when_empty():
     menu.tk_popup.assert_called_once_with(5, 18)
 
 
+def test_show_search_history_menu_item_callback_applies_selected_entry():
+    app = MagicMock()
+    app._search_history = ["alpha", "beta"]
+    app._search_history_btn.winfo_rootx.return_value = 0
+    app._search_history_btn.winfo_rooty.return_value = 0
+    app._search_history_btn.winfo_height.return_value = 0
+
+    menu = MagicMock()
+    with patch("ssh_manager_app.actions_app.tk.Menu", return_value=menu), \
+         patch("ssh_manager_app.actions_app.apply_search_history_entry") as apply_entry:
+        show_search_history_menu(app)
+        first_command = menu.add_command.call_args_list[0].kwargs["command"]
+        first_command()
+
+    apply_entry.assert_called_once_with(app, "alpha")
+
+
+def test_show_search_history_menu_clear_callback_clears_history():
+    app = MagicMock()
+    app._search_history = ["alpha"]
+    app._search_history_btn.winfo_rootx.return_value = 0
+    app._search_history_btn.winfo_rooty.return_value = 0
+    app._search_history_btn.winfo_height.return_value = 0
+
+    menu = MagicMock()
+    with patch("ssh_manager_app.actions_app.tk.Menu", return_value=menu), \
+         patch("ssh_manager_app.actions_app.clear_search_history") as clear_history:
+        show_search_history_menu(app)
+        clear_command = menu.add_command.call_args_list[-1].kwargs["command"]
+        clear_command()
+
+    clear_history.assert_called_once_with(app)
+
+
 def test_connect_sessions_uses_app_settings_directly():
     app = MagicMock()
     app.settings = AppSettings(quick_users=["alice", "bob"], default_user="alice")
