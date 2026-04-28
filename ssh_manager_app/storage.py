@@ -35,26 +35,27 @@ def save_settings(settings: AppSettings) -> None:
 def load_settings_from_path(path: Path) -> AppSettings:
     defaults = default_settings()
     raw = json.loads(path.read_text(encoding="utf-8"))
-    toolbar_raw = raw.get("toolbar", {}) if isinstance(raw, dict) else {}
-    wt_raw = raw.get("windows_terminal", {}) if isinstance(raw, dict) else {}
-    visibility_raw = raw.get("source_visibility", {}) if isinstance(raw, dict) else {}
+    raw_dict = raw if isinstance(raw, dict) else {}
+    toolbar_raw = raw_dict.get("toolbar", {})
+    wt_raw = raw_dict.get("windows_terminal", {})
+    visibility_raw = raw_dict.get("source_visibility", {})
 
-    quick_users = raw.get("quick_users", defaults.quick_users)
+    quick_users = raw_dict.get("quick_users", defaults.quick_users)
     if not isinstance(quick_users, list):
         quick_users = defaults.quick_users
     quick_users = [str(user).strip() for user in quick_users if str(user).strip()] or list(defaults.quick_users)
 
-    default_user = str(raw.get("default_user", defaults.default_user)).strip() or quick_users[0]
+    default_user = str(raw_dict.get("default_user", defaults.default_user)).strip() or quick_users[0]
     if default_user not in quick_users:
         quick_users.insert(0, default_user)
 
-    host_timeout = raw.get("host_check_timeout_seconds", defaults.host_check_timeout_seconds)
+    host_timeout = raw_dict.get("host_check_timeout_seconds", defaults.host_check_timeout_seconds)
     try:
         host_timeout = max(1, int(host_timeout))
     except (TypeError, ValueError):
         host_timeout = defaults.host_check_timeout_seconds
 
-    startup_expand_mode = str(raw.get("startup_expand_mode", defaults.startup_expand_mode))
+    startup_expand_mode = str(raw_dict.get("startup_expand_mode", defaults.startup_expand_mode))
     if startup_expand_mode not in {"remember", "expanded", "collapsed"}:
         startup_expand_mode = defaults.startup_expand_mode
 
