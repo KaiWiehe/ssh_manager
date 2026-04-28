@@ -895,3 +895,36 @@ def test_resolve_users_for_sessions_per_host_mode_returns_none_on_cancel():
     dialog_cls.assert_called_once_with(app, title="Benutzername für srv2")
     app.wait_window.assert_called_once_with(dialog)
     assert result is None
+
+
+def test_resolve_users_for_sessions_all_mode_skips_dialog_when_all_users_known():
+    app = MagicMock()
+    sessions = [
+        Session("s1", "cfg1", [], "cfg1", username="deploy", source="ssh_config"),
+        Session("s2", "cfg2", [], "cfg2", username="root", source="ssh_config"),
+    ]
+
+    with patch("ssh_manager_app.actions_remote.UserDialog") as dialog_cls:
+        result = resolve_users_for_sessions(app, sessions, "all")
+
+    dialog_cls.assert_not_called()
+    app.wait_window.assert_not_called()
+    assert result == [(sessions[0], "deploy"), (sessions[1], "root")]
+
+
+def test_resolve_users_for_sessions_all_mode_warns_when_no_user_can_be_resolved():
+    app = MagicMock()
+    session = Session("s1", "srv1", [], "10.0.0.1")
+    dialog = MagicMock()
+    dialog.result = ""
+
+    with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog), \
+         patch("ssh_manager_app.actions_remote.messagebox.showwarning") as showwarning:
+        result = resolve_users_for_sessions(app, [session], "all")
+
+    assert result is None
+    showwarning.assert_called_once_with(
+        "Fehlender Benutzer",
+        "Für 'srv1' konnte kein Benutzer bestimmt werden.",
+        parent=app,
+    )
