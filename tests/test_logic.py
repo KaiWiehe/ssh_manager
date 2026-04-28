@@ -978,6 +978,53 @@ def test_registry_reader_loads_sessions():
     assert sessions[1].port == 2222
 
 
+def test_registry_reader_skips_default_settings_entry():
+    session_data = [
+        ("Default%20Settings", "ignored.example.com", 22, "ignored"),
+        ("Safe/Server", "10.0.0.1", 22, "admin"),
+    ]
+
+    def mock_open_key(base, path, *a, **kw):
+        m = MagicMock()
+        m.__enter__ = lambda s: s
+        m.__exit__ = MagicMock(return_value=False)
+        for sname, shost, sport, suser in session_data:
+            if path.endswith(sname):
+                m._session = (sname, shost, sport, suser)
+                break
+        else:
+            m._session = None
+        return m
+
+    def mock_enum_key(key, i):
+        names = [s[0] for s in session_data]
+        if i < len(names):
+            return names[i]
+        raise OSError
+
+    def mock_query_value(key, name):
+        if key._session is None:
+            raise FileNotFoundError
+        _, shost, sport, suser = key._session
+        if name == "HostName":
+            return (shost, winreg.REG_SZ)
+        if name == "PortNumber":
+            return (sport, winreg.REG_DWORD)
+        if name == "UserName":
+            return (suser, winreg.REG_SZ)
+        raise FileNotFoundError
+
+    with patch("winreg.OpenKey", side_effect=mock_open_key), \
+         patch("winreg.EnumKey", side_effect=mock_enum_key), \
+         patch("winreg.QueryValueEx", side_effect=mock_query_value):
+        reader = RegistryReader()
+        sessions = reader.load_sessions()
+
+    assert len(sessions) == 1
+    assert sessions[0].display_name == "Server"
+    assert sessions[0].hostname == "10.0.0.1"
+
+
 def test_registry_reader_skips_malicious_hostname():
     session_data = [
         ("Safe/Server", "10.0.0.1", 22, "admin"),
