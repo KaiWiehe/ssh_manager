@@ -1788,6 +1788,77 @@ def test_export_and_import_settings_dialog_delegate_only_when_view_exists():
     app._settings_view._import_settings.assert_called_once_with()
 
 
+def test_settings_view_export_settings_writes_json_and_shows_toast():
+    view = SettingsView.__new__(SettingsView)
+    view._app = MagicMock()
+    settings = AppSettings()
+    view._collect_settings = MagicMock(return_value=settings)
+
+    path_mock = MagicMock()
+    with patch("ssh_manager_app.dialogs_settings_misc.filedialog.asksaveasfilename", return_value="/tmp/settings.json"), \
+         patch("ssh_manager_app.dialogs_settings_misc.Path", return_value=path_mock), \
+         patch("ssh_manager_app.dialogs_settings_misc.ToastNotification") as toast:
+        SettingsView._export_settings(view)
+
+    view._collect_settings.assert_called_once_with()
+    path_mock.write_text.assert_called_once()
+    written_json = path_mock.write_text.call_args.args[0]
+    assert '"default_user": "tool-admin"' in written_json
+    assert path_mock.write_text.call_args.kwargs == {"encoding": "utf-8"}
+    toast.assert_called_once_with(view._app, "Einstellungen exportiert")
+
+
+
+def test_settings_view_export_settings_shows_error_on_write_failure():
+    view = SettingsView.__new__(SettingsView)
+    view._app = MagicMock()
+    view._collect_settings = MagicMock(return_value=AppSettings())
+    path_mock = MagicMock()
+    path_mock.write_text.side_effect = OSError("disk full")
+
+    with patch("ssh_manager_app.dialogs_settings_misc.filedialog.asksaveasfilename", return_value="/tmp/settings.json"), \
+         patch("ssh_manager_app.dialogs_settings_misc.Path", return_value=path_mock), \
+         patch("ssh_manager_app.dialogs_settings_misc.messagebox.showerror") as showerror:
+        SettingsView._export_settings(view)
+
+    showerror.assert_called_once_with("Export fehlgeschlagen", "Datei konnte nicht gespeichert werden:\ndisk full", parent=view)
+
+
+
+def test_settings_view_import_settings_applies_loaded_settings_and_reloads_view():
+    view = SettingsView.__new__(SettingsView)
+    view._app = MagicMock()
+    view.load_from_app = MagicMock()
+    settings = AppSettings(default_user="alice")
+
+    with patch("ssh_manager_app.dialogs_settings_misc.filedialog.askopenfilename", return_value="/tmp/settings.json"), \
+         patch("ssh_manager_app.dialogs_settings_misc.load_settings_from_path", return_value=settings) as load_settings, \
+         patch("ssh_manager_app.actions_ui.apply_settings") as apply_settings, \
+         patch("ssh_manager_app.dialogs_settings_misc.ToastNotification") as toast:
+        SettingsView._import_settings(view)
+
+    load_settings.assert_called_once()
+    apply_settings.assert_called_once_with(view._app, settings)
+    view.load_from_app.assert_called_once_with()
+    toast.assert_called_once_with(view._app, "Einstellungen importiert")
+
+
+
+def test_settings_view_import_settings_shows_error_on_invalid_file():
+    view = SettingsView.__new__(SettingsView)
+    view._app = MagicMock()
+    view.load_from_app = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_settings_misc.filedialog.askopenfilename", return_value="/tmp/settings.json"), \
+         patch("ssh_manager_app.dialogs_settings_misc.load_settings_from_path", side_effect=ValueError("kaputt")), \
+         patch("ssh_manager_app.dialogs_settings_misc.messagebox.showerror") as showerror:
+        SettingsView._import_settings(view)
+
+    showerror.assert_called_once_with("Import fehlgeschlagen", "Datei konnte nicht gelesen werden:\nkaputt", parent=view)
+    view.load_from_app.assert_not_called()
+
+
+
 def test_settings_view_collect_settings_normalizes_values():
     view = SettingsView.__new__(SettingsView)
     view.STARTUP_LABELS = SettingsView.STARTUP_LABELS
