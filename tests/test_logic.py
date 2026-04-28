@@ -24,7 +24,7 @@ from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.dialogs_base import UserDialog, _build_quickselect_buttons, resolve_user_dialog_defaults
 from ssh_manager_app.dialogs_move_folder import MoveFolderDialog
 from ssh_manager_app.dialogs_session_edit import SessionEditDialog
-from ssh_manager_app.dialogs_settings_misc import SettingsView
+from ssh_manager_app.dialogs_settings_misc import SettingsView, SshConfigInspectDialog
 from ssh_manager_app.dialogs_toast import ToastNotification
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
@@ -1862,6 +1862,69 @@ def test_settings_view_show_section_raises_selected_frame_and_updates_nav_labels
     general_frame.tkraise.assert_not_called()
     general_button.configure.assert_called_once_with(text="  Allgemein")
     toolbar_button.configure.assert_called_once_with(text="▸ Toolbar")
+
+
+def test_ssh_config_inspect_dialog_build_uses_stdout_and_disables_text():
+    dialog = SshConfigInspectDialog.__new__(SshConfigInspectDialog)
+    dialog.columnconfigure = MagicMock()
+    dialog.rowconfigure = MagicMock()
+
+    txt = MagicMock()
+    vsb = MagicMock()
+    hsb = MagicMock()
+    txt_frame = MagicMock()
+    btn_frame = MagicMock()
+    close_button = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_settings_misc.ttk.Frame", side_effect=[txt_frame, btn_frame]) as frame_cls, \
+         patch("ssh_manager_app.dialogs_settings_misc.tk.Text", return_value=txt) as text_cls, \
+         patch("ssh_manager_app.dialogs_settings_misc.ttk.Scrollbar", side_effect=[vsb, hsb]) as scrollbar_cls, \
+         patch("ssh_manager_app.dialogs_settings_misc.ttk.Button", return_value=close_button) as button_cls, \
+         patch("ssh_manager_app.dialogs_settings_misc.subprocess.run", return_value=SimpleNamespace(stdout="host x\n", stderr="")) as run:
+        SshConfigInspectDialog._build(dialog, "prod")
+
+    run.assert_called_once_with(["ssh", "-G", "prod"], capture_output=True, text=True, timeout=5)
+    text_cls.assert_called_once_with(txt_frame, wrap="none", font=("Consolas", 9))
+    txt.insert.assert_called_once_with("1.0", "host x\n")
+    txt.configure.assert_any_call(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+    txt.configure.assert_any_call(state="disabled")
+    button_cls.assert_called_once_with(btn_frame, text="Schließen", command=dialog.destroy, width=12)
+    close_button.pack.assert_called_once_with()
+
+
+def test_ssh_config_inspect_dialog_build_shows_exception_text():
+    dialog = SshConfigInspectDialog.__new__(SshConfigInspectDialog)
+    dialog.columnconfigure = MagicMock()
+    dialog.rowconfigure = MagicMock()
+    txt = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_settings_misc.ttk.Frame", side_effect=[MagicMock(), MagicMock()]), \
+         patch("ssh_manager_app.dialogs_settings_misc.tk.Text", return_value=txt), \
+         patch("ssh_manager_app.dialogs_settings_misc.ttk.Scrollbar", side_effect=[MagicMock(), MagicMock()]), \
+         patch("ssh_manager_app.dialogs_settings_misc.ttk.Button", return_value=MagicMock()), \
+         patch("ssh_manager_app.dialogs_settings_misc.subprocess.run", side_effect=RuntimeError("boom")):
+        SshConfigInspectDialog._build(dialog, "prod")
+
+    txt.insert.assert_called_once_with("1.0", "Fehler: boom")
+    txt.configure.assert_any_call(state="disabled")
+
+
+def test_ssh_config_inspect_dialog_center_on_parent_sets_geometry():
+    dialog = SshConfigInspectDialog.__new__(SshConfigInspectDialog)
+    dialog.update_idletasks = MagicMock()
+    dialog.winfo_reqwidth = MagicMock(return_value=300)
+    dialog.winfo_reqheight = MagicMock(return_value=200)
+    dialog.geometry = MagicMock()
+    parent = SimpleNamespace(
+        winfo_width=lambda: 800,
+        winfo_height=lambda: 600,
+        winfo_x=lambda: 50,
+        winfo_y=lambda: 40,
+    )
+
+    SshConfigInspectDialog._center_on_parent(dialog, parent)
+
+    dialog.geometry.assert_called_once_with("+300+240")
 
 
 def test_close_app_persists_state_before_destroy():
