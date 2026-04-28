@@ -1169,6 +1169,14 @@ def test_load_ssh_config_sessions_skips_wildcards():
     assert sessions[0].display_name == "realhost"
 
 
+def test_load_ssh_config_sessions_skips_question_mark_patterns():
+    config = "Host web-?\n  HostName 10.0.0.1\nHost app01\n  HostName 10.0.0.2\n"
+    with patch("ssh_manager_app.storage._SSH_CONFIG_FILE", _mock_ssh_config(config)):
+        sessions = load_ssh_config_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].display_name == "app01"
+
+
 def test_load_ssh_config_sessions_skips_multi_pattern():
     config = "Host foo bar\n  HostName 1.2.3.4\nHost single\n  HostName 5.6.7.8\n"
     with patch("ssh_manager_app.storage._SSH_CONFIG_FILE", _mock_ssh_config(config)):
