@@ -444,6 +444,82 @@ def test_ssh_tunnel_dialog_on_ok_rejects_invalid_target_host():
 
 
 
+def test_remote_command_dialog_on_ok_accepts_all_mode():
+    from ssh_manager_app.dialogs_remote import RemoteCommandDialog
+
+    dialog = RemoteCommandDialog.__new__(RemoteCommandDialog)
+    dialog._command_text = MagicMock(); dialog._command_text.get.return_value = "echo hi\n"
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "deploy"
+    dialog._user_mode = MagicMock(); dialog._user_mode.get.return_value = "all"
+    dialog._close_on_success = MagicMock(); dialog._close_on_success.get.return_value = True
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    RemoteCommandDialog._on_ok(dialog)
+
+    assert dialog.result == ("all", "echo hi", True)
+    dialog.destroy.assert_called_once_with()
+
+
+
+def test_remote_command_dialog_on_ok_rejects_missing_command():
+    from ssh_manager_app.dialogs_remote import RemoteCommandDialog
+
+    dialog = RemoteCommandDialog.__new__(RemoteCommandDialog)
+    dialog._command_text = MagicMock(); dialog._command_text.get.return_value = "  \n"
+    dialog._user_var = MagicMock()
+    dialog._user_mode = MagicMock(); dialog._user_mode.get.return_value = "all"
+    dialog._close_on_success = MagicMock()
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_remote.messagebox.showwarning") as showwarning:
+        RemoteCommandDialog._on_ok(dialog)
+
+    assert dialog.result is None
+    showwarning.assert_called_once_with("Kein Befehl", "Bitte einen Befehl eingeben.", parent=dialog)
+    dialog.destroy.assert_not_called()
+
+
+
+def test_remote_command_dialog_on_ok_all_mode_rejects_invalid_user():
+    from ssh_manager_app.dialogs_remote import RemoteCommandDialog
+
+    dialog = RemoteCommandDialog.__new__(RemoteCommandDialog)
+    dialog._command_text = MagicMock(); dialog._command_text.get.return_value = "uptime"
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "bad user!"
+    dialog._user_mode = MagicMock(); dialog._user_mode.get.return_value = "all"
+    dialog._close_on_success = MagicMock()
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_remote.messagebox.showwarning") as showwarning:
+        RemoteCommandDialog._on_ok(dialog)
+
+    assert dialog.result is None
+    showwarning.assert_called_once_with(
+        "Ungültiger Benutzername",
+        "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+        parent=dialog,
+    )
+    dialog.destroy.assert_not_called()
+
+
+
+def test_remote_command_dialog_on_cancel_clears_result_and_destroys():
+    from ssh_manager_app.dialogs_remote import RemoteCommandDialog
+
+    dialog = RemoteCommandDialog.__new__(RemoteCommandDialog)
+    dialog.result = ("all", "uptime", False)
+    dialog.destroy = MagicMock()
+
+    RemoteCommandDialog._on_cancel(dialog)
+
+    assert dialog.result is None
+    dialog.destroy.assert_called_once_with()
+
+
+
 def test_session_edit_dialog_on_ok_alias_creates_alias_copy_session():
     dialog = SessionEditDialog.__new__(SessionEditDialog)
     dialog._alias_var = MagicMock()
