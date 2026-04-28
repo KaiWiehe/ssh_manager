@@ -36,11 +36,13 @@ from ssh_manager_app.core import RegistryReader, _build_jump_ssh_command, _build
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
 from ssh_manager_app.tree import _session_values_text
 from ssh_manager_app.storage import (
+    load_app_sessions,
     load_filezilla_config_sessions,
     load_notes,
     load_settings_from_path,
     load_ssh_config_sessions,
     load_ui_state,
+    save_app_sessions,
     save_notes,
     save_ui_state,
 )
@@ -1246,6 +1248,35 @@ def test_load_notes_ignores_blank_entries():
         with patch("ssh_manager_app.storage._NOTES_FILE", fake_path):
             notes = load_notes()
     assert notes == {"c": "ok"}
+
+
+def test_save_and_load_app_sessions_roundtrip_with_alias_and_app_entries():
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_path = Path(tmp) / "app_sessions.json"
+        sessions = [
+            Session("__app__abc", "App 1", ["Prod"], "10.0.0.10", username="deploy", port=2222, source="app"),
+            Session("__sshalias__def", "Alias 1", ["Ops", "Jump"], "jump-prod", username="", port=22, source="ssh_alias"),
+            Session("__sshcfg__ghi", "Cfg", ["SSH Config"], "cfg-host", source="ssh_config"),
+        ]
+        with patch("ssh_manager_app.storage._APP_SESSIONS_FILE", fake_path):
+            save_app_sessions(sessions)
+            loaded = load_app_sessions()
+
+    assert len(loaded) == 2
+    assert loaded[0] == Session("__app__abc", "App 1", ["Prod"], "10.0.0.10", username="deploy", port=2222, source="app")
+    assert loaded[1] == Session("__sshalias__def", "Alias 1", ["Ops", "Jump"], "jump-prod", username="", port=22, source="ssh_alias")
+
+
+
+def test_load_app_sessions_returns_empty_list_on_invalid_payload():
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_path = Path(tmp) / "app_sessions.json"
+        fake_path.write_text(json.dumps({"sessions": [{"name": "broken"}]}), encoding="utf-8")
+        with patch("ssh_manager_app.storage._APP_SESSIONS_FILE", fake_path):
+            loaded = load_app_sessions()
+
+    assert loaded == []
+
 
 
 def test_load_filezilla_config_sessions_reads_nested_sites():
