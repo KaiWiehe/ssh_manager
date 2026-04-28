@@ -1980,6 +1980,23 @@ def test_ssh_config_inspect_dialog_build_shows_exception_text():
     txt.configure.assert_any_call(state="disabled")
 
 
+def test_ssh_config_inspect_dialog_build_falls_back_to_stderr_when_stdout_is_empty():
+    dialog = SshConfigInspectDialog.__new__(SshConfigInspectDialog)
+    dialog.columnconfigure = MagicMock()
+    dialog.rowconfigure = MagicMock()
+    txt = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_settings_misc.ttk.Frame", side_effect=[MagicMock(), MagicMock()]), \
+         patch("ssh_manager_app.dialogs_settings_misc.tk.Text", return_value=txt), \
+         patch("ssh_manager_app.dialogs_settings_misc.ttk.Scrollbar", side_effect=[MagicMock(), MagicMock()]), \
+         patch("ssh_manager_app.dialogs_settings_misc.ttk.Button", return_value=MagicMock()), \
+         patch("ssh_manager_app.dialogs_settings_misc.subprocess.run", return_value=SimpleNamespace(stdout="", stderr="warning")):
+        SshConfigInspectDialog._build(dialog, "prod")
+
+    txt.insert.assert_called_once_with("1.0", "warning")
+    txt.configure.assert_any_call(state="disabled")
+
+
 def test_ssh_config_inspect_dialog_center_on_parent_sets_geometry():
     dialog = SshConfigInspectDialog.__new__(SshConfigInspectDialog)
     dialog.update_idletasks = MagicMock()
