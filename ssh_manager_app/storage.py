@@ -94,13 +94,16 @@ def load_settings_from_path(path: Path) -> AppSettings:
 def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
     try:
         data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
-        toolbar_texts = dict(data.get("toolbar_search_texts", {}))
+        toolbar_raw = data.get("toolbar_search_texts", {})
+        if not isinstance(toolbar_raw, dict):
+            raise TypeError("toolbar_search_texts must be a dict")
+        toolbar_texts = dict(toolbar_raw)
         history = toolbar_texts.get("search_history", [])
         if not isinstance(history, list):
             history = []
         toolbar_texts["search_history"] = [str(item).strip() for item in history if str(item).strip()]
         return set(data.get("expanded_folders", [])), dict(data.get("session_colors", {})), toolbar_texts
-    except (OSError, json.JSONDecodeError, ValueError):
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return set(), {}, {}
 
 

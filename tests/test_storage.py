@@ -121,6 +121,58 @@ def test_save_and_load_ui_state_roundtrip_with_search_history():
     assert toolbar_texts["search_history"] == ["alpha", "beta"]
 
 
+def test_load_ui_state_preserves_other_toolbar_texts_and_normalizes_mixed_history_entries():
+    with tempfile.TemporaryDirectory() as tmp:
+        state_file = Path(tmp) / "ui_state.json"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "expanded_folders": ["Extern"],
+                    "session_colors": {"Extern/srv": "#c0392b"},
+                    "toolbar_search_texts": {
+                        "main": "  prod  ",
+                        "last_remote_command": "uptime",
+                        "search_history": [" alpha ", 42, "", None, "beta"],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with patch("ssh_manager_app.storage._STATE_FILE", state_file):
+            folders, colors, toolbar_texts = load_ui_state()
+
+    assert folders == {"Extern"}
+    assert colors == {"Extern/srv": "#c0392b"}
+    assert toolbar_texts == {
+        "main": "  prod  ",
+        "last_remote_command": "uptime",
+        "search_history": ["alpha", "42", "None", "beta"],
+    }
+
+
+def test_load_ui_state_returns_defaults_when_toolbar_search_texts_payload_is_invalid():
+    with tempfile.TemporaryDirectory() as tmp:
+        state_file = Path(tmp) / "ui_state.json"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "expanded_folders": ["Extern"],
+                    "session_colors": {"Extern/srv": "#c0392b"},
+                    "toolbar_search_texts": 7,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with patch("ssh_manager_app.storage._STATE_FILE", state_file):
+            folders, colors, toolbar_texts = load_ui_state()
+
+    assert folders == set()
+    assert colors == {}
+    assert toolbar_texts == {}
+
+
 def test_save_and_load_notes_roundtrip_filters_blank_values():
     with tempfile.TemporaryDirectory() as tmp:
         notes_file = Path(tmp) / "notes.json"
