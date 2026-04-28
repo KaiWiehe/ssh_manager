@@ -193,6 +193,40 @@ def test_load_filezilla_config_sessions_parses_nested_folders_and_ignores_unsupp
     assert session.username == "deploy"
 
 
+def test_load_filezilla_config_sessions_supports_lowercase_dir_and_defaults_missing_metadata():
+    with tempfile.TemporaryDirectory() as tmp:
+        appdata = Path(tmp)
+        filezilla_dir = appdata / "filezilla"
+        filezilla_dir.mkdir(parents=True)
+        xml_file = filezilla_dir / "sitemanager.xml"
+        xml_file.write_text(
+            """
+<FileZilla3>
+  <Servers>
+    <Folder>
+      <Server>
+        <Host>fallback.example.com</Host>
+        <Port>not-a-port</Port>
+        <Protocol>0</Protocol>
+      </Server>
+    </Folder>
+  </Servers>
+</FileZilla3>
+""".strip(),
+            encoding="utf-8",
+        )
+        with patch.dict(os.environ, {"APPDATA": str(appdata)}):
+            sessions = load_filezilla_config_sessions()
+
+    assert len(sessions) == 1
+    session = sessions[0]
+    assert session.display_name == "fallback.example.com"
+    assert session.folder_path == ["FileZilla Config", "Ordner"]
+    assert session.hostname == "fallback.example.com"
+    assert session.port == 22
+    assert session.username == ""
+
+
 def test_load_ssh_config_sessions_skips_wildcards_and_parses_fields():
     with tempfile.TemporaryDirectory() as tmp:
         ssh_config = Path(tmp) / "config"
