@@ -29,7 +29,7 @@ from ssh_manager_app.dialogs_toast import ToastNotification
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
-from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
+from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, persist_ui_state, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import DEFAULT_USER, PALETTE, QUICK_USERS, _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, _build_jump_ssh_command, _build_ssh_command, _shell_single_quote, _ssh_target, _terminal_profile_flag, _terminal_title_flag, build_wt_command, parse_session_key
@@ -1436,6 +1436,31 @@ def test_add_search_history_entry_deduplicates_limits_and_persists():
         "item-8",
     ]
     assert persist_mock.call_count == 2
+
+
+
+def test_persist_ui_state_saves_open_folders_colors_and_search_texts():
+    app = MagicMock()
+    app._tree = MagicMock()
+    app._tree.get_open_folders.return_value = {"Prod", "Dev/API"}
+    app._tree.get_session_colors.return_value = {"Prod/db": "#112233"}
+    app._search_var = MagicMock()
+    app._search_var.get.return_value = "  current search  "
+    app._initial_toolbar_search_texts = {"last_remote_command": "uptime"}
+    app._search_history = ["alpha", "beta"]
+
+    with patch("ssh_manager_app.actions_ui.save_ui_state") as save_mock:
+        persist_ui_state(app)
+
+    save_mock.assert_called_once_with(
+        {"Prod", "Dev/API"},
+        {"Prod/db": "#112233"},
+        {
+            "main": "  current search  ",
+            "last_remote_command": "uptime",
+            "search_history": ["alpha", "beta"],
+        },
+    )
 
 
 
