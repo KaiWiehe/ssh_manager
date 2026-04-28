@@ -92,6 +92,19 @@ def test_load_settings_from_path_normalizes_default_user_and_timeout():
     assert settings.startup_expand_mode == default_settings().startup_expand_mode
 
 
+def test_load_settings_from_path_filters_invalid_column_order_entries():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(
+            json.dumps({"toolbar": {"column_order": ["notes", "bogus", "port", "hostname"]}}),
+            encoding="utf-8",
+        )
+
+        settings = load_settings_from_path(path)
+
+    assert settings.toolbar.column_order == ["notes", "port", "hostname"]
+
+
 def test_save_and_load_ui_state_roundtrip_with_search_history():
     with tempfile.TemporaryDirectory() as tmp:
         state_file = Path(tmp) / "ui_state.json"
