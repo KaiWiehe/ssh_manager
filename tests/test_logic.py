@@ -305,6 +305,76 @@ def test_ssh_remove_key_dialog_init_copies_explicit_quick_users():
 
 
 
+def test_ssh_copy_id_dialog_on_ok_accepts_valid_input():
+    from ssh_manager_app.dialogs_remote import SshCopyIdDialog
+
+    dialog = SshCopyIdDialog.__new__(SshCopyIdDialog)
+    dialog._key_var = MagicMock(); dialog._key_var.get.return_value = "id_ed25519.pub"
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "deploy"
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    SshCopyIdDialog._on_ok(dialog)
+
+    assert dialog.result == ("id_ed25519.pub", "deploy")
+    dialog.destroy.assert_called_once_with()
+
+
+
+def test_ssh_copy_id_dialog_on_ok_rejects_invalid_user():
+    from ssh_manager_app.dialogs_remote import SshCopyIdDialog
+
+    dialog = SshCopyIdDialog.__new__(SshCopyIdDialog)
+    dialog._key_var = MagicMock(); dialog._key_var.get.return_value = "id_ed25519.pub"
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "bad user!"
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_remote.messagebox.showwarning") as showwarning:
+        SshCopyIdDialog._on_ok(dialog)
+
+    assert dialog.result is None
+    showwarning.assert_called_once_with(
+        "Ungültiger Benutzername",
+        "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+        parent=dialog,
+    )
+    dialog.destroy.assert_not_called()
+
+
+
+def test_ssh_remove_key_dialog_on_ok_requires_key():
+    from ssh_manager_app.dialogs_remote import SshRemoveKeyDialog
+
+    dialog = SshRemoveKeyDialog.__new__(SshRemoveKeyDialog)
+    dialog._key_var = MagicMock(); dialog._key_var.get.return_value = "   "
+    dialog._user_var = MagicMock(); dialog._user_var.get.return_value = "deploy"
+    dialog.result = None
+    dialog.destroy = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_remote.messagebox.showwarning") as showwarning:
+        SshRemoveKeyDialog._on_ok(dialog)
+
+    assert dialog.result is None
+    showwarning.assert_called_once_with("Kein Key", "Bitte einen Public Key auswählen.", parent=dialog)
+    dialog.destroy.assert_not_called()
+
+
+
+def test_ssh_remove_key_dialog_on_cancel_clears_result_and_destroys():
+    from ssh_manager_app.dialogs_remote import SshRemoveKeyDialog
+
+    dialog = SshRemoveKeyDialog.__new__(SshRemoveKeyDialog)
+    dialog.result = ("id_ed25519.pub", "deploy")
+    dialog.destroy = MagicMock()
+
+    SshRemoveKeyDialog._on_cancel(dialog)
+
+    assert dialog.result is None
+    dialog.destroy.assert_called_once_with()
+
+
+
 def test_session_edit_dialog_on_ok_alias_creates_alias_copy_session():
     dialog = SessionEditDialog.__new__(SessionEditDialog)
     dialog._alias_var = MagicMock()
