@@ -3,6 +3,8 @@ import tkinter as tk
 import os
 import sys
 import tempfile
+
+import pytest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -22,6 +24,7 @@ from ssh_manager_app.actions_notes import edit_session_note
 from ssh_manager_app.dialogs_base import UserDialog, _build_quickselect_buttons, resolve_user_dialog_defaults
 from ssh_manager_app.dialogs_move_folder import MoveFolderDialog
 from ssh_manager_app.dialogs_session_edit import SessionEditDialog
+from ssh_manager_app.dialogs_settings_misc import SettingsView
 from ssh_manager_app.dialogs_toast import ToastNotification
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
@@ -1783,6 +1786,82 @@ def test_export_and_import_settings_dialog_delegate_only_when_view_exists():
 
     app._settings_view._export_settings.assert_called_once_with()
     app._settings_view._import_settings.assert_called_once_with()
+
+
+def test_settings_view_collect_settings_normalizes_values():
+    view = SettingsView.__new__(SettingsView)
+    view.STARTUP_LABELS = SettingsView.STARTUP_LABELS
+    view.TITLE_MODE_LABELS = SettingsView.TITLE_MODE_LABELS
+    view._quick_users_text = MagicMock()
+    view._quick_users_text.get.return_value = " alice\n\n bob \n"
+    view._default_user_var = MagicMock()
+    view._default_user_var.get.return_value = "charlie"
+    view._host_timeout_var = MagicMock()
+    view._host_timeout_var.get.return_value = "0"
+    view._startup_expand_var = MagicMock()
+    view._startup_expand_var.get.return_value = SettingsView.STARTUP_LABELS["expanded"]
+    view._profile_name_var = MagicMock()
+    view._profile_name_var.get.return_value = "  "
+    view._use_tab_color_var = MagicMock()
+    view._use_tab_color_var.get.return_value = True
+    view._title_mode_var = MagicMock()
+    view._title_mode_var.get.return_value = SettingsView.TITLE_MODE_LABELS["name_host"]
+    view._collect_toolbar_settings = MagicMock(return_value=AppSettings().toolbar)
+    view._collect_source_visibility_settings = MagicMock(return_value=AppSettings().source_visibility)
+
+    settings = SettingsView._collect_settings(view)
+
+    assert settings.quick_users == ["alice", "bob"]
+    assert settings.default_user == "alice"
+    assert settings.host_check_timeout_seconds == 1
+    assert settings.startup_expand_mode == "expanded"
+    assert settings.windows_terminal.profile_name == "Git Bash"
+    assert settings.windows_terminal.use_tab_color is True
+    assert settings.windows_terminal.title_mode == "name_host"
+
+
+def test_settings_view_collect_settings_rejects_missing_quick_users():
+    view = SettingsView.__new__(SettingsView)
+    view._quick_users_text = MagicMock()
+    view._quick_users_text.get.return_value = "\n  \n"
+
+    with pytest.raises(ValueError, match="Mindestens ein Quick-User"):
+        SettingsView._collect_settings(view)
+
+
+def test_settings_view_move_column_order_reorders_and_triggers_preview():
+    view = SettingsView.__new__(SettingsView)
+    listbox = MagicMock()
+    listbox.curselection.return_value = (1,)
+    listbox.size.return_value = 3
+    listbox.get.return_value = "Hostname"
+    view._column_order_list = listbox
+    view._on_toolbar_changed = MagicMock()
+
+    SettingsView._move_column_order(view, -1)
+
+    listbox.delete.assert_called_once_with(1)
+    listbox.insert.assert_called_once_with(0, "Hostname")
+    listbox.selection_set.assert_called_once_with(0)
+    view._on_toolbar_changed.assert_called_once_with()
+
+
+def test_settings_view_show_section_raises_selected_frame_and_updates_nav_labels():
+    view = SettingsView.__new__(SettingsView)
+    general_frame = MagicMock()
+    toolbar_frame = MagicMock()
+    view._section_frames = {"general": general_frame, "toolbar": toolbar_frame}
+    general_button = MagicMock()
+    toolbar_button = MagicMock()
+    view._nav_buttons = {"general": general_button, "toolbar": toolbar_button}
+
+    SettingsView._show_section(view, "toolbar")
+
+    assert view._active_section == "toolbar"
+    toolbar_frame.tkraise.assert_called_once_with()
+    general_frame.tkraise.assert_not_called()
+    general_button.configure.assert_called_once_with(text="  Allgemein")
+    toolbar_button.configure.assert_called_once_with(text="▸ Toolbar")
 
 
 def test_close_app_persists_state_before_destroy():
