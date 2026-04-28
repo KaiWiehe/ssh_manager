@@ -8,6 +8,16 @@ from tkinter import ttk
 from . import PALETTE, Session, ToolbarSettings, color_tag
 from .constants import _SSH_CONFIG_DEFAULT_FOLDER
 
+
+def _session_values_text(sessions: list[Session], attribute: str) -> str:
+    """Verkettet nicht-leere Session-Attribute zeilenweise für die Zwischenablage."""
+    return "\n".join(
+        value
+        for session in sessions
+        if (value := getattr(session, attribute, ""))
+    )
+
+
 class SessionTree(ttk.Frame):
     """
     ttk.Treeview-Wrapper mit Checkbox-Unterstützung.
@@ -429,12 +439,18 @@ class SessionTree(ttk.Frame):
                     label=f"Befehl auf Ordner ausführen… ({len(folder_sessions)})",
                     command=lambda ss=list(folder_sessions): self._on_run_remote_command(ss),
                 )
-            hostnames = [s.hostname for s in folder_sessions if s.hostname]
             menu.add_command(
                 label="Hostnames kopieren",
-                command=lambda hs=hostnames: (
+                command=lambda ss=list(folder_sessions): (
                     self.clipboard_clear(),
-                    self.clipboard_append("\n".join(hs)),
+                    self.clipboard_append(_session_values_text(ss, "hostname")),
+                ),
+            )
+            menu.add_command(
+                label="Namen kopieren",
+                command=lambda ss=list(folder_sessions): (
+                    self.clipboard_clear(),
+                    self.clipboard_append(_session_values_text(ss, "display_name")),
                 ),
             )
             menu.add_command(
@@ -625,12 +641,25 @@ class SessionTree(ttk.Frame):
             label="Hostname kopieren",
             command=lambda h=session.hostname: (self.clipboard_clear(), self.clipboard_append(h)),
         )
+        menu.add_command(
+            label="Name kopieren",
+            command=lambda n=session.display_name: (self.clipboard_clear(), self.clipboard_append(n)),
+        )
         selected = self.get_selected_sessions()
         if len(selected) >= 2:
-            hostnames = "\n".join(s.hostname for s in selected)
             menu.add_command(
                 label=f"Alle {len(selected)} Hostnamen kopieren",
-                command=lambda hs=hostnames: (self.clipboard_clear(), self.clipboard_append(hs)),
+                command=lambda ss=list(selected): (
+                    self.clipboard_clear(),
+                    self.clipboard_append(_session_values_text(ss, "hostname")),
+                ),
+            )
+            menu.add_command(
+                label=f"Alle {len(selected)} Namen kopieren",
+                command=lambda ss=list(selected): (
+                    self.clipboard_clear(),
+                    self.clipboard_append(_session_values_text(ss, "display_name")),
+                ),
             )
         # Hosts prüfen
         if len(selected) >= 2:
