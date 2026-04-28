@@ -549,16 +549,47 @@ def test_add_search_history_entry_deduplicates_limits_and_persists():
 
 
 def test_dialog_exports_use_split_modules():
-    from ssh_manager_app.dialogs import MoveFolderDialog, SettingsView, SshConfigInspectDialog, ToastNotification
+    from ssh_manager_app.dialogs import (
+        JumpHostDialog,
+        MoveFolderDialog,
+        RemoteCommandConfirmDialog,
+        RemoteCommandDialog,
+        SessionEditDialog,
+        SettingsView,
+        SshConfigInspectDialog,
+        SshCopyIdDialog,
+        SshRemoveKeyDialog,
+        SshTunnelDialog,
+        ToastNotification,
+        UserDialog,
+    )
     from ssh_manager_app.dialogs_move_folder import MoveFolderDialog as MoveFolderDialogImpl
+    from ssh_manager_app.dialogs_remote import (
+        JumpHostDialog as JumpHostDialogImpl,
+        RemoteCommandConfirmDialog as RemoteCommandConfirmDialogImpl,
+        RemoteCommandDialog as RemoteCommandDialogImpl,
+        SshCopyIdDialog as SshCopyIdDialogImpl,
+        SshRemoveKeyDialog as SshRemoveKeyDialogImpl,
+        SshTunnelDialog as SshTunnelDialogImpl,
+    )
+    from ssh_manager_app.dialogs_session_edit import SessionEditDialog as SessionEditDialogImpl
     from ssh_manager_app.dialogs_settings_misc import SettingsView as SettingsViewImpl
     from ssh_manager_app.dialogs_settings_misc import SshConfigInspectDialog as SshConfigInspectDialogImpl
     from ssh_manager_app.dialogs_toast import ToastNotification as ToastNotificationImpl
+    from ssh_manager_app.dialogs_user import UserDialog as UserDialogImpl
 
+    assert JumpHostDialog is JumpHostDialogImpl
     assert MoveFolderDialog is MoveFolderDialogImpl
+    assert RemoteCommandConfirmDialog is RemoteCommandConfirmDialogImpl
+    assert RemoteCommandDialog is RemoteCommandDialogImpl
+    assert SessionEditDialog is SessionEditDialogImpl
     assert SettingsView is SettingsViewImpl
     assert SshConfigInspectDialog is SshConfigInspectDialogImpl
+    assert SshCopyIdDialog is SshCopyIdDialogImpl
+    assert SshRemoveKeyDialog is SshRemoveKeyDialogImpl
+    assert SshTunnelDialog is SshTunnelDialogImpl
     assert ToastNotification is ToastNotificationImpl
+    assert UserDialog is UserDialogImpl
 
 def test_main_modules_import_cleanly():
     import importlib
