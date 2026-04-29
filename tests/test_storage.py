@@ -261,15 +261,27 @@ def test_save_and_load_app_sessions_roundtrip_for_app_and_alias_sources():
 
 
 
-def test_load_app_sessions_returns_empty_list_for_non_object_root_payload():
+def test_load_app_sessions_skips_malformed_entries_and_keeps_valid_ones():
     with tempfile.TemporaryDirectory() as tmp:
         sessions_file = Path(tmp) / "app_sessions.json"
-        sessions_file.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+        sessions_file.write_text(
+            json.dumps(
+                {
+                    "sessions": [
+                        {"id": "server-1", "name": "Server 1", "hostname": "10.0.0.1", "source": "app"},
+                        "not-a-dict",
+                        {"id": "broken", "name": "Broken"},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
 
         with patch("ssh_manager_app.storage._APP_SESSIONS_FILE", sessions_file):
             sessions = load_app_sessions()
 
-    assert sessions == []
+    assert [s.key for s in sessions] == ["__app__server-1"]
+    assert sessions[0].hostname == "10.0.0.1"
 
 def test_save_app_sessions_skips_unsupported_sources():
     with tempfile.TemporaryDirectory() as tmp:

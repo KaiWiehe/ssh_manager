@@ -145,23 +145,31 @@ def load_app_sessions() -> list[Session]:
     try:
         raw = json.loads(_APP_SESSIONS_FILE.read_text(encoding="utf-8"))
         data = raw if isinstance(raw, dict) else {}
-        sessions = []
+        sessions: list[Session] = []
         for entry in data.get("sessions", []):
-            source = entry.get("source", "app")
-            folder_str = entry.get("folder", "")
-            folder_path = [p for p in folder_str.split("/") if p] if folder_str else []
-            key = (_SSH_ALIAS_PREFIX if source == "ssh_alias" else _APP_PREFIX) + entry["id"]
-            sessions.append(Session(
-                key=key,
-                display_name=entry["name"],
-                folder_path=folder_path,
-                hostname=entry["hostname"],
-                username=entry.get("username", ""),
-                port=int(entry.get("port", 22)),
-                source=source,
-            ))
+            if not isinstance(entry, dict):
+                continue
+            try:
+                source = str(entry.get("source", "app"))
+                folder_str = str(entry.get("folder", ""))
+                folder_path = [p for p in folder_str.split("/") if p] if folder_str else []
+                session_id = str(entry["id"])
+                name = str(entry["name"])
+                hostname = str(entry["hostname"])
+                key = (_SSH_ALIAS_PREFIX if source == "ssh_alias" else _APP_PREFIX) + session_id
+                sessions.append(Session(
+                    key=key,
+                    display_name=name,
+                    folder_path=folder_path,
+                    hostname=hostname,
+                    username=str(entry.get("username", "")),
+                    port=int(entry.get("port", 22)),
+                    source=source,
+                ))
+            except (KeyError, TypeError, ValueError):
+                continue
         return sessions
-    except (OSError, json.JSONDecodeError, ValueError, KeyError, TypeError):
+    except (OSError, json.JSONDecodeError, TypeError):
         return []
 
 
