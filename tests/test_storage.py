@@ -215,6 +215,17 @@ def test_save_and_load_notes_roundtrip_filters_blank_values():
     assert notes == {"a": "hello"}
 
 
+def test_load_notes_returns_empty_dict_for_non_object_root_payload():
+    with tempfile.TemporaryDirectory() as tmp:
+        notes_file = Path(tmp) / "notes.json"
+        notes_file.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+
+        with patch("ssh_manager_app.storage._NOTES_FILE", notes_file):
+            notes = load_notes()
+
+    assert notes == {}
+
+
 def test_save_and_load_app_sessions_roundtrip_for_app_and_alias_sources():
     with tempfile.TemporaryDirectory() as tmp:
         sessions_file = Path(tmp) / "app_sessions.json"

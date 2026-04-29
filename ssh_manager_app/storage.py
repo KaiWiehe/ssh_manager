@@ -126,6 +126,8 @@ def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], to
 def load_notes() -> dict[str, str]:
     try:
         data = json.loads(_NOTES_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
         notes = data.get("notes", {})
         if not isinstance(notes, dict):
             return {}
