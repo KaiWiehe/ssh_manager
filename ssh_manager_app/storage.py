@@ -37,8 +37,14 @@ def load_settings_from_path(path: Path) -> AppSettings:
     raw = json.loads(path.read_text(encoding="utf-8"))
     raw_dict = raw if isinstance(raw, dict) else {}
     toolbar_raw = raw_dict.get("toolbar", {})
+    if not isinstance(toolbar_raw, dict):
+        toolbar_raw = {}
     wt_raw = raw_dict.get("windows_terminal", {})
+    if not isinstance(wt_raw, dict):
+        wt_raw = {}
     visibility_raw = raw_dict.get("source_visibility", {})
+    if not isinstance(visibility_raw, dict):
+        visibility_raw = {}
 
     quick_users = raw_dict.get("quick_users", defaults.quick_users)
     if not isinstance(quick_users, list):

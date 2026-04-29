@@ -79,6 +79,28 @@ def test_load_settings_from_path_non_object_root_falls_back_to_defaults():
     assert settings == default_settings()
 
 
+def test_load_settings_from_path_ignores_non_object_nested_sections():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "toolbar": 7,
+                    "windows_terminal": "broken",
+                    "source_visibility": ["bad"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        settings = load_settings_from_path(path)
+
+    defaults = default_settings()
+    assert settings.toolbar == defaults.toolbar
+    assert settings.windows_terminal == defaults.windows_terminal
+    assert settings.source_visibility == defaults.source_visibility
+
+
 def test_load_settings_from_path_normalizes_default_user_and_timeout():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "settings.json"
