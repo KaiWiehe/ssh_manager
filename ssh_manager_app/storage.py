@@ -101,6 +101,12 @@ def load_settings_from_path(path: Path) -> AppSettings:
 def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
     try:
         data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+        expanded_raw = data.get("expanded_folders", [])
+        if not isinstance(expanded_raw, list):
+            raise TypeError("expanded_folders must be a list")
+        colors_raw = data.get("session_colors", {})
+        if not isinstance(colors_raw, dict):
+            raise TypeError("session_colors must be a dict")
         toolbar_raw = data.get("toolbar_search_texts", {})
         if not isinstance(toolbar_raw, dict):
             raise TypeError("toolbar_search_texts must be a dict")
@@ -109,7 +115,7 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
         if not isinstance(history, list):
             history = []
         toolbar_texts["search_history"] = [str(item).strip() for item in history if str(item).strip()]
-        return set(data.get("expanded_folders", [])), dict(data.get("session_colors", {})), toolbar_texts
+        return set(expanded_raw), dict(colors_raw), toolbar_texts
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return set(), {}, {}
 

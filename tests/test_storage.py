@@ -205,6 +205,28 @@ def test_load_ui_state_returns_defaults_when_toolbar_search_texts_payload_is_inv
     assert toolbar_texts == {}
 
 
+def test_load_ui_state_returns_defaults_when_expanded_folders_or_session_colors_payload_is_invalid():
+    with tempfile.TemporaryDirectory() as tmp:
+        state_file = Path(tmp) / "ui_state.json"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "expanded_folders": "Extern",
+                    "session_colors": [["Extern/srv", "#c0392b"]],
+                    "toolbar_search_texts": {"search_history": ["alpha"]},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with patch("ssh_manager_app.storage._STATE_FILE", state_file):
+            folders, colors, toolbar_texts = load_ui_state()
+
+    assert folders == set()
+    assert colors == {}
+    assert toolbar_texts == {}
+
+
 def test_save_and_load_notes_roundtrip_filters_blank_values():
     with tempfile.TemporaryDirectory() as tmp:
         notes_file = Path(tmp) / "notes.json"
