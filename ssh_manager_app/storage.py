@@ -143,7 +143,8 @@ def save_notes(notes: dict[str, str]) -> None:
 
 def load_app_sessions() -> list[Session]:
     try:
-        data = json.loads(_APP_SESSIONS_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(_APP_SESSIONS_FILE.read_text(encoding="utf-8"))
+        data = raw if isinstance(raw, dict) else {}
         sessions = []
         for entry in data.get("sessions", []):
             source = entry.get("source", "app")
@@ -160,7 +161,7 @@ def load_app_sessions() -> list[Session]:
                 source=source,
             ))
         return sessions
-    except (OSError, json.JSONDecodeError, ValueError, KeyError):
+    except (OSError, json.JSONDecodeError, ValueError, KeyError, TypeError):
         return []
 
 

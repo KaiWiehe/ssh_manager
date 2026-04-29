@@ -259,6 +259,18 @@ def test_save_and_load_app_sessions_roundtrip_for_app_and_alias_sources():
     assert loaded[0].folder_path == ["Team"]
     assert loaded[1].port == 2222
 
+
+
+def test_load_app_sessions_returns_empty_list_for_non_object_root_payload():
+    with tempfile.TemporaryDirectory() as tmp:
+        sessions_file = Path(tmp) / "app_sessions.json"
+        sessions_file.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+
+        with patch("ssh_manager_app.storage._APP_SESSIONS_FILE", sessions_file):
+            sessions = load_app_sessions()
+
+    assert sessions == []
+
 def test_save_app_sessions_skips_unsupported_sources():
     with tempfile.TemporaryDirectory() as tmp:
         sessions_file = Path(tmp) / "app_sessions.json"
