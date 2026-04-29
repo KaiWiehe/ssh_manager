@@ -2734,6 +2734,21 @@ def test_run_remote_command_uses_app_settings_directly():
     popen.assert_called_once_with("remote-cmd", shell=True)
 
 
+def test_run_remote_command_warns_when_no_runnable_hosts_are_selected():
+    app = MagicMock()
+    app.settings = AppSettings(quick_users=["root", "ops"], default_user="ops")
+    app._initial_toolbar_search_texts = {"last_remote_command": "uptime"}
+    sessions = [Session("s1", "folder", [], "")]
+
+    with patch("ssh_manager_app.actions_remote.messagebox.showwarning") as showwarning, \
+         patch("ssh_manager_app.actions_remote.RemoteCommandDialog") as dialog_cls:
+        run_remote_command(app, sessions)
+
+    showwarning.assert_called_once_with("Keine Hosts", "Keine ausführbaren Hosts ausgewählt.", parent=app)
+    dialog_cls.assert_not_called()
+    assert app._initial_toolbar_search_texts["last_remote_command"] == "uptime"
+
+
 def test_open_via_jumphost_uses_terminal_settings_from_app_settings():
     app = MagicMock()
     app.settings = AppSettings(default_user="ops")
