@@ -47,6 +47,8 @@ class SSHManagerApp(tk.Tk):
         self.minsize(*WINDOW_MIN_SIZE)
         self.geometry("750x550")
 
+        self.settings = load_settings()
+        self._startup_settings = self.settings
         configure_app_styles(self)
 
         # Registry laden
@@ -61,8 +63,6 @@ class SSHManagerApp(tk.Tk):
             )
             winscp_sessions = []
 
-        self.settings = load_settings()
-        self._startup_settings = load_settings()
         self._winscp_sessions = winscp_sessions
         self._filezilla_sessions = load_filezilla_config_sessions()
         self._registry_reader = RegistryReader

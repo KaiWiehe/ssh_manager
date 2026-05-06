@@ -68,6 +68,12 @@ class SourceVisibilitySettings:
 
 
 @dataclass
+class AppearanceSettings:
+    theme: str = "default"
+    accent_color: str = "#2563eb"
+
+
+@dataclass
 class AppSettings:
     quick_users: list[str] = field(default_factory=lambda: list(QUICK_USERS))
     default_user: str = DEFAULT_USER
@@ -76,6 +82,7 @@ class AppSettings:
     startup_expand_mode: str = "remember"
     windows_terminal: WindowsTerminalSettings = field(default_factory=WindowsTerminalSettings)
     source_visibility: SourceVisibilitySettings = field(default_factory=SourceVisibilitySettings)
+    appearance: AppearanceSettings = field(default_factory=AppearanceSettings)
 
 
 def default_settings() -> AppSettings:

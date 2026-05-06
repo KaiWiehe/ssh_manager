@@ -55,6 +55,7 @@ def test_save_settings_writes_nested_settings_payload():
     assert raw["toolbar"]["show_notes_column"] is False
     assert raw["windows_terminal"]["profile_name"] == "PowerShell"
     assert raw["source_visibility"]["show_filezilla_config"] is True
+    assert raw["appearance"] == {"theme": "default", "accent_color": "#2563eb"}
 
 
 def test_load_settings_from_path_invalid_quick_users_falls_back_to_defaults():
@@ -122,6 +123,34 @@ def test_load_settings_from_path_normalizes_default_user_and_timeout():
     assert settings.default_user == "carol"
     assert settings.host_check_timeout_seconds == 1
     assert settings.startup_expand_mode == default_settings().startup_expand_mode
+
+
+def test_load_settings_from_path_loads_valid_appearance_settings():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(
+            json.dumps({"appearance": {"theme": "modern_light", "accent_color": "#a855f7"}}),
+            encoding="utf-8",
+        )
+
+        settings = load_settings_from_path(path)
+
+    assert settings.appearance.theme == "modern_light"
+    assert settings.appearance.accent_color == "#a855f7"
+
+
+def test_load_settings_from_path_rejects_invalid_appearance_settings():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(
+            json.dumps({"appearance": {"theme": "hacker", "accent_color": "#000000"}}),
+            encoding="utf-8",
+        )
+
+        settings = load_settings_from_path(path)
+
+    defaults = default_settings()
+    assert settings.appearance == defaults.appearance
 
 
 def test_load_settings_from_path_filters_invalid_column_order_entries():

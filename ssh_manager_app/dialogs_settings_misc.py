@@ -6,7 +6,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
-from . import AppSettings, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, settings_to_dict
+from . import AppSettings, AppearanceSettings, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, settings_to_dict
 from .constants import _SSH_CONFIG_FILE
 from .dialogs_toast import ToastNotification
 from .storage import load_settings_from_path
@@ -81,6 +81,23 @@ class SshConfigInspectDialog(tk.Toplevel):
 class SettingsView(ttk.Frame):
     """Einstellungsansicht im Hauptfenster."""
 
+    THEME_LABELS = {
+        "default": "Default",
+        "modern_light": "Modern Light",
+    }
+    ACCENT_COLORS = [
+        ("Blau", "#2563eb"),
+        ("Sky", "#0ea5e9"),
+        ("Türkis", "#14b8a6"),
+        ("Grün", "#22c55e"),
+        ("Lime", "#84cc16"),
+        ("Amber", "#f59e0b"),
+        ("Orange", "#f97316"),
+        ("Rot", "#ef4444"),
+        ("Violett", "#a855f7"),
+        ("Pink", "#ec4899"),
+    ]
+
     STARTUP_LABELS = {
         "remember": "Letzten Ordnerzustand merken",
         "expanded": "Alle Ordner ausgeklappt starten",
@@ -104,6 +121,8 @@ class SettingsView(ttk.Frame):
         self._startup_expand_var = tk.StringVar()
         self._profile_name_var = tk.StringVar()
         self._title_mode_var = tk.StringVar()
+        self._theme_var = tk.StringVar()
+        self._accent_var = tk.StringVar()
         self._toolbar_vars: dict[str, tk.BooleanVar] = {}
         self._source_visibility_vars: dict[str, tk.BooleanVar] = {}
         self._use_tab_color_var = tk.BooleanVar()
@@ -151,6 +170,7 @@ class SettingsView(ttk.Frame):
         sections = [
             ("general", "Allgemein"),
             ("sources", "Quellen / Ansicht"),
+            ("appearance", "Design"),
             ("users", "Schnellauswahl-Benutzer"),
             ("toolbar", "Toolbar"),
             ("terminal", "Windows Terminal"),
@@ -165,6 +185,7 @@ class SettingsView(ttk.Frame):
 
         self._section_frames["general"] = self._build_general_section()
         self._section_frames["sources"] = self._build_sources_section()
+        self._section_frames["appearance"] = self._build_appearance_section()
         self._section_frames["users"] = self._build_users_section()
         self._section_frames["toolbar"] = self._build_toolbar_section()
         self._section_frames["terminal"] = self._build_terminal_section()
@@ -211,6 +232,32 @@ class SettingsView(ttk.Frame):
             self._source_visibility_vars[key] = var
             ttk.Checkbutton(grid, text=label, variable=var, command=self._on_source_visibility_changed).grid(row=row * 2, column=0, sticky="w", pady=(0, 2))
             ttk.Label(grid, text=hint, style="SettingsHint.TLabel").grid(row=row * 2 + 1, column=0, sticky="w", pady=(0, 8), padx=(24, 0))
+        return frame
+
+    def _build_appearance_section(self) -> ttk.Frame:
+        frame = self._build_section_frame("Design", "Wähle Theme und Akzentfarbe. Default bleibt die bisherige Optik.")
+        grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        grid.grid(row=2, column=0, sticky="nw")
+        grid.columnconfigure(0, minsize=220)
+        grid.columnconfigure(1, minsize=260)
+
+        ttk.Label(grid, text="Theme:", style="SettingsValue.TLabel").grid(row=0, column=0, sticky="nw", pady=6, padx=(0, 12))
+        theme_list = tk.Listbox(grid, height=len(self.THEME_LABELS), exportselection=False, activestyle="none")
+        theme_list.grid(row=0, column=1, sticky="ew", pady=6)
+        for label in self.THEME_LABELS.values():
+            theme_list.insert("end", label)
+        theme_list.bind("<<ListboxSelect>>", self._on_theme_list_selected)
+        self._theme_list = theme_list
+
+        ttk.Label(grid, text="Akzentfarbe:", style="SettingsValue.TLabel").grid(row=1, column=0, sticky="nw", pady=(16, 6), padx=(0, 12))
+        accent_list = tk.Listbox(grid, height=10, exportselection=False, activestyle="none")
+        accent_list.grid(row=1, column=1, sticky="ew", pady=(16, 6))
+        for name, hex_color in self.ACCENT_COLORS:
+            accent_list.insert("end", f"■ {name}  {hex_color}")
+        accent_list.bind("<<ListboxSelect>>", self._on_accent_list_selected)
+        self._accent_list = accent_list
+
+        ttk.Label(frame, text="Hinweis: Bei manchen nativen Windows-Menüs greift Tkinter-Design nur eingeschränkt.", style="SettingsHint.TLabel").grid(row=3, column=0, sticky="w", pady=(14, 0))
         return frame
 
     def _build_users_section(self) -> ttk.Frame:
@@ -328,6 +375,7 @@ class SettingsView(ttk.Frame):
         labels = {
             "general": "Allgemein",
             "sources": "Quellen / Ansicht",
+            "appearance": "Design",
             "users": "Schnellauswahl-Benutzer",
             "toolbar": "Toolbar",
             "terminal": "Windows Terminal",
@@ -359,6 +407,26 @@ class SettingsView(ttk.Frame):
         self._profile_name_var.set(settings.windows_terminal.profile_name)
         self._use_tab_color_var.set(settings.windows_terminal.use_tab_color)
         self._title_mode_var.set(self.TITLE_MODE_LABELS.get(settings.windows_terminal.title_mode, self.TITLE_MODE_LABELS["default"]))
+        self._set_listbox_selection(self._theme_list, list(self.THEME_LABELS).index(settings.appearance.theme if settings.appearance.theme in self.THEME_LABELS else "default"))
+        accent_values = [hex_color for _name, hex_color in self.ACCENT_COLORS]
+        accent = settings.appearance.accent_color if settings.appearance.accent_color in accent_values else accent_values[0]
+        self._set_listbox_selection(self._accent_list, accent_values.index(accent))
+
+    def _set_listbox_selection(self, listbox: tk.Listbox, index: int) -> None:
+        listbox.selection_clear(0, "end")
+        listbox.selection_set(index)
+        listbox.activate(index)
+        listbox.see(index)
+
+    def _on_theme_list_selected(self, _event=None) -> None:
+        selection = self._theme_list.curselection()
+        if selection:
+            self._theme_var.set(list(self.THEME_LABELS)[selection[0]])
+
+    def _on_accent_list_selected(self, _event=None) -> None:
+        selection = self._accent_list.curselection()
+        if selection:
+            self._accent_var.set(self.ACCENT_COLORS[selection[0]][1])
 
     def _on_toolbar_changed(self) -> None:
         from .actions_ui import preview_toolbar_visibility
@@ -401,6 +469,16 @@ class SettingsView(ttk.Frame):
     def _collect_source_visibility_settings(self) -> SourceVisibilitySettings:
         return SourceVisibilitySettings(**{key: var.get() for key, var in self._source_visibility_vars.items()})
 
+    def _collect_appearance_settings(self) -> AppearanceSettings:
+        if not hasattr(self, "_theme_list") or not hasattr(self, "_accent_list"):
+            return AppearanceSettings()
+        theme_selection = self._theme_list.curselection()
+        theme_keys = list(self.THEME_LABELS)
+        theme = theme_keys[theme_selection[0]] if theme_selection else "default"
+        accent_selection = self._accent_list.curselection()
+        accent = self.ACCENT_COLORS[accent_selection[0]][1] if accent_selection else self.ACCENT_COLORS[0][1]
+        return AppearanceSettings(theme=theme, accent_color=accent)
+
     def _on_source_visibility_changed(self) -> None:
         from .actions_ui import preview_source_visibility
 
@@ -431,6 +509,7 @@ class SettingsView(ttk.Frame):
                 title_mode=title_mode,
             ),
             source_visibility=self._collect_source_visibility_settings(),
+            appearance=self._collect_appearance_settings(),
         )
 
     def _save(self) -> None:

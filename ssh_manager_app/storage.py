@@ -17,7 +17,7 @@ from .constants import (
     _SSH_CONFIG_PREFIX,
     _STATE_FILE,
 )
-from .models import AppSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, default_settings, settings_to_dict
+from .models import AppSettings, AppearanceSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, default_settings, settings_to_dict
 
 
 def load_settings() -> AppSettings:
@@ -45,6 +45,9 @@ def load_settings_from_path(path: Path) -> AppSettings:
     visibility_raw = raw_dict.get("source_visibility", {})
     if not isinstance(visibility_raw, dict):
         visibility_raw = {}
+    appearance_raw = raw_dict.get("appearance", {})
+    if not isinstance(appearance_raw, dict):
+        appearance_raw = {}
 
     quick_users = raw_dict.get("quick_users", defaults.quick_users)
     if not isinstance(quick_users, list):
@@ -64,6 +67,17 @@ def load_settings_from_path(path: Path) -> AppSettings:
     startup_expand_mode = str(raw_dict.get("startup_expand_mode", defaults.startup_expand_mode))
     if startup_expand_mode not in {"remember", "expanded", "collapsed"}:
         startup_expand_mode = defaults.startup_expand_mode
+
+    theme = str(appearance_raw.get("theme", defaults.appearance.theme)).strip() or defaults.appearance.theme
+    if theme not in {"default", "modern_light"}:
+        theme = defaults.appearance.theme
+    accent_color = str(appearance_raw.get("accent_color", defaults.appearance.accent_color)).strip().lower()
+    allowed_accents = {
+        "#2563eb", "#0ea5e9", "#14b8a6", "#22c55e", "#84cc16",
+        "#f59e0b", "#f97316", "#ef4444", "#a855f7", "#ec4899",
+    }
+    if accent_color not in allowed_accents:
+        accent_color = defaults.appearance.accent_color
 
     return AppSettings(
         quick_users=quick_users,
@@ -95,6 +109,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
             show_filezilla_config=bool(visibility_raw.get("show_filezilla_config", defaults.source_visibility.show_filezilla_config)),
             show_app_connections=bool(visibility_raw.get("show_app_connections", defaults.source_visibility.show_app_connections)),
         ),
+        appearance=AppearanceSettings(theme=theme, accent_color=accent_color),
     )
 
 
