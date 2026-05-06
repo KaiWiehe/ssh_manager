@@ -65,6 +65,8 @@ class SourceVisibilitySettings:
     show_ssh_config: bool = True
     show_filezilla_config: bool = False
     show_app_connections: bool = True
+    show_favorites: bool = True
+    show_recent: bool = True
 
 
 @dataclass

@@ -128,6 +128,8 @@ def load_settings_from_path(path: Path) -> AppSettings:
             show_ssh_config=bool(visibility_raw.get("show_ssh_config", defaults.source_visibility.show_ssh_config)),
             show_filezilla_config=bool(visibility_raw.get("show_filezilla_config", defaults.source_visibility.show_filezilla_config)),
             show_app_connections=bool(visibility_raw.get("show_app_connections", defaults.source_visibility.show_app_connections)),
+            show_favorites=bool(visibility_raw.get("show_favorites", defaults.source_visibility.show_favorites)),
+            show_recent=bool(visibility_raw.get("show_recent", defaults.source_visibility.show_recent)),
         ),
         appearance=AppearanceSettings(
             theme=theme,
@@ -158,6 +160,17 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
         if not isinstance(history, list):
             history = []
         toolbar_texts["search_history"] = [str(item).strip() for item in history if str(item).strip()]
+        favorites = data.get("favorite_sessions", {})
+        if not isinstance(favorites, dict):
+            favorites = {}
+        if favorites:
+            toolbar_texts["favorite_sessions"] = {str(k): bool(v) for k, v in favorites.items()}
+        recent = data.get("recent_sessions", [])
+        if not isinstance(recent, list):
+            recent = []
+        recent_sessions = [str(item) for item in recent if str(item).strip()]
+        if recent_sessions:
+            toolbar_texts["recent_sessions"] = recent_sessions
         return set(expanded_raw), dict(colors_raw), toolbar_texts
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return set(), {}, {}
@@ -165,11 +178,19 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
 
 def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], toolbar_search_texts: dict[str, str] | None = None) -> None:
     _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _STATE_FILE.write_text(json.dumps({
+    toolbar_search_texts = toolbar_search_texts or {}
+    favorite_sessions = toolbar_search_texts.pop("favorite_sessions", {})
+    recent_sessions = toolbar_search_texts.pop("recent_sessions", [])
+    payload = {
         "expanded_folders": sorted(expanded_folders),
         "session_colors": session_colors,
-        "toolbar_search_texts": toolbar_search_texts or {},
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+        "toolbar_search_texts": toolbar_search_texts,
+    }
+    if favorite_sessions:
+        payload["favorite_sessions"] = favorite_sessions
+    if recent_sessions:
+        payload["recent_sessions"] = recent_sessions
+    _STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_notes() -> dict[str, str]:

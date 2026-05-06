@@ -232,6 +232,8 @@ class SettingsView(ttk.Frame):
             ("show_ssh_config", "SSH Config", "Standardmäßig an"),
             ("show_filezilla_config", "FileZilla Config", "Neuer Weg, standardmäßig aus"),
             ("show_app_connections", "Eigene App-Verbindungen", "Standardmäßig an"),
+            ("show_favorites", "Favoriten", "Eigener Bereich oben im Tree"),
+            ("show_recent", "Zuletzt verwendet", "Die letzten geöffneten Verbindungen"),
         ]
         grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
         grid.grid(row=2, column=0, sticky="nw")

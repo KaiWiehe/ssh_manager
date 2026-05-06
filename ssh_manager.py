@@ -80,6 +80,8 @@ class SSHManagerApp(tk.Tk):
         self._img_unchecked, self._img_checked = _create_checkbox_images(self)
 
         self._initial_open_folders, self._initial_session_colors, self._initial_toolbar_search_texts = load_ui_state()
+        self._favorite_sessions: dict[str, bool] = dict(self._initial_toolbar_search_texts.get("favorite_sessions", {}))
+        self._recent_sessions: list[str] = list(self._initial_toolbar_search_texts.get("recent_sessions", []))
         if self.settings.startup_expand_mode == "expanded":
             self._initial_open_folders = {s.folder_key for s in self._sessions if s.folder_key}
         elif self.settings.startup_expand_mode == "collapsed":
