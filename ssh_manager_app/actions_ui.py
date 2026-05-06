@@ -254,6 +254,33 @@ def remove_favorite_session(app, session: Session) -> None:
     persist_ui_state(app)
 
 
+def connect_selected_or_focused(app) -> None:
+    from .actions_remote import connect_sessions, quick_connect_session
+
+    selected = app._tree.get_selected_sessions()
+    if selected:
+        connect_sessions(app, selected)
+        return
+    focused = app._tree.get_single_context_session()
+    if focused is not None:
+        quick_connect_session(app, focused)
+
+
+def delete_focused_editable_session(app) -> None:
+    from .actions_sessions import delete_session
+
+    selected = app._tree.get_selected_sessions()
+    target = selected[0] if len(selected) == 1 else app._tree.get_single_context_session()
+    if target is None or target.source not in ("app", "ssh_alias"):
+        return
+    delete_session(app, target)
+
+
+def focus_search(app) -> None:
+    app._search_entry.focus_set()
+    app._search_entry.select_range(0, "end")
+
+
 def reload_sessions(app) -> None:
     rebuild_sessions(app, reload_winscp=True)
     ToastNotification(app, "Verbindungen neu geladen")

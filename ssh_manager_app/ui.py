@@ -45,6 +45,24 @@ def connect_selected_sessions_callback(app) -> None:
     connect_sessions(app, app._tree.get_selected_sessions())
 
 
+def connect_selected_or_focused_callback(app) -> None:
+    from .actions_ui import connect_selected_or_focused
+
+    connect_selected_or_focused(app)
+
+
+def focus_search_callback(app) -> None:
+    from .actions_ui import focus_search
+
+    focus_search(app)
+
+
+def delete_focused_editable_session_callback(app) -> None:
+    from .actions_ui import delete_focused_editable_session
+
+    delete_focused_editable_session(app)
+
+
 def quick_connect_session_callback(app, session) -> None:
     from .actions_remote import quick_connect_session
 
@@ -389,6 +407,13 @@ def build_main_ui(self) -> None:
     """Erstellt alle UI-Elemente."""
     self.columnconfigure(0, weight=1)
     self.rowconfigure(0, weight=1)
+
+    self.bind_all("<Return>", lambda _e: connect_selected_or_focused_callback(self))
+    self.bind_all("<Control-f>", lambda _e: focus_search_callback(self))
+    self.bind_all("<Control-F>", lambda _e: focus_search_callback(self))
+    self.bind_all("<Control-r>", lambda _e: reload_sessions_callback(self))
+    self.bind_all("<Control-R>", lambda _e: reload_sessions_callback(self))
+    self.bind_all("<Delete>", lambda _e: delete_focused_editable_session_callback(self))
 
     menubar = tk.Menu(self)
     self.config(menu=menubar)

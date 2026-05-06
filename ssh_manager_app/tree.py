@@ -304,6 +304,7 @@ class SessionTree(ttk.Frame):
         item_id = self._tv.identify_row(event.y)
         if not item_id:
             return
+        self._tv.focus(item_id)
         if self.TAG_SESSION not in self._tv.item(item_id, "tags"):
             return
         self._toggle(item_id)
@@ -313,6 +314,7 @@ class SessionTree(ttk.Frame):
         item_id = self._tv.identify_row(event.y)
         if not item_id:
             return
+        self._tv.focus(item_id)
         if self.TAG_SESSION not in self._tv.item(item_id, "tags"):
             return
         self._suppress_next_click = True
@@ -341,6 +343,13 @@ class SessionTree(ttk.Frame):
             for iid, checked in self._checked.items()
             if checked
         ]
+
+    def get_single_context_session(self) -> Session | None:
+        """Gibt die fokussierte Treeview-Session zurück, falls genau eine Zeile im Fokus ist."""
+        item_id = self._tv.focus()
+        if item_id and self.TAG_SESSION in self._tv.item(item_id, "tags"):
+            return self._item_to_session.get(item_id)
+        return None
 
     def set_all_checked(self, state: bool) -> None:
         """Alle sichtbaren Session-Zeilen an-/abhaken."""
@@ -377,6 +386,7 @@ class SessionTree(ttk.Frame):
         item_id = self._tv.identify_row(event.y)
         if not item_id:
             return
+        self._tv.focus(item_id)
         tags = self._tv.item(item_id, "tags")
         if self.TAG_FOLDER in tags:
             self._show_folder_menu(item_id, event)
