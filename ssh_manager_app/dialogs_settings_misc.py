@@ -99,6 +99,7 @@ class SettingsView(ttk.Frame):
         ("Violett", "#a855f7"),
         ("Pink", "#ec4899"),
     ]
+    FONT_FAMILIES = ["Segoe UI", "Arial", "Calibri", "Consolas", "Cascadia Mono", "Verdana"]
 
     STARTUP_LABELS = {
         "remember": "Letzten Ordnerzustand merken",
@@ -125,6 +126,11 @@ class SettingsView(ttk.Frame):
         self._title_mode_var = tk.StringVar()
         self._theme_var = tk.StringVar()
         self._accent_var = tk.StringVar()
+        self._ui_font_family_var = tk.StringVar()
+        self._ui_font_size_var = tk.StringVar()
+        self._tree_font_family_var = tk.StringVar()
+        self._tree_font_size_var = tk.StringVar()
+        self._tree_row_height_var = tk.StringVar()
         self._toolbar_vars: dict[str, tk.BooleanVar] = {}
         self._source_visibility_vars: dict[str, tk.BooleanVar] = {}
         self._use_tab_color_var = tk.BooleanVar()
@@ -259,7 +265,22 @@ class SettingsView(ttk.Frame):
         accent_list.bind("<<ListboxSelect>>", self._on_accent_list_selected)
         self._accent_list = accent_list
 
-        ttk.Label(frame, text="Hinweis: Bei manchen nativen Windows-Menüs greift Tkinter-Design nur eingeschränkt.", style="SettingsHint.TLabel").grid(row=3, column=0, sticky="w", pady=(14, 0))
+        font_form = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        font_form.grid(row=3, column=0, sticky="nw", pady=(20, 0))
+        font_form.columnconfigure(0, minsize=220)
+        font_form.columnconfigure(1, minsize=180)
+        ttk.Label(font_form, text="UI-Schriftart:", style="SettingsValue.TLabel").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
+        ttk.Combobox(font_form, textvariable=self._ui_font_family_var, values=self.FONT_FAMILIES, state="readonly", width=24).grid(row=0, column=1, sticky="ew", pady=6)
+        ttk.Label(font_form, text="UI-Schriftgröße:", style="SettingsValue.TLabel").grid(row=1, column=0, sticky="w", pady=6, padx=(0, 12))
+        ttk.Spinbox(font_form, from_=8, to=14, textvariable=self._ui_font_size_var, width=8).grid(row=1, column=1, sticky="w", pady=6)
+        ttk.Label(font_form, text="Tree-Schriftart:", style="SettingsValue.TLabel").grid(row=2, column=0, sticky="w", pady=(16, 6), padx=(0, 12))
+        ttk.Combobox(font_form, textvariable=self._tree_font_family_var, values=self.FONT_FAMILIES, state="readonly", width=24).grid(row=2, column=1, sticky="ew", pady=(16, 6))
+        ttk.Label(font_form, text="Tree-Schriftgröße:", style="SettingsValue.TLabel").grid(row=3, column=0, sticky="w", pady=6, padx=(0, 12))
+        ttk.Spinbox(font_form, from_=8, to=16, textvariable=self._tree_font_size_var, width=8).grid(row=3, column=1, sticky="w", pady=6)
+        ttk.Label(font_form, text="Tree-Zeilenhöhe:", style="SettingsValue.TLabel").grid(row=4, column=0, sticky="w", pady=6, padx=(0, 12))
+        ttk.Spinbox(font_form, from_=22, to=44, textvariable=self._tree_row_height_var, width=8).grid(row=4, column=1, sticky="w", pady=6)
+
+        ttk.Label(frame, text="Hinweis: Bei manchen nativen Windows-Menüs greift Tkinter-Design nur eingeschränkt.", style="SettingsHint.TLabel").grid(row=4, column=0, sticky="w", pady=(14, 0))
         return frame
 
     def _build_users_section(self) -> ttk.Frame:
@@ -413,6 +434,11 @@ class SettingsView(ttk.Frame):
         accent_values = [hex_color for _name, hex_color in self.ACCENT_COLORS]
         accent = settings.appearance.accent_color if settings.appearance.accent_color in accent_values else accent_values[0]
         self._set_listbox_selection(self._accent_list, accent_values.index(accent))
+        self._ui_font_family_var.set(settings.appearance.ui_font_family)
+        self._ui_font_size_var.set(str(settings.appearance.ui_font_size))
+        self._tree_font_family_var.set(settings.appearance.tree_font_family)
+        self._tree_font_size_var.set(str(settings.appearance.tree_font_size))
+        self._tree_row_height_var.set(str(settings.appearance.tree_row_height))
 
     def _set_listbox_selection(self, listbox: tk.Listbox, index: int) -> None:
         listbox.selection_clear(0, "end")
@@ -479,7 +505,28 @@ class SettingsView(ttk.Frame):
         theme = theme_keys[theme_selection[0]] if theme_selection else "default"
         accent_selection = self._accent_list.curselection()
         accent = self.ACCENT_COLORS[accent_selection[0]][1] if accent_selection else self.ACCENT_COLORS[0][1]
-        return AppearanceSettings(theme=theme, accent_color=accent)
+        def bounded_int(var: tk.StringVar, default: int, low: int, high: int) -> int:
+            try:
+                return min(high, max(low, int(var.get().strip())))
+            except ValueError:
+                return default
+
+        ui_font_family = self._ui_font_family_var.get().strip() or "Segoe UI"
+        if ui_font_family not in self.FONT_FAMILIES:
+            ui_font_family = "Segoe UI"
+        tree_font_family = self._tree_font_family_var.get().strip() or "Segoe UI"
+        if tree_font_family not in self.FONT_FAMILIES:
+            tree_font_family = "Segoe UI"
+
+        return AppearanceSettings(
+            theme=theme,
+            accent_color=accent,
+            ui_font_family=ui_font_family,
+            ui_font_size=bounded_int(self._ui_font_size_var, 10, 8, 14),
+            tree_font_family=tree_font_family,
+            tree_font_size=bounded_int(self._tree_font_size_var, 10, 8, 16),
+            tree_row_height=bounded_int(self._tree_row_height_var, 28, 22, 44),
+        )
 
     def _on_source_visibility_changed(self) -> None:
         from .actions_ui import preview_source_visibility

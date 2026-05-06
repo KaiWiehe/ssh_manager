@@ -55,7 +55,15 @@ def test_save_settings_writes_nested_settings_payload():
     assert raw["toolbar"]["show_notes_column"] is False
     assert raw["windows_terminal"]["profile_name"] == "PowerShell"
     assert raw["source_visibility"]["show_filezilla_config"] is True
-    assert raw["appearance"] == {"theme": "default", "accent_color": "#2563eb"}
+    assert raw["appearance"] == {
+        "theme": "default",
+        "accent_color": "#2563eb",
+        "ui_font_family": "Segoe UI",
+        "ui_font_size": 10,
+        "tree_font_family": "Segoe UI",
+        "tree_font_size": 10,
+        "tree_row_height": 28,
+    }
 
 
 def test_load_settings_from_path_invalid_quick_users_falls_back_to_defaults():

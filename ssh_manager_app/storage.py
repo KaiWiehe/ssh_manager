@@ -79,6 +79,26 @@ def load_settings_from_path(path: Path) -> AppSettings:
     if accent_color not in allowed_accents:
         accent_color = defaults.appearance.accent_color
 
+    allowed_fonts = {"Segoe UI", "Arial", "Calibri", "Consolas", "Cascadia Mono", "Verdana"}
+    ui_font_family = str(appearance_raw.get("ui_font_family", defaults.appearance.ui_font_family)).strip() or defaults.appearance.ui_font_family
+    if ui_font_family not in allowed_fonts:
+        ui_font_family = defaults.appearance.ui_font_family
+    tree_font_family = str(appearance_raw.get("tree_font_family", defaults.appearance.tree_font_family)).strip() or defaults.appearance.tree_font_family
+    if tree_font_family not in allowed_fonts:
+        tree_font_family = defaults.appearance.tree_font_family
+    try:
+        ui_font_size = min(14, max(8, int(appearance_raw.get("ui_font_size", defaults.appearance.ui_font_size))))
+    except (TypeError, ValueError):
+        ui_font_size = defaults.appearance.ui_font_size
+    try:
+        tree_font_size = min(16, max(8, int(appearance_raw.get("tree_font_size", defaults.appearance.tree_font_size))))
+    except (TypeError, ValueError):
+        tree_font_size = defaults.appearance.tree_font_size
+    try:
+        tree_row_height = min(44, max(22, int(appearance_raw.get("tree_row_height", defaults.appearance.tree_row_height))))
+    except (TypeError, ValueError):
+        tree_row_height = defaults.appearance.tree_row_height
+
     return AppSettings(
         quick_users=quick_users,
         default_user=default_user,
@@ -109,7 +129,15 @@ def load_settings_from_path(path: Path) -> AppSettings:
             show_filezilla_config=bool(visibility_raw.get("show_filezilla_config", defaults.source_visibility.show_filezilla_config)),
             show_app_connections=bool(visibility_raw.get("show_app_connections", defaults.source_visibility.show_app_connections)),
         ),
-        appearance=AppearanceSettings(theme=theme, accent_color=accent_color),
+        appearance=AppearanceSettings(
+            theme=theme,
+            accent_color=accent_color,
+            ui_font_family=ui_font_family,
+            ui_font_size=ui_font_size,
+            tree_font_family=tree_font_family,
+            tree_font_size=tree_font_size,
+            tree_row_height=tree_row_height,
+        ),
     )
 
 

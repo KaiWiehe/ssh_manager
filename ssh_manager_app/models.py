@@ -71,6 +71,11 @@ class SourceVisibilitySettings:
 class AppearanceSettings:
     theme: str = "default"
     accent_color: str = "#2563eb"
+    ui_font_family: str = "Segoe UI"
+    ui_font_size: int = 10
+    tree_font_family: str = "Segoe UI"
+    tree_font_size: int = 10
+    tree_row_height: int = 28
 
 
 @dataclass
