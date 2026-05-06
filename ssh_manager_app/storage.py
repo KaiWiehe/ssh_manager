@@ -69,7 +69,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
         startup_expand_mode = defaults.startup_expand_mode
 
     theme = str(appearance_raw.get("theme", defaults.appearance.theme)).strip() or defaults.appearance.theme
-    if theme not in {"default", "modern_light"}:
+    if theme not in {"default", "modern_light", "dark_neutral", "midnight"}:
         theme = defaults.appearance.theme
     accent_color = str(appearance_raw.get("accent_color", defaults.appearance.accent_color)).strip().lower()
     allowed_accents = {

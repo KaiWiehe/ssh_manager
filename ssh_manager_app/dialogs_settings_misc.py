@@ -84,6 +84,8 @@ class SettingsView(ttk.Frame):
     THEME_LABELS = {
         "default": "Default",
         "modern_light": "Modern Light",
+        "dark_neutral": "Dark Neutral",
+        "midnight": "Midnight",
     }
     ACCENT_COLORS = [
         ("Blau", "#2563eb"),

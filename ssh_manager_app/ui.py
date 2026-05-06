@@ -278,6 +278,62 @@ def collapse_all_callback(app) -> None:
     collapse_all(app)
 
 
+def _apply_palette_styles(app: tk.Tk, palette: dict[str, str], *, modern: bool = True) -> None:
+    style = ttk.Style(app)
+    accent = palette["accent"]
+    bg = palette["bg"]
+    surface = palette["surface"]
+    surface_alt = palette["surface_alt"]
+    nav = palette["nav"]
+    border = palette["border"]
+    text = palette["text"]
+    muted = palette["muted"]
+    selected = palette["selected"]
+    button_active = palette.get("button_active", selected)
+
+    app.configure(background=bg)
+    app.option_add("*Menu.background", surface)
+    app.option_add("*Menu.foreground", text)
+    app.option_add("*Menu.activeBackground", selected)
+    app.option_add("*Menu.activeForeground", text)
+    app.option_add("*Listbox.background", surface)
+    app.option_add("*Listbox.foreground", text)
+    app.option_add("*Listbox.selectBackground", accent)
+    app.option_add("*Listbox.selectForeground", "#ffffff")
+    app.option_add("*Listbox.highlightColor", accent)
+    app.option_add("*Listbox.highlightBackground", border)
+    style.configure(".", background=bg, foreground=text, font=("Segoe UI", 10))
+    style.configure("TFrame", background=bg)
+    style.configure("TLabel", background=bg, foreground=text)
+    style.configure("TButton", padding=(12, 7), background=surface, foreground=text, bordercolor=border, focusthickness=1, focuscolor=accent)
+    style.map("TButton", background=[("active", button_active), ("pressed", selected)], foreground=[("active", text)], bordercolor=[("focus", accent), ("active", accent)])
+    style.configure("TEntry", fieldbackground=surface, foreground=text, bordercolor=border, lightcolor=border, darkcolor=border, insertcolor=text)
+    style.configure("TCombobox", fieldbackground=surface, foreground=text, bordercolor=border, arrowcolor=muted)
+    style.configure("TCheckbutton", background=bg, foreground=text)
+    style.configure("Treeview", background=surface, fieldbackground=surface, foreground=text, rowheight=28, bordercolor=border, lightcolor=border, darkcolor=border)
+    style.configure("Treeview.Heading", background=surface_alt, foreground=text, relief="flat", bordercolor=border, padding=(8, 7), font=("Segoe UI", 10, "bold"))
+    style.map("Treeview", background=[("selected", selected)], foreground=[("selected", text)])
+    style.configure("Vertical.TScrollbar", background=surface_alt, troughcolor=bg, bordercolor=border, arrowcolor=muted)
+    style.configure("Horizontal.TScrollbar", background=surface_alt, troughcolor=bg, bordercolor=border, arrowcolor=muted)
+    style.configure("Toast.TFrame", background=palette.get("toast_bg", "#111827"), relief="flat")
+    style.configure("Toast.TLabel", background=palette.get("toast_bg", "#111827"), foreground=palette.get("toast_text", "#f9fafb"))
+    style.configure("SettingsRoot.TFrame", background=bg)
+    style.configure("SettingsNav.TFrame", background=nav)
+    style.configure("SettingsContent.TFrame", background=bg)
+    style.configure("SettingsPanel.TFrame", background=surface)
+    style.configure("SettingsActions.TFrame", background=bg)
+    style.configure("SettingsTitle.TLabel", background=bg, foreground=text, font=("Segoe UI", 18, "bold"))
+    style.configure("SettingsSubtitle.TLabel", background=bg, foreground=muted)
+    style.configure("SettingsNavTitle.TLabel", background=nav, foreground=text, font=("Segoe UI", 10, "bold"))
+    style.configure("SettingsSectionTitle.TLabel", background=surface, foreground=text, font=("Segoe UI", 13, "bold"))
+    style.configure("SettingsHint.TLabel", background=surface, foreground=muted)
+    style.configure("SettingsValue.TLabel", background=surface, foreground=text)
+    style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w", background=nav, foreground=text, bordercolor=nav)
+    style.map("SettingsNav.TButton", background=[("active", selected), ("pressed", selected)], foreground=[("active", text)])
+    style.configure("Accent.TButton", padding=(12, 7), background=accent, foreground="#ffffff", bordercolor=accent)
+    style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff")])
+
+
 def configure_app_styles(app: tk.Tk) -> None:
     style = ttk.Style(app)
     style.theme_use("clam")
@@ -285,56 +341,25 @@ def configure_app_styles(app: tk.Tk) -> None:
     theme = getattr(appearance, "theme", "default")
     accent = getattr(appearance, "accent_color", "#2563eb")
 
-    if theme == "modern_light":
-        bg = "#f3f4f6"
-        surface = "#ffffff"
-        surface_alt = "#f9fafb"
-        nav = "#eef2f7"
-        border = "#d1d5db"
-        text = "#111827"
-        muted = "#6b7280"
-        selected = "#dbeafe"
-        app.configure(background=bg)
-        app.option_add("*Menu.background", surface)
-        app.option_add("*Menu.foreground", text)
-        app.option_add("*Menu.activeBackground", selected)
-        app.option_add("*Menu.activeForeground", text)
-        app.option_add("*Listbox.background", surface)
-        app.option_add("*Listbox.foreground", text)
-        app.option_add("*Listbox.selectBackground", accent)
-        app.option_add("*Listbox.selectForeground", "#ffffff")
-        app.option_add("*Listbox.highlightColor", accent)
-        app.option_add("*Listbox.highlightBackground", border)
-        style.configure(".", background=bg, foreground=text, font=("Segoe UI", 10))
-        style.configure("TFrame", background=bg)
-        style.configure("TLabel", background=bg, foreground=text)
-        style.configure("TButton", padding=(12, 7), background=surface, foreground=text, bordercolor=border, focusthickness=1, focuscolor=accent)
-        style.map("TButton", background=[("active", "#eef2ff"), ("pressed", selected)], bordercolor=[("focus", accent), ("active", accent)])
-        style.configure("TEntry", fieldbackground=surface, foreground=text, bordercolor=border, lightcolor=border, darkcolor=border, insertcolor=text)
-        style.configure("TCombobox", fieldbackground=surface, foreground=text, bordercolor=border, arrowcolor=muted)
-        style.configure("TCheckbutton", background=bg, foreground=text)
-        style.configure("Treeview", background=surface, fieldbackground=surface, foreground=text, rowheight=28, bordercolor=border, lightcolor=border, darkcolor=border)
-        style.configure("Treeview.Heading", background=surface_alt, foreground=text, relief="flat", bordercolor=border, padding=(8, 7), font=("Segoe UI", 10, "bold"))
-        style.map("Treeview", background=[("selected", selected)], foreground=[("selected", text)])
-        style.configure("Vertical.TScrollbar", background=surface_alt, troughcolor=bg, bordercolor=border, arrowcolor=muted)
-        style.configure("Horizontal.TScrollbar", background=surface_alt, troughcolor=bg, bordercolor=border, arrowcolor=muted)
-        style.configure("Toast.TFrame", background="#111827", relief="flat")
-        style.configure("Toast.TLabel", background="#111827", foreground="#f9fafb")
-        style.configure("SettingsRoot.TFrame", background=bg)
-        style.configure("SettingsNav.TFrame", background=nav)
-        style.configure("SettingsContent.TFrame", background=bg)
-        style.configure("SettingsPanel.TFrame", background=surface)
-        style.configure("SettingsActions.TFrame", background=bg)
-        style.configure("SettingsTitle.TLabel", background=bg, foreground=text, font=("Segoe UI", 18, "bold"))
-        style.configure("SettingsSubtitle.TLabel", background=bg, foreground=muted)
-        style.configure("SettingsNavTitle.TLabel", background=nav, foreground=text, font=("Segoe UI", 10, "bold"))
-        style.configure("SettingsSectionTitle.TLabel", background=surface, foreground=text, font=("Segoe UI", 13, "bold"))
-        style.configure("SettingsHint.TLabel", background=surface, foreground=muted)
-        style.configure("SettingsValue.TLabel", background=surface, foreground=text)
-        style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w", background=nav, foreground=text, bordercolor=nav)
-        style.map("SettingsNav.TButton", background=[("active", selected), ("pressed", selected)])
-        style.configure("Accent.TButton", padding=(12, 7), background=accent, foreground="#ffffff", bordercolor=accent)
-        style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff")])
+    palettes = {
+        "modern_light": {
+            "accent": accent, "bg": "#f3f4f6", "surface": "#ffffff", "surface_alt": "#f9fafb",
+            "nav": "#eef2f7", "border": "#d1d5db", "text": "#111827", "muted": "#6b7280",
+            "selected": "#dbeafe", "button_active": "#eef2ff", "toast_bg": "#111827", "toast_text": "#f9fafb",
+        },
+        "dark_neutral": {
+            "accent": accent, "bg": "#111111", "surface": "#1f1f1f", "surface_alt": "#2a2a2a",
+            "nav": "#181818", "border": "#3a3a3a", "text": "#f3f4f6", "muted": "#a3a3a3",
+            "selected": "#303a4f", "button_active": "#2b2b2b", "toast_bg": "#050505", "toast_text": "#f9fafb",
+        },
+        "midnight": {
+            "accent": accent, "bg": "#0f172a", "surface": "#162033", "surface_alt": "#1e293b",
+            "nav": "#111827", "border": "#334155", "text": "#e5edf7", "muted": "#94a3b8",
+            "selected": "#1d3b63", "button_active": "#24324a", "toast_bg": "#020617", "toast_text": "#e5edf7",
+        },
+    }
+    if theme in palettes:
+        _apply_palette_styles(app, palettes[theme])
         return
 
     app.configure(background="#f0f0f0")
@@ -352,7 +377,6 @@ def configure_app_styles(app: tk.Tk) -> None:
     style.configure("SettingsHint.TLabel", background="#f6f2eb", foreground="#6b655c")
     style.configure("SettingsValue.TLabel", background="#f6f2eb")
     style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w")
-
 
 def build_main_ui(self) -> None:
     """Erstellt alle UI-Elemente."""
