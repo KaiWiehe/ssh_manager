@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from dataclasses import replace
 
 from .dialogs_toast import ToastNotification
 from .models import AppSettings, SourceVisibilitySettings, ToolbarSettings
@@ -24,14 +25,19 @@ def preview_source_visibility(app, source_visibility: SourceVisibilitySettings) 
 
 
 def persist_ui_state(app) -> None:
+    toolbar_texts = {
+        "main": app._search_var.get(),
+        "last_remote_command": app._initial_toolbar_search_texts.get("last_remote_command", ""),
+        "search_history": list(app._search_history),
+    }
+    if "_favorite_sessions" in getattr(app, "__dict__", {}):
+        toolbar_texts["favorite_sessions"] = dict(app._favorite_sessions)
+    if "_recent_sessions" in getattr(app, "__dict__", {}):
+        toolbar_texts["recent_sessions"] = list(app._recent_sessions)
     save_ui_state(
         app._tree.get_open_folders(),
         app._tree.get_session_colors(),
-        {
-            "main": app._search_var.get(),
-            "last_remote_command": app._initial_toolbar_search_texts.get("last_remote_command", ""),
-            "search_history": list(app._search_history),
-        },
+        toolbar_texts,
     )
 
 
@@ -162,19 +168,33 @@ def collapse_all(app) -> None:
 
 
 def build_visible_sessions(app) -> list[Session]:
-    visible: list[Session] = []
+    base: list[Session] = []
     if app.settings.source_visibility.show_winscp:
-        visible.extend(app._winscp_sessions)
+        base.extend(app._winscp_sessions)
     if app.settings.source_visibility.show_app_connections:
-        visible.extend(app._app_sessions)
+        base.extend(app._app_sessions)
     if app.settings.source_visibility.show_ssh_config:
-        visible.extend(app._ssh_config_sessions)
+        base.extend(app._ssh_config_sessions)
     if app.settings.source_visibility.show_filezilla_config:
-        visible.extend(app._filezilla_sessions)
-    return sorted(
-        visible,
+        base.extend(app._filezilla_sessions)
+
+    by_key = {s.key: s for s in base}
+    favorites = getattr(app, "_favorite_sessions", {})
+    hidden_favorites = {key for key, only_favorites in favorites.items() if only_favorites}
+    normal = [s for s in base if s.key not in hidden_favorites]
+    sorted_normal = sorted(
+        normal,
         key=lambda s: (0 if s.folder_key == app._ssh_config_default_folder else 1, s.folder_key.lower(), s.display_name.lower()),
     )
+
+    special: list[Session] = []
+    if app.settings.source_visibility.show_favorites:
+        favorite_sessions = [by_key[key] for key in favorites if key in by_key]
+        special.extend(replace(s, folder_path=["★ Favoriten"]) for s in favorite_sessions)
+    if app.settings.source_visibility.show_recent:
+        recent_sessions = [by_key[key] for key in getattr(app, "_recent_sessions", []) if key in by_key and key not in favorites]
+        special.extend(replace(s, folder_path=["↺ Zuletzt verwendet"]) for s in recent_sessions[:10])
+    return special + sorted_normal
 
 
 
@@ -195,6 +215,27 @@ def rebuild_sessions(app, *, reload_winscp: bool = False) -> None:
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
 
+
+
+def add_recent_session(app, session: Session) -> None:
+    recent = [key for key in getattr(app, "_recent_sessions", []) if key != session.key]
+    recent.insert(0, session.key)
+    app._recent_sessions = recent[:10]
+    persist_ui_state(app)
+
+
+def set_favorite_session(app, session: Session, *, only_favorites: bool) -> None:
+    app._favorite_sessions[session.key] = only_favorites
+    app._sessions = build_visible_sessions(app)
+    app._tree.refresh(app._sessions)
+    persist_ui_state(app)
+
+
+def remove_favorite_session(app, session: Session) -> None:
+    app._favorite_sessions.pop(session.key, None)
+    app._sessions = build_visible_sessions(app)
+    app._tree.refresh(app._sessions)
+    persist_ui_state(app)
 
 
 def reload_sessions(app) -> None:

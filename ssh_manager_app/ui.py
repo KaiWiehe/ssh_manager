@@ -50,6 +50,18 @@ def quick_connect_session_callback(app, session) -> None:
     quick_connect_session(app, session)
 
 
+def add_favorite_session_callback(app, session, only_favorites: bool) -> None:
+    from .actions_ui import set_favorite_session
+
+    set_favorite_session(app, session, only_favorites=only_favorites)
+
+
+def remove_favorite_session_callback(app, session) -> None:
+    from .actions_ui import remove_favorite_session
+
+    remove_favorite_session(app, session)
+
+
 def reload_sessions_callback(app) -> None:
     from .actions_ui import reload_sessions
 
@@ -474,6 +486,9 @@ def build_main_ui(self) -> None:
         initial_open_folders=self._initial_open_folders,
         initial_session_colors=self._initial_session_colors,
         on_quick_connect=lambda session: quick_connect_session_callback(self, session),
+        on_add_favorite=lambda session, only: add_favorite_session_callback(self, session, only),
+        on_remove_favorite=lambda session: remove_favorite_session_callback(self, session),
+        favorite_keys_getter=lambda: set(self._favorite_sessions),
         on_edit_session=lambda session: edit_session_callback(self, session),
         on_delete_session=lambda session: delete_session_callback(self, session),
         on_delete_folder=lambda sessions, folder_key: delete_folder_callback(self, sessions, folder_key),

@@ -3,7 +3,7 @@ from __future__ import annotations
 import socket
 import threading
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from . import PALETTE, Session, ToolbarSettings, color_tag
 from .constants import _SSH_CONFIG_DEFAULT_FOLDER
@@ -59,6 +59,9 @@ class SessionTree(ttk.Frame):
         on_ui_state_changed=None,           # Callable[[], None] | None
         notes_getter=None,                  # Callable[[str], str] | None
         on_edit_note=None,                  # Callable[[Session], None] | None
+        on_add_favorite=None,               # Callable[[Session, bool], None] | None
+        on_remove_favorite=None,            # Callable[[Session], None] | None
+        favorite_keys_getter=None,          # Callable[[], set[str]] | None
         toolbar_settings: ToolbarSettings | None = None,
     ):
         super().__init__(parent)
@@ -87,6 +90,9 @@ class SessionTree(ttk.Frame):
         self._on_ui_state_changed = on_ui_state_changed
         self._notes_getter = notes_getter or (lambda _key: "")
         self._on_edit_note = on_edit_note
+        self._on_add_favorite = on_add_favorite
+        self._on_remove_favorite = on_remove_favorite
+        self._favorite_keys_getter = favorite_keys_getter or (lambda: set())
         self._toolbar_settings = toolbar_settings or ToolbarSettings()
         self._tooltip: tk.Toplevel | None = None
         self._tooltip_after_id = None
@@ -516,6 +522,18 @@ class SessionTree(ttk.Frame):
                 label="Verbindung öffnen",
                 command=lambda s=session: self._on_quick_connect(s),
             )
+        favorite_keys = self._favorite_keys_getter()
+        if session.key in favorite_keys:
+            if self._on_remove_favorite:
+                menu.add_command(
+                    label="Aus Favoriten entfernen",
+                    command=lambda s=session: self._on_remove_favorite(s),
+                )
+        elif self._on_add_favorite:
+            menu.add_command(
+                label="Zu Favoriten hinzufügen…",
+                command=lambda s=session: self._add_favorite_with_dialog(s),
+            )
         if self._on_edit_note:
             menu.add_command(
                 label="Notiz bearbeiten…",
@@ -695,6 +713,16 @@ class SessionTree(ttk.Frame):
         else:
             menu.add_cascade(label="Farbe…", menu=color_menu)
         menu.tk_popup(event.x_root, event.y_root)
+
+    def _add_favorite_with_dialog(self, session: Session) -> None:
+        result = messagebox.askyesnocancel(
+            "Favorit hinzufügen",
+            "Soll die Verbindung zusätzlich im normalen Tree sichtbar bleiben?\n\nJa = Favorit + normale Tree-Ansicht\nNein = nur im Favoriten-Bereich",
+            parent=self,
+        )
+        if result is None:
+            return
+        self._on_add_favorite(session, not result)
 
     def filter(self, query: str) -> None:
         """

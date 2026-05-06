@@ -11,7 +11,7 @@ from .core import (
     build_ssh_remove_key_command,
     build_ssh_tunnel_command,
 )
-from .actions_ui import rebuild_sessions
+from .actions_ui import add_recent_session, rebuild_sessions
 from .dialogs_remote import (
     JumpHostDialog,
     RemoteCommandConfirmDialog,
@@ -70,6 +70,7 @@ def quick_connect_session(app, session: Session) -> None:
             app._tree.get_session_colors(),
             terminal_settings=app.settings.windows_terminal,
         )
+        add_recent_session(app, session)
     except Exception as exc:
         messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
 
