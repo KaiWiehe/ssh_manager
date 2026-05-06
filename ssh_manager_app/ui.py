@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from .dialogs_settings_misc import SettingsView
+from .themes import THEME_PALETTES, ThemePalette
 from .tree import SessionTree
 
 
@@ -290,18 +291,18 @@ def collapse_all_callback(app) -> None:
     collapse_all(app)
 
 
-def _apply_palette_styles(app: tk.Tk, palette: dict[str, str], *, modern: bool = True) -> None:
+def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style = ttk.Style(app)
     accent = palette["accent"]
-    bg = palette["bg"]
-    surface = palette["surface"]
-    surface_alt = palette["surface_alt"]
-    nav = palette["nav"]
-    border = palette["border"]
-    text = palette["text"]
-    muted = palette["muted"]
-    selected = palette["selected"]
-    button_active = palette.get("button_active", selected)
+    bg = palette.bg
+    surface = palette.surface
+    surface_alt = palette.surface_alt
+    nav = palette.nav
+    border = palette.border
+    text = palette.text
+    muted = palette.muted
+    selected = palette.selected
+    button_active = palette.button_active
 
     app.configure(background=bg)
     app.option_add("*Menu.background", surface)
@@ -331,8 +332,8 @@ def _apply_palette_styles(app: tk.Tk, palette: dict[str, str], *, modern: bool =
     style.map("Treeview", background=[("selected", selected)], foreground=[("selected", text)])
     style.configure("Vertical.TScrollbar", background=surface_alt, troughcolor=bg, bordercolor=border, arrowcolor=muted)
     style.configure("Horizontal.TScrollbar", background=surface_alt, troughcolor=bg, bordercolor=border, arrowcolor=muted)
-    style.configure("Toast.TFrame", background=palette.get("toast_bg", "#111827"), relief="flat")
-    style.configure("Toast.TLabel", background=palette.get("toast_bg", "#111827"), foreground=palette.get("toast_text", "#f9fafb"))
+    style.configure("Toast.TFrame", background=palette.toast_bg, relief="flat")
+    style.configure("Toast.TLabel", background=palette.toast_bg, foreground=palette.toast_text)
     style.configure("SettingsRoot.TFrame", background=bg)
     style.configure("SettingsNav.TFrame", background=nav)
     style.configure("SettingsContent.TFrame", background=bg)
@@ -357,23 +358,7 @@ def configure_app_styles(app: tk.Tk) -> None:
     theme = getattr(appearance, "theme", "default")
     accent = getattr(appearance, "accent_color", "#2563eb")
 
-    palettes = {
-        "modern_light": {
-            "accent": accent, "bg": "#f3f4f6", "surface": "#ffffff", "surface_alt": "#f9fafb",
-            "nav": "#eef2f7", "border": "#d1d5db", "text": "#111827", "muted": "#6b7280",
-            "selected": "#dbeafe", "button_active": "#eef2ff", "toast_bg": "#111827", "toast_text": "#f9fafb",
-        },
-        "dark_neutral": {
-            "accent": accent, "bg": "#111111", "surface": "#1f1f1f", "surface_alt": "#2a2a2a",
-            "nav": "#181818", "border": "#3a3a3a", "text": "#f3f4f6", "muted": "#a3a3a3",
-            "selected": "#303a4f", "button_active": "#2b2b2b", "toast_bg": "#050505", "toast_text": "#f9fafb",
-        },
-        "midnight": {
-            "accent": accent, "bg": "#0f172a", "surface": "#162033", "surface_alt": "#1e293b",
-            "nav": "#111827", "border": "#334155", "text": "#e5edf7", "muted": "#94a3b8",
-            "selected": "#1d3b63", "button_active": "#24324a", "toast_bg": "#020617", "toast_text": "#e5edf7",
-        },
-    }
+    palettes = THEME_PALETTES
     if theme in palettes:
         _apply_palette_styles(app, palettes[theme])
         return
