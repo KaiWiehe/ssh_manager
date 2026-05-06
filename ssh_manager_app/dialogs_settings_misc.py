@@ -173,7 +173,7 @@ class SettingsView(ttk.Frame):
         actions.grid(row=2, column=0, sticky="ew")
         ttk.Separator(actions, orient="horizontal").pack(fill="x", pady=(0, 14))
         ttk.Button(actions, text="Speichern", command=self._save).pack(side="left")
-        ttk.Button(actions, text="Zurück", command=lambda: self._show_main_view()).pack(side="left", padx=(8, 0))
+        ttk.Button(actions, text="Zurück", command=lambda: self._cancel_and_show_main_view()).pack(side="left", padx=(8, 0))
 
         sections = [
             ("general", "Allgemein"),
@@ -272,15 +272,25 @@ class SettingsView(ttk.Frame):
         font_form.columnconfigure(0, minsize=220)
         font_form.columnconfigure(1, minsize=180)
         ttk.Label(font_form, text="UI-Schriftart:", style="SettingsValue.TLabel").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
-        ttk.Combobox(font_form, textvariable=self._ui_font_family_var, values=self.FONT_FAMILIES, state="readonly", width=24).grid(row=0, column=1, sticky="ew", pady=6)
+        self._ui_font_family_combo = ttk.Combobox(font_form, textvariable=self._ui_font_family_var, values=self.FONT_FAMILIES, state="readonly", width=24)
+        self._ui_font_family_combo.grid(row=0, column=1, sticky="ew", pady=6)
+        self._ui_font_family_combo.bind("<<ComboboxSelected>>", self._on_appearance_changed)
         ttk.Label(font_form, text="UI-Schriftgröße:", style="SettingsValue.TLabel").grid(row=1, column=0, sticky="w", pady=6, padx=(0, 12))
-        ttk.Spinbox(font_form, from_=8, to=14, textvariable=self._ui_font_size_var, width=8).grid(row=1, column=1, sticky="w", pady=6)
+        self._ui_font_size_spin = ttk.Spinbox(font_form, from_=8, to=14, textvariable=self._ui_font_size_var, width=8, command=self._on_appearance_changed)
+        self._ui_font_size_spin.grid(row=1, column=1, sticky="w", pady=6)
+        self._ui_font_size_spin.bind("<KeyRelease>", self._on_appearance_changed)
         ttk.Label(font_form, text="Tree-Schriftart:", style="SettingsValue.TLabel").grid(row=2, column=0, sticky="w", pady=(16, 6), padx=(0, 12))
-        ttk.Combobox(font_form, textvariable=self._tree_font_family_var, values=self.FONT_FAMILIES, state="readonly", width=24).grid(row=2, column=1, sticky="ew", pady=(16, 6))
+        self._tree_font_family_combo = ttk.Combobox(font_form, textvariable=self._tree_font_family_var, values=self.FONT_FAMILIES, state="readonly", width=24)
+        self._tree_font_family_combo.grid(row=2, column=1, sticky="ew", pady=(16, 6))
+        self._tree_font_family_combo.bind("<<ComboboxSelected>>", self._on_appearance_changed)
         ttk.Label(font_form, text="Tree-Schriftgröße:", style="SettingsValue.TLabel").grid(row=3, column=0, sticky="w", pady=6, padx=(0, 12))
-        ttk.Spinbox(font_form, from_=8, to=16, textvariable=self._tree_font_size_var, width=8).grid(row=3, column=1, sticky="w", pady=6)
+        self._tree_font_size_spin = ttk.Spinbox(font_form, from_=8, to=16, textvariable=self._tree_font_size_var, width=8, command=self._on_appearance_changed)
+        self._tree_font_size_spin.grid(row=3, column=1, sticky="w", pady=6)
+        self._tree_font_size_spin.bind("<KeyRelease>", self._on_appearance_changed)
         ttk.Label(font_form, text="Tree-Zeilenhöhe:", style="SettingsValue.TLabel").grid(row=4, column=0, sticky="w", pady=6, padx=(0, 12))
-        ttk.Spinbox(font_form, from_=22, to=44, textvariable=self._tree_row_height_var, width=8).grid(row=4, column=1, sticky="w", pady=6)
+        self._tree_row_height_spin = ttk.Spinbox(font_form, from_=22, to=44, textvariable=self._tree_row_height_var, width=8, command=self._on_appearance_changed)
+        self._tree_row_height_spin.grid(row=4, column=1, sticky="w", pady=6)
+        self._tree_row_height_spin.bind("<KeyRelease>", self._on_appearance_changed)
 
         ttk.Label(frame, text="Hinweis: Bei manchen nativen Windows-Menüs greift Tkinter-Design nur eingeschränkt.", style="SettingsHint.TLabel").grid(row=4, column=0, sticky="w", pady=(14, 0))
         return frame
@@ -395,6 +405,16 @@ class SettingsView(ttk.Frame):
 
         show_main_view(self._app)
 
+    def _cancel_and_show_main_view(self) -> None:
+        from .actions_ui import preview_appearance, preview_source_visibility, preview_toolbar_visibility, show_main_view
+
+        persisted = getattr(self._app, "_persisted_settings", self._app.settings)
+        preview_appearance(self._app, persisted.appearance)
+        preview_toolbar_visibility(self._app, persisted.toolbar)
+        preview_source_visibility(self._app, persisted.source_visibility)
+        self.load_from_app()
+        show_main_view(self._app)
+
     def _show_section(self, key: str) -> None:
         self._active_section = key
         labels = {
@@ -415,7 +435,7 @@ class SettingsView(ttk.Frame):
             button.configure(text=f"{prefix} {labels[section_key]}")
 
     def load_from_app(self) -> None:
-        settings = self._app.settings
+        settings = getattr(self._app, "_persisted_settings", self._app.settings)
         self._quick_users_text.delete("1.0", "end")
         self._quick_users_text.insert("1.0", "\n".join(settings.quick_users))
         self._default_user_combo.configure(values=settings.quick_users)
@@ -452,11 +472,18 @@ class SettingsView(ttk.Frame):
         selection = self._theme_list.curselection()
         if selection:
             self._theme_var.set(list(self.THEME_LABELS)[selection[0]])
+            self._on_appearance_changed()
 
     def _on_accent_list_selected(self, _event=None) -> None:
         selection = self._accent_list.curselection()
         if selection:
             self._accent_var.set(self.ACCENT_COLORS[selection[0]][1])
+            self._on_appearance_changed()
+
+    def _on_appearance_changed(self, _event=None) -> None:
+        from .actions_ui import preview_appearance
+
+        preview_appearance(self._app, self._collect_appearance_settings())
 
     def _on_toolbar_changed(self) -> None:
         from .actions_ui import preview_toolbar_visibility
@@ -572,6 +599,7 @@ class SettingsView(ttk.Frame):
         from .actions_ui import apply_settings
 
         apply_settings(self._app, settings)
+        self._app._persisted_settings = settings
         self._show_main_view()
 
     def _reset_settings(self) -> None:

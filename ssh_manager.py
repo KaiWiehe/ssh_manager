@@ -48,6 +48,7 @@ class SSHManagerApp(tk.Tk):
         self.geometry("750x550")
 
         self.settings = load_settings()
+        self._persisted_settings = self.settings
         self._startup_settings = self.settings
         configure_app_styles(self)
 

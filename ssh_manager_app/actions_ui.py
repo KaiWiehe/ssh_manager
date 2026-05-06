@@ -4,7 +4,7 @@ import tkinter as tk
 from dataclasses import replace
 
 from .dialogs_toast import ToastNotification
-from .models import AppSettings, SourceVisibilitySettings, ToolbarSettings
+from .models import AppearanceSettings, AppSettings, SourceVisibilitySettings, ToolbarSettings
 from .storage import load_filezilla_config_sessions, load_ssh_config_sessions, save_settings, save_ui_state
 from .ui import configure_app_styles, layout_toolbar_buttons
 
@@ -22,6 +22,13 @@ def preview_source_visibility(app, source_visibility: SourceVisibilitySettings) 
     app._tree.refresh(app._sessions)
     persist_ui_state(app)
 
+
+
+def preview_appearance(app, appearance: AppearanceSettings) -> None:
+    app.settings.appearance = appearance
+    configure_app_styles(app)
+    if getattr(app, "_settings_view", None) is not None:
+        app._settings_view.tkraise()
 
 
 def persist_ui_state(app) -> None:
