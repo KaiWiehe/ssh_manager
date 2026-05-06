@@ -242,6 +242,7 @@ class SettingsView(ttk.Frame):
             self._source_visibility_vars[key] = var
             ttk.Checkbutton(grid, text=label, variable=var, command=self._on_source_visibility_changed).grid(row=row * 2, column=0, sticky="w", pady=(0, 2))
             ttk.Label(grid, text=hint, style="SettingsHint.TLabel").grid(row=row * 2 + 1, column=0, sticky="w", pady=(0, 8), padx=(24, 0))
+        self._add_section_tools(frame, 3, "sources")
         return frame
 
     def _build_appearance_section(self) -> ttk.Frame:
@@ -293,7 +294,14 @@ class SettingsView(ttk.Frame):
         self._tree_row_height_spin.bind("<KeyRelease>", self._on_appearance_changed)
 
         ttk.Label(frame, text="Hinweis: Bei manchen nativen Windows-Menüs greift Tkinter-Design nur eingeschränkt.", style="SettingsHint.TLabel").grid(row=4, column=0, sticky="w", pady=(14, 0))
+        self._add_section_tools(frame, 5, "appearance")
         return frame
+
+    def _add_section_tools(self, frame: ttk.Frame, row: int, section: str) -> None:
+        tools = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        tools.grid(row=row, column=0, sticky="w", pady=(18, 0))
+        ttk.Button(tools, text="Gespeicherten Stand wiederherstellen", command=lambda s=section: self._restore_section(s)).pack(side="left")
+        ttk.Button(tools, text="Bereich zurücksetzen", command=lambda s=section: self._reset_section(s)).pack(side="left", padx=(8, 0))
 
     def _build_users_section(self) -> ttk.Frame:
         frame = self._build_section_frame("Schnellauswahl-Benutzer", "Ein Benutzer pro Zeile. Reihenfolge bleibt erhalten und wird in den Dialogen genutzt.")
@@ -335,6 +343,7 @@ class SettingsView(ttk.Frame):
         btns.grid(row=1, column=1, sticky="nw", padx=(10, 0))
         ttk.Button(btns, text="Hoch", command=lambda: self._move_column_order(-1), width=10).pack(anchor="w")
         ttk.Button(btns, text="Runter", command=lambda: self._move_column_order(1), width=10).pack(anchor="w", pady=(6, 0))
+        self._add_section_tools(frame, 4, "toolbar")
         return frame
 
     def _build_terminal_section(self) -> ttk.Frame:
@@ -601,6 +610,30 @@ class SettingsView(ttk.Frame):
         apply_settings(self._app, settings)
         self._app._persisted_settings = settings
         self._show_main_view()
+
+    def _restore_section(self, section: str) -> None:
+        persisted = getattr(self._app, "_persisted_settings", self._app.settings)
+        from .actions_ui import preview_appearance, preview_source_visibility, preview_toolbar_visibility
+
+        if section == "appearance":
+            preview_appearance(self._app, persisted.appearance)
+        elif section == "toolbar":
+            preview_toolbar_visibility(self._app, persisted.toolbar)
+        elif section == "sources":
+            preview_source_visibility(self._app, persisted.source_visibility)
+        self.load_from_app()
+
+    def _reset_section(self, section: str) -> None:
+        defaults = self._app._default_settings_factory()
+        from .actions_ui import preview_appearance, preview_source_visibility, preview_toolbar_visibility
+
+        if section == "appearance":
+            preview_appearance(self._app, defaults.appearance)
+        elif section == "toolbar":
+            preview_toolbar_visibility(self._app, defaults.toolbar)
+        elif section == "sources":
+            preview_source_visibility(self._app, defaults.source_visibility)
+        self.load_from_app()
 
     def _reset_settings(self) -> None:
         from .actions_ui import reset_settings

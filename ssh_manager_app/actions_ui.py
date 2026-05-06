@@ -81,9 +81,16 @@ def apply_settings(app, settings: AppSettings) -> None:
 
 def reset_settings(app) -> None:
     apply_settings(app, app._default_settings_factory())
+    app._persisted_settings = app.settings
     if app._settings_view is not None:
         app._settings_view.load_from_app()
 
+
+
+def restore_saved_settings(app) -> None:
+    apply_settings(app, getattr(app, "_persisted_settings", app.settings))
+    if app._settings_view is not None:
+        app._settings_view.load_from_app()
 
 
 def reset_session_colors(app) -> None:
