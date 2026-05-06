@@ -717,12 +717,12 @@ class SessionTree(ttk.Frame):
     def _add_favorite_with_dialog(self, session: Session) -> None:
         result = messagebox.askyesnocancel(
             "Favorit hinzufügen",
-            "Soll die Verbindung zusätzlich im normalen Tree sichtbar bleiben?\n\nJa = Favorit + normale Tree-Ansicht\nNein = nur im Favoriten-Bereich",
+            "Soll die Favoriten-Kopie die originale Ordnerstruktur mitnehmen?\n\nJa = unter Favoriten mit Ordnerstruktur\nNein = flach direkt unter Favoriten\n\nDas Original bleibt immer unverändert an seinem Platz.",
             parent=self,
         )
         if result is None:
             return
-        self._on_add_favorite(session, not result)
+        self._on_add_favorite(session, result)
 
     def filter(self, query: str) -> None:
         """

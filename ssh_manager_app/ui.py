@@ -50,10 +50,10 @@ def quick_connect_session_callback(app, session) -> None:
     quick_connect_session(app, session)
 
 
-def add_favorite_session_callback(app, session, only_favorites: bool) -> None:
+def add_favorite_session_callback(app, session, include_original_tree: bool) -> None:
     from .actions_ui import set_favorite_session
 
-    set_favorite_session(app, session, only_favorites=only_favorites)
+    set_favorite_session(app, session, include_original_tree=include_original_tree)
 
 
 def remove_favorite_session_callback(app, session) -> None:

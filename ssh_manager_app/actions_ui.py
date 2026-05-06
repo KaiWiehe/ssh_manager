@@ -180,17 +180,19 @@ def build_visible_sessions(app) -> list[Session]:
 
     by_key = {s.key: s for s in base}
     favorites = getattr(app, "_favorite_sessions", {})
-    hidden_favorites = {key for key, only_favorites in favorites.items() if only_favorites}
-    normal = [s for s in base if s.key not in hidden_favorites]
     sorted_normal = sorted(
-        normal,
+        base,
         key=lambda s: (0 if s.folder_key == app._ssh_config_default_folder else 1, s.folder_key.lower(), s.display_name.lower()),
     )
 
     special: list[Session] = []
     if app.settings.source_visibility.show_favorites:
-        favorite_sessions = [by_key[key] for key in favorites if key in by_key]
-        special.extend(replace(s, folder_path=["★ Favoriten"]) for s in favorite_sessions)
+        for key, include_original_tree in favorites.items():
+            if key not in by_key:
+                continue
+            session = by_key[key]
+            favorite_folder = ["★ Favoriten"] + (list(session.folder_path) if include_original_tree else [])
+            special.append(replace(session, folder_path=favorite_folder))
     if app.settings.source_visibility.show_recent:
         recent_sessions = [by_key[key] for key in getattr(app, "_recent_sessions", []) if key in by_key and key not in favorites]
         special.extend(replace(s, folder_path=["↺ Zuletzt verwendet"]) for s in recent_sessions[:10])
@@ -224,8 +226,8 @@ def add_recent_session(app, session: Session) -> None:
     persist_ui_state(app)
 
 
-def set_favorite_session(app, session: Session, *, only_favorites: bool) -> None:
-    app._favorite_sessions[session.key] = only_favorites
+def set_favorite_session(app, session: Session, *, include_original_tree: bool) -> None:
+    app._favorite_sessions[session.key] = include_original_tree
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
     persist_ui_state(app)
