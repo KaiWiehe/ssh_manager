@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from .dialogs_settings_misc import SettingsView
+from .core import _create_checkbox_images
 from .themes import THEME_PALETTES, ThemePalette
 from .tree import SessionTree
 
@@ -366,7 +367,11 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("SearchHistory.TButton", padding=(4, 1), background=surface, foreground=text, bordercolor=border, focusthickness=1, focuscolor=accent)
     style.map("SearchHistory.TButton", background=[("active", button_active), ("pressed", selected)], foreground=[("active", text)], bordercolor=[("focus", accent), ("active", accent)])
     style.configure("TEntry", fieldbackground=surface, foreground=text, bordercolor=border, lightcolor=border, darkcolor=border, insertcolor=text)
-    style.configure("TCombobox", fieldbackground=surface, foreground=text, bordercolor=border, arrowcolor=muted)
+    style.map("TEntry", fieldbackground=[("disabled", surface_alt)], foreground=[("disabled", muted)])
+    style.configure("TSpinbox", fieldbackground=surface, foreground=text, bordercolor=border, lightcolor=border, darkcolor=border, insertcolor=text, arrowcolor=muted, arrowsize=13)
+    style.map("TSpinbox", fieldbackground=[("disabled", surface_alt), ("readonly", surface)], foreground=[("disabled", muted)], arrowcolor=[("active", accent)])
+    style.configure("TCombobox", fieldbackground=surface, background=surface, foreground=text, bordercolor=border, lightcolor=border, darkcolor=border, arrowcolor=muted, selectbackground=surface, selectforeground=text)
+    style.map("TCombobox", fieldbackground=[("readonly", surface), ("disabled", surface_alt)], foreground=[("readonly", text), ("disabled", muted)], selectbackground=[("readonly", surface)], selectforeground=[("readonly", text)], arrowcolor=[("active", accent), ("disabled", muted)])
     style.configure("TCheckbutton", background=bg, foreground=text)
     style.configure("Treeview", background=surface, fieldbackground=surface, foreground=text, rowheight=tree_row_height, font=tree_font, bordercolor=border, lightcolor=border, darkcolor=border)
     style.configure("Treeview.Heading", background=surface_alt, foreground=text, relief="flat", bordercolor=border, padding=(8, 7), font=(tree_font[0], tree_font[1], "bold"))
@@ -397,6 +402,16 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
 def _configure_classic_widgets(widget: tk.Misc, *, background: str, foreground: str, accent: str, border: str) -> None:
     """Apply runtime colors to classic Tk widgets that ttk styles do not cover."""
     for child in widget.children.values():
+        if isinstance(child, tk.Entry) or isinstance(child, tk.Spinbox):
+            child.configure(
+                background=background,
+                foreground=foreground,
+                insertbackground=foreground,
+                disabledbackground=background,
+                disabledforeground=foreground,
+                highlightcolor=accent,
+                highlightbackground=border,
+            )
         if isinstance(child, tk.Listbox):
             child.configure(
                 background=background,
@@ -450,6 +465,7 @@ def configure_app_styles(app: tk.Tk) -> None:
     style.configure(".", font=ui_font)
     style.configure("Treeview", rowheight=tree_row_height, font=tree_font)
     style.configure("Treeview.Heading", font=(tree_font[0], tree_font[1], "bold"))
+    style.configure("TSpinbox", arrowsize=13)
     style.configure("Toast.TFrame", background="#333333", relief="flat")
     style.configure("Toast.TLabel", background="#333333", foreground="#f5f5f5")
     style.configure("SettingsRoot.TFrame", background="#dcd7cf")
@@ -467,6 +483,26 @@ def configure_app_styles(app: tk.Tk) -> None:
     style.configure("SearchHistory.TButton", padding=(4, 1))
     _configure_classic_widgets(app, background="#ffffff", foreground="#111111", accent=accent, border="#b8b8b8")
     _configure_combobox_popdowns(app, background="#ffffff", foreground="#111111", accent=accent)
+
+def refresh_checkbox_images(app) -> None:
+    """Rebuild tree checkbox icons from the active theme palette."""
+    appearance = getattr(getattr(app, "settings", None), "appearance", None)
+    theme = getattr(appearance, "theme", "default")
+    accent = getattr(appearance, "accent_color", "#1a7a3a")
+    if theme in THEME_PALETTES:
+        palette = THEME_PALETTES[theme]
+        background = palette.surface
+        border = palette.border
+    else:
+        background = "#ffffff"
+        border = "#808080"
+    if not isinstance(app, tk.Misc):
+        return
+    app._img_unchecked, app._img_checked = _create_checkbox_images(app, background=background, border=border, check=accent)
+    tree = getattr(app, "_tree", None)
+    if tree is not None:
+        tree.set_checkbox_images(app._img_unchecked, app._img_checked)
+
 
 def build_main_ui(self) -> None:
     """Erstellt alle UI-Elemente."""
@@ -551,6 +587,8 @@ def build_main_ui(self) -> None:
     self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=lambda: open_tunnel_callback(self))
     self._toolbar_buttons["show_check_hosts"] = ttk.Button(toolbar, text="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
     layout_toolbar_buttons(self)
+
+    refresh_checkbox_images(self)
 
     self._tree = SessionTree(
         self._main_frame,

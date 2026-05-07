@@ -850,6 +850,14 @@ class SessionTree(ttk.Frame):
             self._tv.item(item_id, open=False)
         self._notify_ui_state_changed()
 
+    def set_checkbox_images(self, img_unchecked: tk.PhotoImage, img_checked: tk.PhotoImage) -> None:
+        """Aktualisiert die Checkbox-Icons, z.B. nach Theme-Wechsel."""
+        self._img_unchecked = img_unchecked
+        self._img_checked = img_checked
+        for item_id in self._item_to_session:
+            state = self._checked.get(item_id, False)
+            self._tv.item(item_id, image=self._img_checked if state else self._img_unchecked)
+
     def refresh(self, sessions: list[Session]) -> None:
         """Baut den Baum mit neuen Sessions neu auf, behält Ordner-Status und Checkboxen."""
         open_folders = self.get_open_folders()

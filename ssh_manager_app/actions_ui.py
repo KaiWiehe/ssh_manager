@@ -6,7 +6,7 @@ from dataclasses import replace
 from .dialogs_toast import ToastNotification
 from .models import AppearanceSettings, AppSettings, SourceVisibilitySettings, ToolbarSettings
 from .storage import load_filezilla_config_sessions, load_ssh_config_sessions, save_settings, save_ui_state
-from .ui import configure_app_styles, layout_toolbar_buttons
+from .ui import configure_app_styles, layout_toolbar_buttons, refresh_checkbox_images
 
 
 def preview_toolbar_visibility(app, toolbar_settings: ToolbarSettings) -> None:
@@ -27,6 +27,7 @@ def preview_source_visibility(app, source_visibility: SourceVisibilitySettings) 
 def preview_appearance(app, appearance: AppearanceSettings) -> None:
     app.settings.appearance = appearance
     configure_app_styles(app)
+    refresh_checkbox_images(app)
     if getattr(app, "_settings_view", None) is not None:
         app._settings_view.tkraise()
 
@@ -73,6 +74,7 @@ def apply_settings(app, settings: AppSettings) -> None:
     app.settings = settings
     save_settings(settings)
     configure_app_styles(app)
+    refresh_checkbox_images(app)
     layout_toolbar_buttons(app)
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)

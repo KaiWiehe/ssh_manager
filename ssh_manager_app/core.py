@@ -473,15 +473,21 @@ class RegistryReader:
 # ---------------------------------------------------------------------------
 # Checkbox-Images (werden in SessionTree und SSHManagerApp verwendet)
 # ---------------------------------------------------------------------------
-def _create_checkbox_images(root: tk.Tk) -> tuple[tk.PhotoImage, tk.PhotoImage]:
+def _create_checkbox_images(
+    root: tk.Tk,
+    *,
+    background: str = "#ffffff",
+    border: str = "#808080",
+    check: str = "#1a7a3a",
+) -> tuple[tk.PhotoImage, tk.PhotoImage]:
     """
     Erzeugt zwei 16×16 PhotoImages für checked/unchecked Checkboxen.
     Gibt (img_unchecked, img_checked) zurück.
     """
     size = 16
-    border_color = "#808080"
-    bg_color = "#ffffff"
-    check_color = "#1a7a3a"
+    border_color = border
+    bg_color = background
+    check_color = check
 
     def make(checked: bool) -> tk.PhotoImage:
         img = tk.PhotoImage(width=size, height=size)
