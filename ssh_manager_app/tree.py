@@ -232,6 +232,14 @@ class SessionTree(ttk.Frame):
             if self._tv.item(item_id, "open")
         }
 
+    def open_folder_key(self, folder_key: str) -> None:
+        """Öffnet einen sichtbaren Ordner anhand seines folder_key."""
+        for item_id, fkey in self._item_to_folder_key.items():
+            if fkey == folder_key:
+                self._tv.item(item_id, open=True)
+                self._notify_ui_state_changed()
+                break
+
     def get_session_colors(self) -> dict[str, str]:
         """Gibt eine Kopie des aktuellen session_key → hex Mappings zurück."""
         return dict(self._session_colors)

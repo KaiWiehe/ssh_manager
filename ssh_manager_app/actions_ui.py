@@ -221,7 +221,7 @@ def build_visible_sessions(app) -> list[Session]:
             favorite_folder = ["★ Favoriten"] + (list(session.folder_path) if include_original_tree else [])
             special.append(replace(session, folder_path=favorite_folder))
     if app.settings.source_visibility.show_recent:
-        recent_sessions = [by_key[key] for key in getattr(app, "_recent_sessions", []) if key in by_key and key not in favorites]
+        recent_sessions = [by_key[key] for key in getattr(app, "_recent_sessions", []) if key in by_key]
         special.extend(replace(s, folder_path=["↺ Zuletzt verwendet"]) for s in recent_sessions[:10])
     return special + sorted_normal
 
@@ -258,6 +258,8 @@ def add_recent_sessions(app, sessions: list[Session]) -> None:
     app._recent_sessions = recent[:10]
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
+    if hasattr(app._tree, "open_folder_key"):
+        app._tree.open_folder_key("↺ Zuletzt verwendet")
     persist_ui_state(app)
 
 

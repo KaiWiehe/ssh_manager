@@ -221,20 +221,55 @@ def set_session_username(app, session: Session, username: str) -> None:
 
 
 def set_sessions_username(app, sessions: list[Session]) -> None:
-    user = simpledialog.askstring(
-        "Benutzer setzen",
-        f"Benutzername für {len(sessions)} Verbindung(en):",
-        initialvalue=app.settings.default_user,
-        parent=app,
-    )
+    dialog = tk.Toplevel(app)
+    dialog.title("Benutzer setzen")
+    dialog.resizable(False, False)
+    dialog.transient(app)
+    dialog.grab_set()
+
+    frame = ttk.Frame(dialog, padding=16)
+    frame.pack(fill="both", expand=True)
+    frame.columnconfigure(0, weight=1)
+    user_var = tk.StringVar(value=app.settings.default_user)
+    quick_users = list(app.settings.quick_users)
+    quick_count = max(len(quick_users), 1)
+
+    ttk.Label(frame, text=f"Benutzername für {len(sessions)} Verbindung(en):").grid(row=0, column=0, columnspan=quick_count, sticky="w", pady=(0, 8))
+    ttk.Label(frame, text="Quickselect:").grid(row=1, column=0, columnspan=quick_count, sticky="w", pady=(0, 4))
+    quick_frame = _build_quickselect_buttons(frame, quick_users, user_var)
+    quick_frame.grid(row=2, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
+    ttk.Label(frame, text="Benutzername:").grid(row=3, column=0, columnspan=quick_count, sticky="w", pady=(0, 4))
+    entry = ttk.Entry(frame, textvariable=user_var, width=36)
+    entry.grid(row=4, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
+    entry.select_range(0, "end")
+    entry.focus()
+
+    result = {"user": None}
+
+    def on_ok() -> None:
+        user = user_var.get().strip()
+        if not user:
+            messagebox.showwarning("Benutzer setzen", "Benutzername darf nicht leer sein.", parent=dialog)
+            return
+        if not _USERNAME_RE.match(user):
+            messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=dialog)
+            return
+        result["user"] = user
+        dialog.destroy()
+
+    def on_cancel() -> None:
+        dialog.destroy()
+
+    btn_frame = ttk.Frame(frame)
+    btn_frame.grid(row=5, column=0, columnspan=quick_count)
+    ttk.Button(btn_frame, text="OK", command=on_ok, width=10).pack(side="left", padx=4)
+    ttk.Button(btn_frame, text="Abbrechen", command=on_cancel, width=10).pack(side="left", padx=4)
+    dialog.bind("<Return>", lambda _e: on_ok())
+    dialog.bind("<Escape>", lambda _e: on_cancel())
+    app.wait_window(dialog)
+
+    user = result["user"]
     if user is None:
-        return
-    user = user.strip()
-    if not user:
-        messagebox.showwarning("Benutzer setzen", "Benutzername darf nicht leer sein.", parent=app)
-        return
-    if not _USERNAME_RE.match(user):
-        messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=app)
         return
     for session in sessions:
         _set_session_username(app, session, user)
