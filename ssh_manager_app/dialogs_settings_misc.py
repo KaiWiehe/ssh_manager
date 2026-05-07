@@ -325,6 +325,7 @@ class SettingsView(ttk.Frame):
             ("show_reload", "Neu laden"),
             ("show_open_tunnel", "Tunnel öffnen…"),
             ("show_check_hosts", "Hosts prüfen"),
+            ("show_username_column", "Spalte Benutzer"),
             ("show_hostname_column", "Spalte Hostname"),
             ("show_port_column", "Spalte Port"),
             ("show_notes_column", "Spalte Notizen"),
@@ -337,7 +338,7 @@ class SettingsView(ttk.Frame):
         order_frame = ttk.Frame(frame, style="SettingsPanel.TFrame")
         order_frame.grid(row=3, column=0, sticky="nw", pady=(18, 0))
         ttk.Label(order_frame, text="Spalten-Reihenfolge (ohne Name):", style="SettingsValue.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
-        self._column_order_list = tk.Listbox(order_frame, height=3, exportselection=False)
+        self._column_order_list = tk.Listbox(order_frame, height=4, exportselection=False)
         self._column_order_list.grid(row=1, column=0, rowspan=2, sticky="w")
         btns = ttk.Frame(order_frame, style="SettingsPanel.TFrame")
         btns.grid(row=1, column=1, sticky="nw", padx=(10, 0))
@@ -501,6 +502,7 @@ class SettingsView(ttk.Frame):
 
     def _column_label(self, key: str) -> str:
         return {
+            "username": "Benutzer",
             "notes": "Notiz",
             "hostname": "Hostname",
             "port": "Port",
@@ -508,6 +510,7 @@ class SettingsView(ttk.Frame):
 
     def _column_key_from_label(self, label: str) -> str:
         return {
+            "Benutzer": "username",
             "Notiz": "notes",
             "Hostname": "hostname",
             "Port": "port",

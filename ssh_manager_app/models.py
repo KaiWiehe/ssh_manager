@@ -46,10 +46,11 @@ class ToolbarSettings:
     show_reload: bool = True
     show_open_tunnel: bool = True
     show_check_hosts: bool = True
+    show_username_column: bool = True
     show_hostname_column: bool = True
     show_port_column: bool = True
     show_notes_column: bool = True
-    column_order: list[str] = field(default_factory=lambda: ["notes", "hostname", "port"])
+    column_order: list[str] = field(default_factory=lambda: ["username", "hostname", "port", "notes"])
 
 
 @dataclass

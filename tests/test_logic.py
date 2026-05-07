@@ -1268,6 +1268,12 @@ def test_build_wt_command_ssh_alias_session():
     assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh prodbox'
 
 
+def test_build_wt_command_prefers_session_username_for_regular_sessions():
+    s = Session("s1", "srv1", [], "10.0.0.1", username="deploy")
+    cmd = build_wt_command([s], "ignored-user")
+    assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh deploy@10.0.0.1'
+
+
 def test_load_settings_falls_back_to_defaults_on_invalid_json():
     with patch("ssh_manager_app.storage.load_settings_from_path", side_effect=json.JSONDecodeError("bad", "{}", 0)):
         settings = load_settings()
@@ -1295,17 +1301,19 @@ def test_load_settings_from_path_reads_column_order_and_visibility():
         path = Path(tmp) / "settings.json"
         path.write_text(json.dumps({
             "toolbar": {
+                "show_username_column": False,
                 "show_hostname_column": True,
                 "show_port_column": False,
                 "show_notes_column": True,
-                "column_order": ["hostname", "notes", "port"],
+                "column_order": ["username", "hostname", "notes", "port"],
             }
         }), encoding="utf-8")
         settings = load_settings_from_path(path)
+    assert settings.toolbar.show_username_column is False
     assert settings.toolbar.show_hostname_column is True
     assert settings.toolbar.show_port_column is False
     assert settings.toolbar.show_notes_column is True
-    assert settings.toolbar.column_order == ["hostname", "notes", "port"]
+    assert settings.toolbar.column_order == ["username", "hostname", "notes", "port"]
 
 
 def test_load_settings_from_path_filters_invalid_column_order_entries():
@@ -1313,12 +1321,22 @@ def test_load_settings_from_path_filters_invalid_column_order_entries():
         path = Path(tmp) / "settings.json"
         path.write_text(json.dumps({
             "toolbar": {
-                "column_order": ["foo", "notes", "hostname", "bar"]
+                "column_order": ["foo", "notes", "username", "hostname", "bar"]
             }
         }), encoding="utf-8")
         settings = load_settings_from_path(path)
-    assert settings.toolbar.column_order == ["notes", "hostname"]
+    assert settings.toolbar.column_order == ["notes", "username", "hostname"]
 
+
+
+
+def test_load_settings_from_path_inserts_username_before_hostname_for_old_column_order():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(json.dumps({"toolbar": {"column_order": ["notes", "hostname", "port"]}}), encoding="utf-8")
+        settings = load_settings_from_path(path)
+
+    assert settings.toolbar.column_order == ["notes", "username", "hostname", "port"]
 
 def test_save_and_load_notes_roundtrip():
     with tempfile.TemporaryDirectory() as tmp:
@@ -2614,6 +2632,26 @@ def test_connect_sessions_uses_app_settings_directly():
     )
 
 
+
+
+def test_connect_sessions_skips_user_dialog_when_all_sessions_have_usernames():
+    app = MagicMock()
+    app.settings = AppSettings(quick_users=["alice", "bob"], default_user="alice")
+    app._tree.get_session_colors.return_value = {}
+    session = Session("s1", "srv1", [], "10.0.0.1", username="deploy")
+
+    with patch("ssh_manager_app.actions_remote.UserDialog") as dialog_cls:
+        connect_sessions(app, [session])
+
+    dialog_cls.assert_not_called()
+    app.wait_window.assert_not_called()
+    app._terminal_launcher.launch.assert_called_once_with(
+        [session],
+        "",
+        {},
+        terminal_settings=app.settings.windows_terminal,
+    )
+
 def test_open_tunnel_uses_app_settings_directly():
     app = MagicMock()
     app.settings = AppSettings(quick_users=["root", "deploy"], default_user="deploy")
@@ -2805,10 +2843,10 @@ def test_open_via_jumphost_save_result_rebuilds_sessions_and_shows_toast():
     toast.assert_called_once_with(app, "SSH-Config 'alias-prod' gespeichert")
 
 
-def test_resolve_single_session_user_returns_ssh_config_username_without_dialog():
+def test_resolve_single_session_user_returns_fixed_username_without_dialog():
     app = MagicMock()
     app.settings = AppSettings(quick_users=["root"], default_user="root")
-    session = Session("s1", "alias1", [], "alias1", username="deploy", source="ssh_config")
+    session = Session("s1", "srv1", [], "10.0.0.1", username="deploy")
 
     result = resolve_single_session_user(app, session)
 

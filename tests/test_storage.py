@@ -165,13 +165,13 @@ def test_load_settings_from_path_filters_invalid_column_order_entries():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "settings.json"
         path.write_text(
-            json.dumps({"toolbar": {"column_order": ["notes", "bogus", "port", "hostname"]}}),
+            json.dumps({"toolbar": {"column_order": ["notes", "bogus", "port", "username", "hostname"]}}),
             encoding="utf-8",
         )
 
         settings = load_settings_from_path(path)
 
-    assert settings.toolbar.column_order == ["notes", "port", "hostname"]
+    assert settings.toolbar.column_order == ["notes", "port", "username", "hostname"]
 
 
 def test_save_and_load_ui_state_roundtrip_with_search_history():

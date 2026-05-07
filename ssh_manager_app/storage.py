@@ -99,6 +99,14 @@ def load_settings_from_path(path: Path) -> AppSettings:
     except (TypeError, ValueError):
         tree_row_height = defaults.appearance.tree_row_height
 
+    allowed_columns = {"username", "notes", "hostname", "port"}
+    column_order = [col for col in toolbar_raw.get("column_order", defaults.toolbar.column_order) if col in allowed_columns]
+    if not column_order:
+        column_order = list(defaults.toolbar.column_order)
+    elif "username" not in column_order:
+        hostname_index = column_order.index("hostname") if "hostname" in column_order else 0
+        column_order.insert(hostname_index, "username")
+
     return AppSettings(
         quick_users=quick_users,
         default_user=default_user,
@@ -111,10 +119,11 @@ def load_settings_from_path(path: Path) -> AppSettings:
             show_reload=bool(toolbar_raw.get("show_reload", defaults.toolbar.show_reload)),
             show_open_tunnel=bool(toolbar_raw.get("show_open_tunnel", defaults.toolbar.show_open_tunnel)),
             show_check_hosts=bool(toolbar_raw.get("show_check_hosts", defaults.toolbar.show_check_hosts)),
+            show_username_column=bool(toolbar_raw.get("show_username_column", defaults.toolbar.show_username_column)),
             show_hostname_column=bool(toolbar_raw.get("show_hostname_column", defaults.toolbar.show_hostname_column)),
             show_port_column=bool(toolbar_raw.get("show_port_column", defaults.toolbar.show_port_column)),
             show_notes_column=bool(toolbar_raw.get("show_notes_column", defaults.toolbar.show_notes_column)),
-            column_order=[col for col in toolbar_raw.get("column_order", defaults.toolbar.column_order) if col in {"notes", "hostname", "port"}] or list(defaults.toolbar.column_order),
+            column_order=column_order,
         ),
         host_check_timeout_seconds=host_timeout,
         startup_expand_mode=startup_expand_mode,

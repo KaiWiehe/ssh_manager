@@ -121,14 +121,16 @@ class SessionTree(ttk.Frame):
 
         self._tv = ttk.Treeview(
             self,
-            columns=("hostname", "port", "notes"),
+            columns=("username", "hostname", "port", "notes"),
             selectmode="none",  # Selektion via Checkboxen, nicht Highlight
         )
         self._tv.heading("#0", text="Name", anchor="w")
+        self._tv.heading("username", text="Benutzer", anchor="w")
         self._tv.heading("hostname", text="Hostname", anchor="w")
         self._tv.heading("port", text="Port", anchor="w")
         self._tv.heading("notes", text="Notizen", anchor="w")
         self._tv.column("#0", width=340, stretch=True)
+        self._tv.column("username", width=110, stretch=False)
         self._tv.column("hostname", width=130, stretch=False)
         self._tv.column("port", width=60, stretch=False)
         self._tv.column("notes", width=220, stretch=True)
@@ -159,6 +161,7 @@ class SessionTree(ttk.Frame):
 
     def _apply_column_visibility(self) -> None:
         visible = {
+            "username": self._toolbar_settings.show_username_column,
             "hostname": self._toolbar_settings.show_hostname_column,
             "port": self._toolbar_settings.show_port_column,
             "notes": self._toolbar_settings.show_notes_column,
@@ -167,7 +170,7 @@ class SessionTree(ttk.Frame):
         for column in self._toolbar_settings.column_order:
             if visible.get(column):
                 ordered.append(column)
-        for column in ("notes", "hostname", "port"):
+        for column in ("username", "hostname", "port", "notes"):
             if visible.get(column) and column not in ordered:
                 ordered.append(column)
         self._tv.configure(displaycolumns=ordered)
@@ -290,7 +293,7 @@ class SessionTree(ttk.Frame):
                 parent_id, "end",
                 image=self._img_unchecked,
                 text=label,
-                values=(session.hostname, port_str, note_short),
+                values=(session.username, session.hostname, port_str, note_short),
                 tags=_tags,
             )
             self._item_to_session[item_id] = session

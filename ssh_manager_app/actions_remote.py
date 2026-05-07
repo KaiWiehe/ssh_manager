@@ -26,20 +26,23 @@ from .models import Session
 
 
 def connect_sessions(app, sessions: list[Session]) -> None:
-    """Öffnet mehrere ausgewählte Sessions im Terminal mit gemeinsamem Benutzer."""
+    """Öffnet mehrere ausgewählte Sessions im Terminal; feste Benutzernamen werden bevorzugt."""
     if not sessions:
         return
     quick_users = list(app.settings.quick_users)
     default_user = app.settings.default_user
     terminal_settings = app.settings.windows_terminal
-    dialog = UserDialog(app, quick_users=quick_users, default_user=default_user)
-    app.wait_window(dialog)
-    if dialog.result is None:
-        return
+    shared_user = ""
+    if any(not session.username for session in sessions):
+        dialog = UserDialog(app, quick_users=quick_users, default_user=default_user)
+        app.wait_window(dialog)
+        if dialog.result is None:
+            return
+        shared_user = dialog.result
     try:
         app._terminal_launcher.launch(
             sessions,
-            dialog.result,
+            shared_user,
             app._tree.get_session_colors(),
             terminal_settings=terminal_settings,
         )
@@ -50,7 +53,7 @@ def connect_sessions(app, sessions: list[Session]) -> None:
 
 def resolve_single_session_user(app, session: Session, title: str = "Benutzername auswählen") -> str | None:
     """Löst den Benutzernamen für genau eine Session auf."""
-    if session.is_ssh_config_session and session.username:
+    if session.username:
         return session.username
     dialog = UserDialog(app, title=title, quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
     app.wait_window(dialog)
@@ -127,7 +130,7 @@ def resolve_users_for_sessions(app, sessions: list[Session], mode: str) -> list[
     """Löst Benutzernamen für Sessions auf, global oder pro Host."""
     resolved: list[tuple[Session, str]] = []
     if mode == "all":
-        missing = [session for session in sessions if not (session.is_ssh_config_session and session.username)]
+        missing = [session for session in sessions if not session.username]
         shared_user = None
         if missing:
             dialog = UserDialog(app, title="Benutzername für alle Hosts")
@@ -136,7 +139,7 @@ def resolve_users_for_sessions(app, sessions: list[Session], mode: str) -> list[
                 return None
             shared_user = dialog.result
         for session in sessions:
-            user = session.username if session.is_ssh_config_session and session.username else shared_user
+            user = session.username if session.username else shared_user
             if not user:
                 messagebox.showwarning("Fehlender Benutzer", f"Für '{session.display_name}' konnte kein Benutzer bestimmt werden.", parent=app)
                 return None
@@ -144,7 +147,7 @@ def resolve_users_for_sessions(app, sessions: list[Session], mode: str) -> list[
         return resolved
 
     for session in sessions:
-        if session.is_ssh_config_session and session.username:
+        if session.username:
             resolved.append((session, session.username))
             continue
         dialog = UserDialog(app, title=f"Benutzername für {session.display_name}")

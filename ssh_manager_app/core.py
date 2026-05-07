@@ -82,10 +82,11 @@ def build_wt_command(sessions: list[Session], user: str, session_colors: dict[st
     profile_flag = _terminal_profile_flag(settings.profile_name)
     parts = []
     for i, session in enumerate(sessions):
-        ssh_cmd = _build_ssh_command(session, user)
+        effective_user = session.username or user
+        ssh_cmd = _build_ssh_command(session, effective_user)
         color = colors.get(session.key) if settings.use_tab_color else None
         color_flag = f'--tabColor "{color}" ' if color else ""
-        title_flag = _terminal_title_flag(session, user, settings.title_mode)
+        title_flag = _terminal_title_flag(session, effective_user, settings.title_mode)
         tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- {ssh_cmd}'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
 
