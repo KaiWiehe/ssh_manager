@@ -135,6 +135,7 @@ class SettingsView(ttk.Frame):
         self._source_visibility_vars: dict[str, tk.BooleanVar] = {}
         self._use_tab_color_var = tk.BooleanVar()
         self._winscp_include_username_var = tk.BooleanVar()
+        self._filezilla_include_username_var = tk.BooleanVar()
         self._section_frames: dict[str, ttk.Frame] = {}
         self._nav_buttons: dict[str, ttk.Button] = {}
         self._active_section = "general"
@@ -252,11 +253,17 @@ class SettingsView(ttk.Frame):
             variable=self._winscp_include_username_var,
             command=self._on_import_settings_changed,
         ).grid(row=1, column=0, sticky="w")
+        ttk.Checkbutton(
+            import_grid,
+            text="FileZilla-Benutzer importieren",
+            variable=self._filezilla_include_username_var,
+            command=self._on_import_settings_changed,
+        ).grid(row=2, column=0, sticky="w")
         ttk.Label(
             import_grid,
-            text="Aus = WinSCP-User ignorieren; feste Benutzer kannst du danach in der App setzen.",
+            text="Aus = importierte User ignorieren; feste Benutzer kannst du danach in der App setzen.",
             style="SettingsHint.TLabel",
-        ).grid(row=2, column=0, sticky="w", pady=(2, 0), padx=(24, 0))
+        ).grid(row=3, column=0, sticky="w", pady=(2, 0), padx=(24, 0))
         self._add_section_tools(frame, 4, "sources")
         return frame
 
@@ -479,6 +486,7 @@ class SettingsView(ttk.Frame):
         self._use_tab_color_var.set(settings.windows_terminal.use_tab_color)
         self._title_mode_var.set(self.TITLE_MODE_LABELS.get(settings.windows_terminal.title_mode, self.TITLE_MODE_LABELS["default"]))
         self._winscp_include_username_var.set(settings.import_settings.winscp_include_username)
+        self._filezilla_include_username_var.set(settings.import_settings.filezilla_include_username)
         self._set_listbox_selection(self._theme_list, list(self.THEME_LABELS).index(settings.appearance.theme if settings.appearance.theme in self.THEME_LABELS else "default"))
         accent_values = [hex_color for _name, hex_color, _swatch in self.ACCENT_COLORS]
         accent = settings.appearance.accent_color if settings.appearance.accent_color in accent_values else accent_values[0]
@@ -594,6 +602,7 @@ class SettingsView(ttk.Frame):
     def _on_import_settings_changed(self) -> None:
         self._app.settings.import_settings = ImportSettings(
             winscp_include_username=self._winscp_include_username_var.get(),
+            filezilla_include_username=self._filezilla_include_username_var.get(),
         )
         self._on_source_visibility_changed()
 
@@ -618,6 +627,7 @@ class SettingsView(ttk.Frame):
             startup_expand_mode=startup_expand_mode,
             import_settings=ImportSettings(
                 winscp_include_username=getattr(getattr(self, "_winscp_include_username_var", None), "get", lambda: True)(),
+                filezilla_include_username=getattr(getattr(self, "_filezilla_include_username_var", None), "get", lambda: True)(),
             ),
             windows_terminal=WindowsTerminalSettings(
                 profile_name=self._profile_name_var.get().strip() or "Git Bash",

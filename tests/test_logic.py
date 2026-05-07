@@ -1537,6 +1537,45 @@ def test_build_visible_sessions_includes_favorites_and_recent_on_initial_state()
         ("App", ["↺ Zuletzt verwendet"]),
     ]
 
+
+
+def test_build_visible_sessions_can_ignore_filezilla_imported_username():
+    app = MagicMock()
+    app.settings = AppSettings()
+    app.settings.source_visibility.show_filezilla_config = True
+    app.settings.import_settings.filezilla_include_username = False
+    app._ssh_config_default_folder = _SSH_CONFIG_DEFAULT_FOLDER
+    app._winscp_sessions = []
+    app._app_sessions = []
+    app._ssh_config_sessions = []
+    app._filezilla_sessions = [Session("f1", "fz", ["FileZilla"], "10.0.0.30", username="fileuser", source="filezilla_config")]
+    app._favorite_sessions = {}
+    app._recent_sessions = []
+    app._session_user_overrides = {}
+
+    visible = build_visible_sessions(app)
+
+    assert visible[0].username == ""
+
+
+def test_build_visible_sessions_filezilla_user_override_wins_over_import_setting():
+    app = MagicMock()
+    app.settings = AppSettings()
+    app.settings.source_visibility.show_filezilla_config = True
+    app.settings.import_settings.filezilla_include_username = False
+    app._ssh_config_default_folder = _SSH_CONFIG_DEFAULT_FOLDER
+    app._winscp_sessions = []
+    app._app_sessions = []
+    app._ssh_config_sessions = []
+    app._filezilla_sessions = [Session("f1", "fz", ["FileZilla"], "10.0.0.30", username="fileuser", source="filezilla_config")]
+    app._favorite_sessions = {}
+    app._recent_sessions = []
+    app._session_user_overrides = {"f1": "sshuser"}
+
+    visible = build_visible_sessions(app)
+
+    assert visible[0].username == "sshuser"
+
 def test_add_search_history_entry_deduplicates_limits_and_persists():
     app = MagicMock()
     app._search_history = [f"item-{i}" for i in range(10)]

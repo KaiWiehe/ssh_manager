@@ -189,6 +189,8 @@ def _with_effective_username(app, session: Session) -> Session:
         return replace(session, username=override)
     if session.source == "winscp" and not app.settings.import_settings.winscp_include_username:
         return replace(session, username="")
+    if session.source == "filezilla_config" and not app.settings.import_settings.filezilla_include_username:
+        return replace(session, username="")
     return session
 
 

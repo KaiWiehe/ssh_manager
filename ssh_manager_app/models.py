@@ -73,6 +73,7 @@ class SourceVisibilitySettings:
 @dataclass
 class ImportSettings:
     winscp_include_username: bool = True
+    filezilla_include_username: bool = True
 
 
 @dataclass

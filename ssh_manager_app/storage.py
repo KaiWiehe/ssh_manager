@@ -145,6 +145,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
         ),
         import_settings=ImportSettings(
             winscp_include_username=bool(import_raw.get("winscp_include_username", defaults.import_settings.winscp_include_username)),
+            filezilla_include_username=bool(import_raw.get("filezilla_include_username", defaults.import_settings.filezilla_include_username)),
         ),
         appearance=AppearanceSettings(
             theme=theme,
