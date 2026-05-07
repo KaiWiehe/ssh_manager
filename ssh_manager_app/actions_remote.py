@@ -12,7 +12,7 @@ from .core import (
     build_ssh_tunnel_command,
 )
 from .actions_sessions import set_session_username
-from .actions_ui import add_recent_session, rebuild_sessions
+from .actions_ui import add_recent_session, add_recent_sessions, rebuild_sessions
 from .dialogs_remote import (
     JumpHostDialog,
     RemoteCommandConfirmDialog,
@@ -47,6 +47,7 @@ def connect_sessions(app, sessions: list[Session]) -> None:
             app._tree.get_session_colors(),
             terminal_settings=terminal_settings,
         )
+        add_recent_sessions(app, sessions)
     except Exception as exc:
         messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
 

@@ -247,9 +247,17 @@ def rebuild_sessions(app, *, reload_winscp: bool = False) -> None:
 
 
 def add_recent_session(app, session: Session) -> None:
-    recent = [key for key in getattr(app, "_recent_sessions", []) if key != session.key]
-    recent.insert(0, session.key)
+    add_recent_sessions(app, [session])
+
+
+def add_recent_sessions(app, sessions: list[Session]) -> None:
+    recent = list(getattr(app, "_recent_sessions", []))
+    for session in reversed(sessions):
+        recent = [key for key in recent if key != session.key]
+        recent.insert(0, session.key)
     app._recent_sessions = recent[:10]
+    app._sessions = build_visible_sessions(app)
+    app._tree.refresh(app._sessions)
     persist_ui_state(app)
 
 

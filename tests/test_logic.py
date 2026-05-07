@@ -2679,7 +2679,8 @@ def test_connect_sessions_uses_app_settings_directly():
     dialog = MagicMock()
     dialog.result = "bob"
 
-    with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog) as dialog_cls:
+    with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_remote.add_recent_sessions") as add_recent:
         connect_sessions(app, [session])
 
     dialog_cls.assert_called_once_with(app, quick_users=["alice", "bob"], default_user="alice")
@@ -2690,6 +2691,7 @@ def test_connect_sessions_uses_app_settings_directly():
         {"s1": "#123456"},
         terminal_settings=app.settings.windows_terminal,
     )
+    add_recent.assert_called_once_with(app, [session])
 
 
 
@@ -2700,7 +2702,8 @@ def test_connect_sessions_skips_user_dialog_when_all_sessions_have_usernames():
     app._tree.get_session_colors.return_value = {}
     session = Session("s1", "srv1", [], "10.0.0.1", username="deploy")
 
-    with patch("ssh_manager_app.actions_remote.UserDialog") as dialog_cls:
+    with patch("ssh_manager_app.actions_remote.UserDialog") as dialog_cls, \
+         patch("ssh_manager_app.actions_remote.add_recent_sessions") as add_recent:
         connect_sessions(app, [session])
 
     dialog_cls.assert_not_called()
@@ -2711,6 +2714,7 @@ def test_connect_sessions_skips_user_dialog_when_all_sessions_have_usernames():
         {},
         terminal_settings=app.settings.windows_terminal,
     )
+    add_recent.assert_called_once_with(app, [session])
 
 def test_open_tunnel_uses_app_settings_directly():
     app = MagicMock()
@@ -2748,7 +2752,8 @@ def test_quick_connect_session_uses_terminal_settings_from_app_settings():
     app._tree.get_session_colors.return_value = {"s1": "#abcdef"}
     session = Session("s1", "srv1", [], "10.0.0.1")
 
-    with patch("ssh_manager_app.actions_remote.resolve_single_session_user", return_value="root"):
+    with patch("ssh_manager_app.actions_remote.resolve_single_session_user", return_value="root"), \
+         patch("ssh_manager_app.actions_remote.add_recent_session") as add_recent:
         quick_connect_session(app, session)
 
     app._terminal_launcher.launch.assert_called_once_with(
@@ -2757,6 +2762,7 @@ def test_quick_connect_session_uses_terminal_settings_from_app_settings():
         {"s1": "#abcdef"},
         terminal_settings=app.settings.windows_terminal,
     )
+    add_recent.assert_called_once_with(app, session)
 
 
 def test_deploy_ssh_key_uses_app_settings_directly():
