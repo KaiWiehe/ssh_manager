@@ -332,6 +332,8 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     app.option_add("*Listbox.foreground", text)
     app.option_add("*Listbox.selectBackground", accent)
     app.option_add("*Listbox.selectForeground", "#ffffff")
+    app.option_add("*TCombobox*Listbox.selectBackground", accent)
+    app.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
     app.option_add("*Listbox.highlightColor", accent)
     app.option_add("*Listbox.highlightBackground", border)
     ui_font = (getattr(appearance, "ui_font_family", "Segoe UI"), getattr(appearance, "ui_font_size", 10))
@@ -372,7 +374,7 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
 
 def _configure_classic_widgets(widget: tk.Misc, *, background: str, foreground: str, accent: str, border: str) -> None:
     """Apply runtime colors to classic Tk widgets that ttk styles do not cover."""
-    for child in widget.winfo_children():
+    for child in widget.children.values():
         if isinstance(child, tk.Listbox):
             child.configure(
                 background=background,
@@ -418,6 +420,8 @@ def configure_app_styles(app: tk.Tk) -> None:
     style.configure("SettingsHint.TLabel", background="#f6f2eb", foreground="#6b655c")
     style.configure("SettingsValue.TLabel", background="#f6f2eb")
     style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w")
+    app.option_add("*TCombobox*Listbox.selectBackground", accent)
+    app.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
     _configure_classic_widgets(app, background="#ffffff", foreground="#111111", accent=accent, border="#b8b8b8")
 
 def build_main_ui(self) -> None:

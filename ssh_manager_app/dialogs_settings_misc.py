@@ -146,7 +146,7 @@ class SettingsView(ttk.Frame):
         root.grid(row=0, column=0, sticky="nsew")
         root.columnconfigure(1, weight=1)
         root.rowconfigure(0, weight=1)
-        self._root = root
+        self._root_frame = root
 
         nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(16, 20))
         nav.grid(row=0, column=0, sticky="nsw")
@@ -263,8 +263,9 @@ class SettingsView(ttk.Frame):
         ttk.Label(grid, text="Akzentfarbe:", style="SettingsValue.TLabel").grid(row=1, column=0, sticky="nw", pady=(16, 6), padx=(0, 12))
         accent_list = tk.Listbox(grid, height=10, exportselection=False, activestyle="none")
         accent_list.grid(row=1, column=1, sticky="ew", pady=(16, 6))
-        for name, hex_color, swatch in self.ACCENT_COLORS:
-            accent_list.insert("end", f"{swatch} {name}  {hex_color}")
+        for index, (name, hex_color, _swatch) in enumerate(self.ACCENT_COLORS):
+            accent_list.insert("end", f"■ {name}  {hex_color}")
+            accent_list.itemconfig(index, foreground=hex_color, selectforeground="#ffffff")
         accent_list.bind("<<ListboxSelect>>", self._on_accent_list_selected)
         self._accent_list = accent_list
 
