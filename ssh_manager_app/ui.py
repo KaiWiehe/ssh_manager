@@ -311,7 +311,8 @@ def collapse_all_callback(app) -> None:
 
 def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style = ttk.Style(app)
-    accent = palette["accent"]
+    appearance = getattr(getattr(app, "settings", None), "appearance", None)
+    accent = getattr(appearance, "accent_color", "#2563eb")
     bg = palette.bg
     surface = palette.surface
     surface_alt = palette.surface_alt
@@ -333,7 +334,6 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     app.option_add("*Listbox.selectForeground", "#ffffff")
     app.option_add("*Listbox.highlightColor", accent)
     app.option_add("*Listbox.highlightBackground", border)
-    appearance = getattr(getattr(app, "settings", None), "appearance", None)
     ui_font = (getattr(appearance, "ui_font_family", "Segoe UI"), getattr(appearance, "ui_font_size", 10))
     tree_font = (getattr(appearance, "tree_font_family", "Segoe UI"), getattr(appearance, "tree_font_size", 10))
     tree_row_height = getattr(appearance, "tree_row_height", 28)
