@@ -7,8 +7,15 @@ Write-Host "==> Python" -ForegroundColor Cyan
 python --version
 
 Write-Host "==> Checking PyInstaller" -ForegroundColor Cyan
-python -m pip show pyinstaller *> $null
-if ($LASTEXITCODE -ne 0) {
+$HasPyInstaller = $false
+try {
+    python -c "import PyInstaller" 2>$null
+    if ($LASTEXITCODE -eq 0) { $HasPyInstaller = $true }
+} catch {
+    $HasPyInstaller = $false
+}
+
+if (-not $HasPyInstaller) {
     Write-Host "PyInstaller fehlt. Installiere in die aktuelle Python-Umgebung..." -ForegroundColor Yellow
     python -m pip install --upgrade pyinstaller
 }
