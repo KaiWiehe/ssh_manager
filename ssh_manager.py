@@ -92,6 +92,10 @@ class SSHManagerApp(tk.Tk):
         self._main_frame: ttk.Frame | None = None
         self._settings_view: SettingsView | None = None
         build_main_ui(self)
+        # Rebuild once after the tree exists so virtual folders (Favoriten/Zuletzt)
+        # are rendered from the fully initialized persisted UI state.
+        self._sessions = build_visible_sessions(self)
+        self._tree.refresh(self._sessions)
         self.protocol("WM_DELETE_WINDOW", lambda: close_app_callback(self))
 
 

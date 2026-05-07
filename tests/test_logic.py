@@ -1516,6 +1516,27 @@ def test_build_visible_sessions_respects_visibility_and_sorts_ssh_config_folder_
 
 
 
+
+
+def test_build_visible_sessions_includes_favorites_and_recent_on_initial_state():
+    app = MagicMock()
+    app.settings = AppSettings()
+    app._ssh_config_default_folder = _SSH_CONFIG_DEFAULT_FOLDER
+    app._winscp_sessions = [Session("w1", "Win", ["Prod"], "10.0.0.10", source="winscp")]
+    app._app_sessions = [Session("a1", "App", ["App"], "10.0.0.20", source="app")]
+    app._ssh_config_sessions = []
+    app._filezilla_sessions = []
+    app._favorite_sessions = {"w1": False}
+    app._recent_sessions = ["a1"]
+    app._session_user_overrides = {}
+
+    visible = build_visible_sessions(app)
+
+    assert [(s.display_name, s.folder_path) for s in visible[:2]] == [
+        ("Win", ["★ Favoriten"]),
+        ("App", ["↺ Zuletzt verwendet"]),
+    ]
+
 def test_add_search_history_entry_deduplicates_limits_and_persists():
     app = MagicMock()
     app._search_history = [f"item-{i}" for i in range(10)]
