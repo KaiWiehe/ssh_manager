@@ -367,6 +367,22 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.map("SettingsNav.TButton", background=[("active", selected), ("pressed", selected)], foreground=[("active", text)])
     style.configure("Accent.TButton", padding=(12, 7), background=accent, foreground="#ffffff", bordercolor=accent)
     style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff")])
+    _configure_classic_widgets(app, background=surface, foreground=text, accent=accent, border=border)
+
+
+def _configure_classic_widgets(widget: tk.Misc, *, background: str, foreground: str, accent: str, border: str) -> None:
+    """Apply runtime colors to classic Tk widgets that ttk styles do not cover."""
+    for child in widget.winfo_children():
+        if isinstance(child, tk.Listbox):
+            child.configure(
+                background=background,
+                foreground=foreground,
+                selectbackground=accent,
+                selectforeground="#ffffff",
+                highlightcolor=accent,
+                highlightbackground=border,
+            )
+        _configure_classic_widgets(child, background=background, foreground=foreground, accent=accent, border=border)
 
 
 def configure_app_styles(app: tk.Tk) -> None:
@@ -402,6 +418,7 @@ def configure_app_styles(app: tk.Tk) -> None:
     style.configure("SettingsHint.TLabel", background="#f6f2eb", foreground="#6b655c")
     style.configure("SettingsValue.TLabel", background="#f6f2eb")
     style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w")
+    _configure_classic_widgets(app, background="#ffffff", foreground="#111111", accent=accent, border="#b8b8b8")
 
 def build_main_ui(self) -> None:
     """Erstellt alle UI-Elemente."""

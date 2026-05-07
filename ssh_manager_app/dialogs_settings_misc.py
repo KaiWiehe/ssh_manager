@@ -88,16 +88,16 @@ class SettingsView(ttk.Frame):
         "midnight": "Midnight",
     }
     ACCENT_COLORS = [
-        ("Blau", "#2563eb"),
-        ("Sky", "#0ea5e9"),
-        ("Türkis", "#14b8a6"),
-        ("Grün", "#22c55e"),
-        ("Lime", "#84cc16"),
-        ("Amber", "#f59e0b"),
-        ("Orange", "#f97316"),
-        ("Rot", "#ef4444"),
-        ("Violett", "#a855f7"),
-        ("Pink", "#ec4899"),
+        ("Blau", "#2563eb", "🟦"),
+        ("Sky", "#0ea5e9", "🔷"),
+        ("Türkis", "#14b8a6", "🟩"),
+        ("Grün", "#22c55e", "🟩"),
+        ("Lime", "#84cc16", "🟩"),
+        ("Amber", "#f59e0b", "🟨"),
+        ("Orange", "#f97316", "🟧"),
+        ("Rot", "#ef4444", "🟥"),
+        ("Violett", "#a855f7", "🟪"),
+        ("Pink", "#ec4899", "💗"),
     ]
     FONT_FAMILIES = ["Segoe UI", "Arial", "Calibri", "Consolas", "Cascadia Mono", "Verdana"]
 
@@ -263,8 +263,8 @@ class SettingsView(ttk.Frame):
         ttk.Label(grid, text="Akzentfarbe:", style="SettingsValue.TLabel").grid(row=1, column=0, sticky="nw", pady=(16, 6), padx=(0, 12))
         accent_list = tk.Listbox(grid, height=10, exportselection=False, activestyle="none")
         accent_list.grid(row=1, column=1, sticky="ew", pady=(16, 6))
-        for name, hex_color in self.ACCENT_COLORS:
-            accent_list.insert("end", f"■ {name}  {hex_color}")
+        for name, hex_color, swatch in self.ACCENT_COLORS:
+            accent_list.insert("end", f"{swatch} {name}  {hex_color}")
         accent_list.bind("<<ListboxSelect>>", self._on_accent_list_selected)
         self._accent_list = accent_list
 
@@ -462,7 +462,7 @@ class SettingsView(ttk.Frame):
         self._use_tab_color_var.set(settings.windows_terminal.use_tab_color)
         self._title_mode_var.set(self.TITLE_MODE_LABELS.get(settings.windows_terminal.title_mode, self.TITLE_MODE_LABELS["default"]))
         self._set_listbox_selection(self._theme_list, list(self.THEME_LABELS).index(settings.appearance.theme if settings.appearance.theme in self.THEME_LABELS else "default"))
-        accent_values = [hex_color for _name, hex_color in self.ACCENT_COLORS]
+        accent_values = [hex_color for _name, hex_color, _swatch in self.ACCENT_COLORS]
         accent = settings.appearance.accent_color if settings.appearance.accent_color in accent_values else accent_values[0]
         self._set_listbox_selection(self._accent_list, accent_values.index(accent))
         self._ui_font_family_var.set(settings.appearance.ui_font_family)
