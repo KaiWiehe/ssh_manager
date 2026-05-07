@@ -393,6 +393,10 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("SettingsValue.TLabel", background=surface, foreground=text)
     style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w", background=nav, foreground=text, bordercolor=nav)
     style.map("SettingsNav.TButton", background=[("active", selected), ("pressed", selected)], foreground=[("active", text)])
+    style.configure("EmptyState.TFrame", background=surface)
+    style.configure("EmptyStateCard.TFrame", background=surface_alt, relief="flat")
+    style.configure("EmptyStateTitle.TLabel", background=surface_alt, foreground=text, font=(ui_font[0], ui_font[1] + 5, "bold"), anchor="center")
+    style.configure("EmptyStateHint.TLabel", background=surface_alt, foreground=muted, anchor="center")
     style.configure("Accent.TButton", padding=(12, 7), background=accent, foreground="#ffffff", bordercolor=accent)
     style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff")])
     _configure_classic_widgets(app, background=surface, foreground=text, accent=accent, border=border)
@@ -492,6 +496,10 @@ def configure_app_styles(app: tk.Tk) -> None:
     style.configure("SettingsHint.TLabel", background="#f6f2eb", foreground="#6b655c")
     style.configure("SettingsValue.TLabel", background="#f6f2eb")
     style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w")
+    style.configure("EmptyState.TFrame", background="#ffffff")
+    style.configure("EmptyStateCard.TFrame", background="#f6f2eb", relief="flat")
+    style.configure("EmptyStateTitle.TLabel", background="#f6f2eb", foreground="#111111", font=(ui_font[0], ui_font[1] + 5, "bold"), anchor="center")
+    style.configure("EmptyStateHint.TLabel", background="#f6f2eb", foreground="#6b655c", anchor="center")
     style.configure("SearchHistory.TButton", padding=(4, 1))
     _configure_classic_widgets(app, background="#ffffff", foreground="#111111", accent=accent, border="#b8b8b8")
     _configure_combobox_popdowns(app, background="#ffffff", foreground="#111111", accent=accent)
@@ -622,6 +630,7 @@ def build_main_ui(self) -> None:
         on_delete_session=lambda session: delete_session_callback(self, session),
         on_delete_folder=lambda sessions, folder_key: delete_folder_callback(self, sessions, folder_key),
         on_rename_folder=lambda folder_key: rename_folder_callback(self, folder_key),
+        on_add_session=lambda: add_session_callback(self),
         on_add_session_in_folder=lambda folder_key: add_session_callback(self, folder_key),
         on_duplicate_ssh_alias=lambda session: duplicate_ssh_alias_callback(self, session),
         on_inspect_ssh_config=lambda session: inspect_ssh_config_callback(self, session),

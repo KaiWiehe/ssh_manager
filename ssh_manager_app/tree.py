@@ -46,6 +46,7 @@ class SessionTree(ttk.Frame):
         on_delete_session=None,          # Callable[[Session], None] | None
         on_delete_folder=None,           # Callable[[list[Session], str], None] | None
         on_rename_folder=None,           # Callable[[str, str], None] | None  (folder_key, new_name)
+        on_add_session=None,             # Callable[[], None] | None
         on_add_session_in_folder=None,   # Callable[[str], None] | None  (folder_key)
         on_duplicate_ssh_alias=None,     # Callable[[Session], None] | None
         on_inspect_ssh_config=None,      # Callable[[Session], None] | None
@@ -80,6 +81,7 @@ class SessionTree(ttk.Frame):
         self._on_delete_session = on_delete_session
         self._on_delete_folder = on_delete_folder
         self._on_rename_folder = on_rename_folder
+        self._on_add_session = on_add_session
         self._on_add_session_in_folder = on_add_session_in_folder
         self._on_duplicate_ssh_alias = on_duplicate_ssh_alias
         self._on_inspect_ssh_config = on_inspect_ssh_config
@@ -117,6 +119,7 @@ class SessionTree(ttk.Frame):
         # session.key → hex-Farbe
         self._session_colors: dict[str, str] = dict(initial_session_colors or {})
         self._pre_search_open_folders: set[str] | None = None
+        self._empty_state: ttk.Frame | None = None
 
         self._build()
         self.populate(sessions, open_folders=initial_open_folders or set())
@@ -148,6 +151,21 @@ class SessionTree(ttk.Frame):
         self._tv.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
+        self._empty_state = ttk.Frame(self, style="EmptyState.TFrame", padding=28)
+        self._empty_state.columnconfigure(0, weight=1)
+        self._empty_state.rowconfigure(0, weight=1)
+        card = ttk.Frame(self._empty_state, style="EmptyStateCard.TFrame", padding=(34, 28))
+        card.grid(row=0, column=0)
+        ttk.Label(card, text="Keine Verbindungen vorhanden", style="EmptyStateTitle.TLabel").grid(row=0, column=0, sticky="ew")
+        ttk.Label(
+            card,
+            text="Lege deine erste SSH-Verbindung an oder importiere später bestehende Quellen.",
+            style="EmptyStateHint.TLabel",
+            wraplength=460,
+            justify="center",
+        ).grid(row=1, column=0, sticky="ew", pady=(8, 18))
+        ttk.Button(card, text="+ Verbindung hinzufügen", style="Accent.TButton", command=self._empty_add_session).grid(row=2, column=0)
+
         # Events
         self._tv.bind("<ButtonRelease-1>", self._on_left_click)
         self._tv.bind("<Double-Button-1>", self._on_double_click)
@@ -160,6 +178,21 @@ class SessionTree(ttk.Frame):
 
         self._configure_color_tags()
         self._apply_column_visibility()
+
+    def _empty_add_session(self) -> None:
+        if self._on_add_session:
+            self._on_add_session()
+        elif self._on_add_session_in_folder:
+            self._on_add_session_in_folder("")
+
+    def _update_empty_state(self, sessions: list[Session]) -> None:
+        if self._empty_state is None:
+            return
+        if sessions:
+            self._empty_state.grid_remove()
+        else:
+            self._empty_state.grid(row=0, column=0, sticky="nsew")
+            self._empty_state.tkraise()
 
     def _configure_color_tags(self) -> None:
         """Registriert für jede Palettenfarbe einen Treeview-Tag."""
@@ -313,6 +346,8 @@ class SessionTree(ttk.Frame):
             )
             self._item_to_session[item_id] = session
             self._checked[item_id] = False
+
+        self._update_empty_state(sessions)
 
     def _on_left_click(self, event: tk.Event) -> None:
         """Checkbox togglen wenn auf eine Session-Zeile geklickt wird."""
