@@ -61,6 +61,7 @@ class SessionTree(ttk.Frame):
         notes_getter=None,                  # Callable[[str], str] | None
         on_edit_note=None,                  # Callable[[Session], None] | None
         on_add_favorite=None,               # Callable[[Session, bool], None] | None
+        on_add_favorites=None,              # Callable[[list[Session], bool], None] | None
         on_remove_favorite=None,            # Callable[[Session], None] | None
         favorite_keys_getter=None,          # Callable[[], set[str]] | None
         toolbar_settings: ToolbarSettings | None = None,
@@ -92,6 +93,7 @@ class SessionTree(ttk.Frame):
         self._notes_getter = notes_getter or (lambda _key: "")
         self._on_edit_note = on_edit_note
         self._on_add_favorite = on_add_favorite
+        self._on_add_favorites = on_add_favorites
         self._on_remove_favorite = on_remove_favorite
         self._favorite_keys_getter = favorite_keys_getter or (lambda: set())
         self._toolbar_settings = toolbar_settings or ToolbarSettings()
@@ -469,6 +471,13 @@ class SessionTree(ttk.Frame):
                 label="Hosts prüfen",
                 command=lambda fid=item_id: self.check_folder_hosts(fid),
             )
+            favorite_keys = self._favorite_keys_getter()
+            not_favorite = [s for s in folder_sessions if s.key not in favorite_keys]
+            if not_favorite and self._on_add_favorites:
+                menu.add_command(
+                    label=f"Zu Favoriten hinzufügen… ({len(not_favorite)})",
+                    command=lambda ss=list(not_favorite): self._add_favorites_with_dialog(ss),
+                )
         if folder_sessions and all(s.source in ("app", "ssh_alias") for s in folder_sessions):
             menu.add_separator()
             if self._on_rename_folder:
@@ -702,6 +711,13 @@ class SessionTree(ttk.Frame):
             )
         menu.add_separator()
         if len(selected) >= 2:
+            favorite_keys = self._favorite_keys_getter()
+            not_favorite = [s for s in selected if s.key not in favorite_keys]
+            if not_favorite and self._on_add_favorites:
+                menu.add_command(
+                    label=f"Auswahl zu Favoriten hinzufügen… ({len(not_favorite)})",
+                    command=lambda ss=list(not_favorite): self._add_favorites_with_dialog(ss),
+                )
             bulk_color_menu = tk.Menu(menu, tearoff=False)
             for name, hex_color in PALETTE:
                 bulk_color_menu.add_command(
@@ -729,14 +745,21 @@ class SessionTree(ttk.Frame):
         menu.tk_popup(event.x_root, event.y_root)
 
     def _add_favorite_with_dialog(self, session: Session) -> None:
+        self._add_favorites_with_dialog([session])
+
+    def _add_favorites_with_dialog(self, sessions: list[Session]) -> None:
+        count_text = "diese Verbindung" if len(sessions) == 1 else f"diese {len(sessions)} Verbindungen"
         result = messagebox.askyesnocancel(
             "Favorit hinzufügen",
-            "Soll die Favoriten-Kopie die originale Ordnerstruktur mitnehmen?\n\nJa = unter Favoriten mit Ordnerstruktur\nNein = flach direkt unter Favoriten\n\nDas Original bleibt immer unverändert an seinem Platz.",
+            f"Soll die Favoriten-Kopie für {count_text} die originale Ordnerstruktur mitnehmen?\n\nJa = unter Favoriten mit Ordnerstruktur\nNein = flach direkt unter Favoriten\n\nDas Original bleibt immer unverändert an seinem Platz.",
             parent=self,
         )
         if result is None:
             return
-        self._on_add_favorite(session, result)
+        if len(sessions) == 1 and self._on_add_favorite:
+            self._on_add_favorite(sessions[0], result)
+        elif self._on_add_favorites:
+            self._on_add_favorites(sessions, result)
 
     def filter(self, query: str) -> None:
         """

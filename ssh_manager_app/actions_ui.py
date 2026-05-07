@@ -241,7 +241,12 @@ def add_recent_session(app, session: Session) -> None:
 
 
 def set_favorite_session(app, session: Session, *, include_original_tree: bool) -> None:
-    app._favorite_sessions[session.key] = include_original_tree
+    set_favorite_sessions(app, [session], include_original_tree=include_original_tree)
+
+
+def set_favorite_sessions(app, sessions: list[Session], *, include_original_tree: bool) -> None:
+    for session in sessions:
+        app._favorite_sessions[session.key] = include_original_tree
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
     persist_ui_state(app)

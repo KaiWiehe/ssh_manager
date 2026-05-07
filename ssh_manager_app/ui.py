@@ -75,6 +75,12 @@ def add_favorite_session_callback(app, session, include_original_tree: bool) -> 
     set_favorite_session(app, session, include_original_tree=include_original_tree)
 
 
+def add_favorite_sessions_callback(app, sessions, include_original_tree: bool) -> None:
+    from .actions_ui import set_favorite_sessions
+
+    set_favorite_sessions(app, sessions, include_original_tree=include_original_tree)
+
+
 def remove_favorite_session_callback(app, session) -> None:
     from .actions_ui import remove_favorite_session
 
@@ -538,6 +544,7 @@ def build_main_ui(self) -> None:
         initial_session_colors=self._initial_session_colors,
         on_quick_connect=lambda session: quick_connect_session_callback(self, session),
         on_add_favorite=lambda session, only: add_favorite_session_callback(self, session, only),
+        on_add_favorites=lambda sessions, only: add_favorite_sessions_callback(self, sessions, only),
         on_remove_favorite=lambda session: remove_favorite_session_callback(self, session),
         favorite_keys_getter=lambda: set(self._favorite_sessions),
         on_edit_session=lambda session: edit_session_callback(self, session),
