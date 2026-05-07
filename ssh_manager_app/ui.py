@@ -363,6 +363,8 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("TLabel", background=bg, foreground=text)
     style.configure("TButton", padding=(12, 7), background=surface, foreground=text, bordercolor=border, focusthickness=1, focuscolor=accent)
     style.map("TButton", background=[("active", button_active), ("pressed", selected)], foreground=[("active", text)], bordercolor=[("focus", accent), ("active", accent)])
+    style.configure("SearchHistory.TButton", padding=(4, 1), background=surface, foreground=text, bordercolor=border, focusthickness=1, focuscolor=accent)
+    style.map("SearchHistory.TButton", background=[("active", button_active), ("pressed", selected)], foreground=[("active", text)], bordercolor=[("focus", accent), ("active", accent)])
     style.configure("TEntry", fieldbackground=surface, foreground=text, bordercolor=border, lightcolor=border, darkcolor=border, insertcolor=text)
     style.configure("TCombobox", fieldbackground=surface, foreground=text, bordercolor=border, arrowcolor=muted)
     style.configure("TCheckbutton", background=bg, foreground=text)
@@ -462,6 +464,7 @@ def configure_app_styles(app: tk.Tk) -> None:
     style.configure("SettingsHint.TLabel", background="#f6f2eb", foreground="#6b655c")
     style.configure("SettingsValue.TLabel", background="#f6f2eb")
     style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w")
+    style.configure("SearchHistory.TButton", padding=(4, 1))
     _configure_classic_widgets(app, background="#ffffff", foreground="#111111", accent=accent, border="#b8b8b8")
     _configure_combobox_popdowns(app, background="#ffffff", foreground="#111111", accent=accent)
 
@@ -536,8 +539,8 @@ def build_main_ui(self) -> None:
     self._search_history = list(self._initial_toolbar_search_texts.get("search_history", []))
     self._search_entry = ttk.Entry(search_wrap, textvariable=self._search_var)
     self._search_entry.grid(row=0, column=0, sticky="ew")
-    self._search_history_btn = ttk.Button(search_wrap, text="▾", width=2, command=lambda: show_search_history_menu_callback(self))
-    self._search_history_btn.grid(row=0, column=1, padx=(2, 0))
+    self._search_history_btn = ttk.Button(search_wrap, text="▾", width=1, style="SearchHistory.TButton", command=lambda: show_search_history_menu_callback(self))
+    self._search_history_btn.grid(row=0, column=1, sticky="ns", padx=(2, 0))
 
     self._toolbar_buttons["show_select_all"] = ttk.Button(toolbar, text="Alle auswählen", command=lambda: select_all_callback(self))
     self._toolbar_buttons["show_deselect_all"] = ttk.Button(toolbar, text="Alle abwählen", command=lambda: deselect_all_callback(self))
