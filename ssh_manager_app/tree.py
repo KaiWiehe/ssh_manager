@@ -7,6 +7,7 @@ from tkinter import messagebox, ttk
 
 from . import PALETTE, Session, ToolbarSettings, color_tag
 from .constants import _SSH_CONFIG_DEFAULT_FOLDER
+from .core import check_host_reachable
 
 
 def _session_values_text(sessions: list[Session], attribute: str) -> str:
@@ -837,7 +838,7 @@ class SessionTree(ttk.Frame):
             self._set_item_status(item_id, "checking")
 
         def _probe(item_id: str, hostname: str, port: int) -> None:
-            ok = check_host_reachable(hostname, port)
+            ok = check_host_reachable(hostname, port, timeout=getattr(self, "_host_check_timeout", 3))
             self.after(0, lambda iid=item_id, s=ok: self._set_item_status(iid, "ok" if s else "fail"))
 
         for item_id, session in item_session_pairs:
@@ -850,6 +851,7 @@ class SessionTree(ttk.Frame):
 
     def check_selected_hosts(self, timeout: int = 3) -> None:
         """Prüft alle aktuell ausgewählten Sessions."""
+        self._host_check_timeout = timeout
         pairs = [
             (iid, s) for iid, s in self._item_to_session.items()
             if self._checked.get(iid) and s.hostname
