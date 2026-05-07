@@ -111,3 +111,25 @@ Dort liegen z. B.:
 ## Kein pip erforderlich
 
 Nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `xml.etree.ElementTree` usw.).
+
+## Portable Windows-EXE bauen
+
+Die Python-Variante bleibt weiterhin nutzbar:
+
+```bat
+python ssh_manager.py
+```
+
+Für eine richtige Windows-App als portable Einzel-EXE:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+```
+
+Das Script nutzt die aktuell aktive Python-Version, installiert bei Bedarf PyInstaller und erzeugt:
+
+```text
+dist\SSH Manager.exe
+```
+
+Die EXE läuft ohne Terminalfenster, nutzt das App-Icon aus `assets/ssh-manager.ico` und speichert Daten weiterhin unter `%APPDATA%\SSH-Manager\`.

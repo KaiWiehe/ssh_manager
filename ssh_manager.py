@@ -33,9 +33,24 @@ from ssh_manager_app.core import (
 
 from ssh_manager_app.ui import build_main_ui, close_app_callback, configure_app_styles
 from ssh_manager_app.actions_ui import build_visible_sessions
+from ssh_manager_app.version import APP_NAME
 
 if TYPE_CHECKING:
     from ssh_manager_app.dialogs_settings_misc import SettingsView
+
+
+def set_window_icon(window: tk.Tk) -> None:
+    from pathlib import Path
+    import sys
+
+    base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    icon_path = base_path / "assets" / "ssh-manager.ico"
+    if not icon_path.exists():
+        icon_path = Path(__file__).resolve().parent / "assets" / "ssh-manager.ico"
+    try:
+        window.iconbitmap(default=str(icon_path))
+    except tk.TclError:
+        pass
 
 
 class SSHManagerApp(tk.Tk):
@@ -43,7 +58,8 @@ class SSHManagerApp(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title(WINDOW_TITLE)
+        self.title(APP_NAME or WINDOW_TITLE)
+        set_window_icon(self)
         self.minsize(*WINDOW_MIN_SIZE)
         self.geometry("750x550")
 
@@ -97,7 +113,6 @@ class SSHManagerApp(tk.Tk):
         self._sessions = build_visible_sessions(self)
         self._tree.refresh(self._sessions)
         self.protocol("WM_DELETE_WINDOW", lambda: close_app_callback(self))
-
 
 # ---------------------------------------------------------------------------
 # Entry Point
