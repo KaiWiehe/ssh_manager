@@ -41,6 +41,8 @@ class SessionTree(ttk.Frame):
         initial_session_colors: dict[str, str] | None = None,
         on_quick_connect=None,           # Callable[[Session], None] | None
         on_edit_session=None,            # Callable[[Session], None] | None
+        on_set_sessions_username=None,   # Callable[[list[Session]], None] | None
+        on_clear_sessions_username=None, # Callable[[list[Session]], None] | None
         on_delete_session=None,          # Callable[[Session], None] | None
         on_delete_folder=None,           # Callable[[list[Session], str], None] | None
         on_rename_folder=None,           # Callable[[str, str], None] | None  (folder_key, new_name)
@@ -73,6 +75,8 @@ class SessionTree(ttk.Frame):
         self._on_selection_changed = on_selection_changed
         self._on_quick_connect = on_quick_connect
         self._on_edit_session = on_edit_session
+        self._on_set_sessions_username = on_set_sessions_username
+        self._on_clear_sessions_username = on_clear_sessions_username
         self._on_delete_session = on_delete_session
         self._on_delete_folder = on_delete_folder
         self._on_rename_folder = on_rename_folder
@@ -453,6 +457,16 @@ class SessionTree(ttk.Frame):
                     label=f"Befehl auf Ordner ausführen… ({len(folder_sessions)})",
                     command=lambda ss=list(folder_sessions): self._on_run_remote_command(ss),
                 )
+            if self._on_set_sessions_username:
+                menu.add_command(
+                    label=f"Benutzer setzen… ({len(folder_sessions)})",
+                    command=lambda ss=list(folder_sessions): self._on_set_sessions_username(ss),
+                )
+            if self._on_clear_sessions_username:
+                menu.add_command(
+                    label=f"Benutzer entfernen… ({len(folder_sessions)})",
+                    command=lambda ss=list(folder_sessions): self._on_clear_sessions_username(ss),
+                )
             menu.add_command(
                 label="Hostnames kopieren",
                 command=lambda ss=list(folder_sessions): (
@@ -557,11 +571,7 @@ class SessionTree(ttk.Frame):
                 label="Zu Favoriten hinzufügen…",
                 command=lambda s=session: self._add_favorite_with_dialog(s),
             )
-        if self._on_edit_note:
-            menu.add_command(
-                label="Notiz bearbeiten…",
-                command=lambda s=session: self._on_edit_note(s),
-            )
+
         if self._on_open_in_winscp and session.source == "winscp":
             selected_winscp = [s for s in self.get_selected_sessions() if s.source == "winscp"]
             if len(selected_winscp) >= 2:
@@ -597,6 +607,12 @@ class SessionTree(ttk.Frame):
                 )
         if self._on_quick_connect or self._on_open_tunnel or self._on_open_via_jumphost or self._on_run_remote_command:
             menu.add_separator()
+        if self._on_edit_session:
+            menu.add_command(
+                label="Bearbeiten…",
+                command=lambda s=session: self._on_edit_session(s),
+            )
+            menu.add_separator()
         if self._on_deploy_ssh_key or self._on_remove_ssh_key:
             if self._on_deploy_ssh_key:
                 menu.add_command(
@@ -610,11 +626,6 @@ class SessionTree(ttk.Frame):
                 )
             menu.add_separator()
         if session.is_app_session:
-            if self._on_edit_session:
-                menu.add_command(
-                    label="Bearbeiten…",
-                    command=lambda s=session: self._on_edit_session(s),
-                )
             if self._on_duplicate_app_session:
                 menu.add_command(
                     label="Duplizieren…",
@@ -680,6 +691,16 @@ class SessionTree(ttk.Frame):
         )
         selected = self.get_selected_sessions()
         if len(selected) >= 2:
+            if self._on_set_sessions_username:
+                menu.add_command(
+                    label=f"Benutzer für Auswahl setzen… ({len(selected)})",
+                    command=lambda ss=list(selected): self._on_set_sessions_username(ss),
+                )
+            if self._on_clear_sessions_username:
+                menu.add_command(
+                    label=f"Benutzer für Auswahl entfernen… ({len(selected)})",
+                    command=lambda ss=list(selected): self._on_clear_sessions_username(ss),
+                )
             menu.add_command(
                 label=f"Alle {len(selected)} Hostnamen kopieren",
                 command=lambda ss=list(selected): (

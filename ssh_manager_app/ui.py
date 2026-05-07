@@ -124,9 +124,24 @@ def show_main_view_callback(app) -> None:
 
 
 def edit_session_callback(app, session) -> None:
-    from .actions_sessions import edit_session
+    from .actions_sessions import edit_session, edit_session_details
 
-    edit_session(app, session)
+    if session.source in ("app", "ssh_alias"):
+        edit_session(app, session)
+    else:
+        edit_session_details(app, session)
+
+
+def set_sessions_username_callback(app, sessions) -> None:
+    from .actions_sessions import set_sessions_username
+
+    set_sessions_username(app, sessions)
+
+
+def clear_sessions_username_callback(app, sessions) -> None:
+    from .actions_sessions import clear_sessions_username
+
+    clear_sessions_username(app, sessions)
 
 
 def delete_session_callback(app, session) -> None:
@@ -548,6 +563,8 @@ def build_main_ui(self) -> None:
         on_remove_favorite=lambda session: remove_favorite_session_callback(self, session),
         favorite_keys_getter=lambda: set(self._favorite_sessions),
         on_edit_session=lambda session: edit_session_callback(self, session),
+        on_set_sessions_username=lambda sessions: set_sessions_username_callback(self, sessions),
+        on_clear_sessions_username=lambda sessions: clear_sessions_username_callback(self, sessions),
         on_delete_session=lambda session: delete_session_callback(self, session),
         on_delete_folder=lambda sessions, folder_key: delete_folder_callback(self, sessions, folder_key),
         on_rename_folder=lambda folder_key: rename_folder_callback(self, folder_key),

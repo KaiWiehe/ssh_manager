@@ -41,6 +41,8 @@ def persist_ui_state(app) -> None:
         toolbar_texts["favorite_sessions"] = dict(app._favorite_sessions)
     if "_recent_sessions" in getattr(app, "__dict__", {}):
         toolbar_texts["recent_sessions"] = list(app._recent_sessions)
+    if "_session_user_overrides" in getattr(app, "__dict__", {}):
+        toolbar_texts["session_user_overrides"] = dict(app._session_user_overrides)
     save_ui_state(
         app._tree.get_open_folders(),
         app._tree.get_session_colors(),
@@ -181,16 +183,25 @@ def collapse_all(app) -> None:
 
 
 
+def _with_effective_username(app, session: Session) -> Session:
+    override = getattr(app, "_session_user_overrides", {}).get(session.key)
+    if override is not None:
+        return replace(session, username=override)
+    if session.source == "winscp" and not app.settings.import_settings.winscp_include_username:
+        return replace(session, username="")
+    return session
+
+
 def build_visible_sessions(app) -> list[Session]:
     base: list[Session] = []
     if app.settings.source_visibility.show_winscp:
-        base.extend(app._winscp_sessions)
+        base.extend(_with_effective_username(app, s) for s in app._winscp_sessions)
     if app.settings.source_visibility.show_app_connections:
-        base.extend(app._app_sessions)
+        base.extend(_with_effective_username(app, s) for s in app._app_sessions)
     if app.settings.source_visibility.show_ssh_config:
-        base.extend(app._ssh_config_sessions)
+        base.extend(_with_effective_username(app, s) for s in app._ssh_config_sessions)
     if app.settings.source_visibility.show_filezilla_config:
-        base.extend(app._filezilla_sessions)
+        base.extend(_with_effective_username(app, s) for s in app._filezilla_sessions)
 
     by_key = {s.key: s for s in base}
     favorites = getattr(app, "_favorite_sessions", {})

@@ -11,6 +11,7 @@ from .core import (
     build_ssh_remove_key_command,
     build_ssh_tunnel_command,
 )
+from .actions_sessions import set_session_username
 from .actions_ui import add_recent_session, rebuild_sessions
 from .dialogs_remote import (
     JumpHostDialog,
@@ -55,9 +56,14 @@ def resolve_single_session_user(app, session: Session, title: str = "Benutzernam
     """Löst den Benutzernamen für genau eine Session auf."""
     if session.username:
         return session.username
-    dialog = UserDialog(app, title=title, quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
+    dialog = UserDialog(app, title=title, quick_users=list(app.settings.quick_users), default_user=app.settings.default_user, allow_remember=True)
     app.wait_window(dialog)
-    return dialog.result
+    if dialog.result is None:
+        return None
+    user, remember = dialog.result
+    if remember:
+        set_session_username(app, session, user)
+    return user
 
 
 

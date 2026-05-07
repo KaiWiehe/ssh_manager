@@ -71,6 +71,11 @@ class SourceVisibilitySettings:
 
 
 @dataclass
+class ImportSettings:
+    winscp_include_username: bool = True
+
+
+@dataclass
 class AppearanceSettings:
     theme: str = "default"
     accent_color: str = "#2563eb"
@@ -90,6 +95,7 @@ class AppSettings:
     startup_expand_mode: str = "remember"
     windows_terminal: WindowsTerminalSettings = field(default_factory=WindowsTerminalSettings)
     source_visibility: SourceVisibilitySettings = field(default_factory=SourceVisibilitySettings)
+    import_settings: ImportSettings = field(default_factory=ImportSettings)
     appearance: AppearanceSettings = field(default_factory=AppearanceSettings)
 
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from tkinter import messagebox, simpledialog
+import tkinter as tk
+from tkinter import messagebox, simpledialog, ttk
 
 from .actions_app import get_all_folder_names, get_ssh_aliases
 from .actions_ui import rebuild_sessions
 from .constants import _APPDATA_DIR
+from .dialogs_base import _USERNAME_RE
 from .dialogs_move_folder import MoveFolderDialog
 from .dialogs_session_edit import SessionEditDialog
 from .models import Session
@@ -184,3 +186,121 @@ def open_appdata_jsons_in_vscode(app) -> None:
         app._popen_shell(f'code "{_APPDATA_DIR}"')
     except OSError as exc:
         messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{exc}")
+
+
+def _set_session_username(app, session: Session, username: str) -> None:
+    """Setzt/entfernt einen festen Benutzer für App- oder importierte Sessions."""
+    updated_app_session = False
+    for i, existing in enumerate(app._app_sessions):
+        if existing.key == session.key:
+            app._app_sessions[i] = Session(
+                key=existing.key,
+                display_name=existing.display_name,
+                folder_path=existing.folder_path,
+                hostname=existing.hostname,
+                username=username,
+                port=existing.port,
+                source=existing.source,
+            )
+            updated_app_session = True
+            break
+    if updated_app_session:
+        save_app_sessions(app._app_sessions)
+    else:
+        if username:
+            app._session_user_overrides[session.key] = username
+        else:
+            app._session_user_overrides.pop(session.key, None)
+
+
+def set_session_username(app, session: Session, username: str) -> None:
+    _set_session_username(app, session, username.strip())
+    rebuild_sessions(app)
+
+
+def set_sessions_username(app, sessions: list[Session]) -> None:
+    user = simpledialog.askstring(
+        "Benutzer setzen",
+        f"Benutzername für {len(sessions)} Verbindung(en):",
+        initialvalue=app.settings.default_user,
+        parent=app,
+    )
+    if user is None:
+        return
+    user = user.strip()
+    if not user:
+        messagebox.showwarning("Benutzer setzen", "Benutzername darf nicht leer sein.", parent=app)
+        return
+    if not _USERNAME_RE.match(user):
+        messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=app)
+        return
+    for session in sessions:
+        _set_session_username(app, session, user)
+    rebuild_sessions(app)
+
+
+def clear_sessions_username(app, sessions: list[Session]) -> None:
+    if not messagebox.askyesno(
+        "Benutzer entfernen",
+        f"Fest gesetzten Benutzer für {len(sessions)} Verbindung(en) entfernen?\n\nDanach wird beim Verbinden wieder gefragt.",
+        parent=app,
+    ):
+        return
+    for session in sessions:
+        _set_session_username(app, session, "")
+    rebuild_sessions(app)
+
+
+def edit_session_details(app, session: Session) -> None:
+    """Bearbeitet festen Benutzer und Notiz für jede Session-Art."""
+    dialog = tk.Toplevel(app)
+    dialog.title("Verbindung bearbeiten")
+    dialog.resizable(False, False)
+    dialog.transient(app)
+    dialog.grab_set()
+
+    frame = ttk.Frame(dialog, padding=16)
+    frame.pack(fill="both", expand=True)
+    frame.columnconfigure(1, weight=1)
+
+    username_var = tk.StringVar(value=session.username)
+    ttk.Label(frame, text=f"Verbindung: {session.display_name}").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+    ttk.Label(frame, text="Fester Benutzer:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(0, 6))
+    ttk.Entry(frame, textvariable=username_var, width=34).grid(row=1, column=1, sticky="ew", pady=(0, 6))
+    ttk.Label(frame, text="Leer lassen = beim Verbinden fragen", foreground="#666666").grid(row=2, column=1, sticky="w", pady=(0, 10))
+    ttk.Label(frame, text="Notiz:").grid(row=3, column=0, sticky="nw", padx=(0, 8))
+    note_text = tk.Text(frame, width=42, height=6)
+    note_text.grid(row=3, column=1, sticky="ew")
+    note = app._notes.get(session.key, "")
+    if note:
+        note_text.insert("1.0", note)
+
+    result = {"saved": False}
+
+    def on_ok() -> None:
+        username = username_var.get().strip()
+        if username and not _USERNAME_RE.match(username):
+            messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=dialog)
+            return
+        _set_session_username(app, session, username)
+        note_value = note_text.get("1.0", "end").strip()
+        if note_value:
+            app._notes[session.key] = note_value
+        else:
+            app._notes.pop(session.key, None)
+        save_notes(app._notes)
+        result["saved"] = True
+        dialog.destroy()
+
+    def on_cancel() -> None:
+        dialog.destroy()
+
+    btn_frame = ttk.Frame(frame)
+    btn_frame.grid(row=4, column=0, columnspan=2, pady=(12, 0))
+    ttk.Button(btn_frame, text="OK", command=on_ok, width=10).pack(side="left", padx=4)
+    ttk.Button(btn_frame, text="Abbrechen", command=on_cancel, width=10).pack(side="left", padx=4)
+    dialog.bind("<Escape>", lambda _e: on_cancel())
+    dialog.bind("<Control-Return>", lambda _e: on_ok())
+    app.wait_window(dialog)
+    if result["saved"]:
+        rebuild_sessions(app)

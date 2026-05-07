@@ -17,7 +17,7 @@ from .constants import (
     _SSH_CONFIG_PREFIX,
     _STATE_FILE,
 )
-from .models import AppSettings, AppearanceSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, default_settings, settings_to_dict
+from .models import AppSettings, AppearanceSettings, ImportSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, default_settings, settings_to_dict
 
 
 def load_settings() -> AppSettings:
@@ -48,6 +48,9 @@ def load_settings_from_path(path: Path) -> AppSettings:
     appearance_raw = raw_dict.get("appearance", {})
     if not isinstance(appearance_raw, dict):
         appearance_raw = {}
+    import_raw = raw_dict.get("import_settings", {})
+    if not isinstance(import_raw, dict):
+        import_raw = {}
 
     quick_users = raw_dict.get("quick_users", defaults.quick_users)
     if not isinstance(quick_users, list):
@@ -140,6 +143,9 @@ def load_settings_from_path(path: Path) -> AppSettings:
             show_favorites=bool(visibility_raw.get("show_favorites", defaults.source_visibility.show_favorites)),
             show_recent=bool(visibility_raw.get("show_recent", defaults.source_visibility.show_recent)),
         ),
+        import_settings=ImportSettings(
+            winscp_include_username=bool(import_raw.get("winscp_include_username", defaults.import_settings.winscp_include_username)),
+        ),
         appearance=AppearanceSettings(
             theme=theme,
             accent_color=accent_color,
@@ -174,6 +180,9 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
             favorites = {}
         if favorites:
             toolbar_texts["favorite_sessions"] = {str(k): bool(v) for k, v in favorites.items()}
+        user_overrides = data.get("session_user_overrides", {})
+        if isinstance(user_overrides, dict) and user_overrides:
+            toolbar_texts["session_user_overrides"] = {str(k): str(v) for k, v in user_overrides.items()}
         recent = data.get("recent_sessions", [])
         if not isinstance(recent, list):
             recent = []
@@ -190,6 +199,7 @@ def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], to
     toolbar_search_texts = toolbar_search_texts or {}
     favorite_sessions = toolbar_search_texts.pop("favorite_sessions", {})
     recent_sessions = toolbar_search_texts.pop("recent_sessions", [])
+    user_overrides = toolbar_search_texts.pop("session_user_overrides", {})
     payload = {
         "expanded_folders": sorted(expanded_folders),
         "session_colors": session_colors,
@@ -199,6 +209,8 @@ def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], to
         payload["favorite_sessions"] = favorite_sessions
     if recent_sessions:
         payload["recent_sessions"] = recent_sessions
+    if user_overrides:
+        payload["session_user_overrides"] = user_overrides
     _STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 

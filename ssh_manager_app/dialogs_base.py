@@ -39,15 +39,17 @@ def _build_quickselect_buttons(parent: ttk.Frame, usernames: list[str], target_v
 class UserDialog(tk.Toplevel):
     """
     Modaler Dialog zur Benutzernamen-Auswahl.
-    Nach Schließen: self.result = gewählter Username (str) oder None (Abbrechen).
+    Nach Schließen: self.result = gewählter Username (str), (Username, merken) oder None (Abbrechen).
     """
 
-    def __init__(self, parent: tk.Tk, title: str = "Benutzername auswählen", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
+    def __init__(self, parent: tk.Tk, title: str = "Benutzername auswählen", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, allow_remember: bool = False):
         super().__init__(parent)
         self.title(title)
         self.resizable(False, False)
-        self.result: Optional[str] = None
+        self.result = None
         self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
+        self._allow_remember = allow_remember
+        self._remember_var = tk.BooleanVar(value=False)
 
         # Modal machen
         self.transient(parent)
@@ -79,13 +81,18 @@ class UserDialog(tk.Toplevel):
             row=2, column=0, sticky="w", pady=(0, 4)
         )
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
-        entry.grid(row=3, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
+        entry.grid(row=3, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
         entry.select_range(0, "end")
         entry.focus()
 
+        if self._allow_remember:
+            ttk.Checkbutton(frame, text="Benutzer für diese Verbindung merken", variable=self._remember_var).grid(
+                row=4, column=0, columnspan=quick_count, sticky="w", pady=(0, 12)
+            )
+
         # OK / Abbrechen
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=4, column=0, columnspan=quick_count)
+        btn_frame.grid(row=5, column=0, columnspan=quick_count)
         ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(
             side="left", padx=4
         )
@@ -104,7 +111,7 @@ class UserDialog(tk.Toplevel):
                 parent=self,
             )
             return
-        self.result = user
+        self.result = (user, self._remember_var.get()) if getattr(self, "_allow_remember", False) else user
         self.destroy()
 
     def _on_cancel(self) -> None:

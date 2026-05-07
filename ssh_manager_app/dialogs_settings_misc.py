@@ -6,7 +6,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
-from . import AppSettings, AppearanceSettings, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, settings_to_dict
+from . import AppSettings, AppearanceSettings, ImportSettings, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, settings_to_dict
 from .constants import _SSH_CONFIG_FILE
 from .dialogs_toast import ToastNotification
 from .storage import load_settings_from_path
@@ -134,6 +134,7 @@ class SettingsView(ttk.Frame):
         self._toolbar_vars: dict[str, tk.BooleanVar] = {}
         self._source_visibility_vars: dict[str, tk.BooleanVar] = {}
         self._use_tab_color_var = tk.BooleanVar()
+        self._winscp_include_username_var = tk.BooleanVar()
         self._section_frames: dict[str, ttk.Frame] = {}
         self._nav_buttons: dict[str, ttk.Button] = {}
         self._active_section = "general"
@@ -242,7 +243,21 @@ class SettingsView(ttk.Frame):
             self._source_visibility_vars[key] = var
             ttk.Checkbutton(grid, text=label, variable=var, command=self._on_source_visibility_changed).grid(row=row * 2, column=0, sticky="w", pady=(0, 2))
             ttk.Label(grid, text=hint, style="SettingsHint.TLabel").grid(row=row * 2 + 1, column=0, sticky="w", pady=(0, 8), padx=(24, 0))
-        self._add_section_tools(frame, 3, "sources")
+        import_grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        import_grid.grid(row=3, column=0, sticky="nw", pady=(14, 0))
+        ttk.Label(import_grid, text="Import-Optionen:", style="SettingsSectionTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Checkbutton(
+            import_grid,
+            text="WinSCP-Benutzer importieren",
+            variable=self._winscp_include_username_var,
+            command=self._on_import_settings_changed,
+        ).grid(row=1, column=0, sticky="w")
+        ttk.Label(
+            import_grid,
+            text="Aus = WinSCP-User ignorieren; feste Benutzer kannst du danach in der App setzen.",
+            style="SettingsHint.TLabel",
+        ).grid(row=2, column=0, sticky="w", pady=(2, 0), padx=(24, 0))
+        self._add_section_tools(frame, 4, "sources")
         return frame
 
     def _build_appearance_section(self) -> ttk.Frame:
@@ -463,6 +478,7 @@ class SettingsView(ttk.Frame):
         self._profile_name_var.set(settings.windows_terminal.profile_name)
         self._use_tab_color_var.set(settings.windows_terminal.use_tab_color)
         self._title_mode_var.set(self.TITLE_MODE_LABELS.get(settings.windows_terminal.title_mode, self.TITLE_MODE_LABELS["default"]))
+        self._winscp_include_username_var.set(settings.import_settings.winscp_include_username)
         self._set_listbox_selection(self._theme_list, list(self.THEME_LABELS).index(settings.appearance.theme if settings.appearance.theme in self.THEME_LABELS else "default"))
         accent_values = [hex_color for _name, hex_color, _swatch in self.ACCENT_COLORS]
         accent = settings.appearance.accent_color if settings.appearance.accent_color in accent_values else accent_values[0]
@@ -575,6 +591,12 @@ class SettingsView(ttk.Frame):
 
         preview_source_visibility(self._app, self._collect_source_visibility_settings())
 
+    def _on_import_settings_changed(self) -> None:
+        self._app.settings.import_settings = ImportSettings(
+            winscp_include_username=self._winscp_include_username_var.get(),
+        )
+        self._on_source_visibility_changed()
+
     def _collect_settings(self) -> AppSettings:
         quick_users = [line.strip() for line in self._quick_users_text.get("1.0", "end").splitlines() if line.strip()]
         if not quick_users:
@@ -594,6 +616,9 @@ class SettingsView(ttk.Frame):
             toolbar=self._collect_toolbar_settings(),
             host_check_timeout_seconds=timeout,
             startup_expand_mode=startup_expand_mode,
+            import_settings=ImportSettings(
+                winscp_include_username=getattr(getattr(self, "_winscp_include_username_var", None), "get", lambda: True)(),
+            ),
             windows_terminal=WindowsTerminalSettings(
                 profile_name=self._profile_name_var.get().strip() or "Git Bash",
                 use_tab_color=self._use_tab_color_var.get(),
@@ -624,6 +649,7 @@ class SettingsView(ttk.Frame):
         elif section == "toolbar":
             preview_toolbar_visibility(self._app, persisted.toolbar)
         elif section == "sources":
+            self._app.settings.import_settings = persisted.import_settings
             preview_source_visibility(self._app, persisted.source_visibility)
         self.load_from_app()
 
@@ -636,6 +662,7 @@ class SettingsView(ttk.Frame):
         elif section == "toolbar":
             preview_toolbar_visibility(self._app, defaults.toolbar)
         elif section == "sources":
+            self._app.settings.import_settings = defaults.import_settings
             preview_source_visibility(self._app, defaults.source_visibility)
         self.load_from_app()
 
