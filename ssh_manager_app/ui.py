@@ -332,8 +332,6 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     app.option_add("*Listbox.foreground", text)
     app.option_add("*Listbox.selectBackground", accent)
     app.option_add("*Listbox.selectForeground", "#ffffff")
-    app.option_add("*TCombobox*Listbox.selectBackground", accent)
-    app.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
     app.option_add("*Listbox.highlightColor", accent)
     app.option_add("*Listbox.highlightBackground", border)
     ui_font = (getattr(appearance, "ui_font_family", "Segoe UI"), getattr(appearance, "ui_font_size", 10))
@@ -370,6 +368,7 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("Accent.TButton", padding=(12, 7), background=accent, foreground="#ffffff", bordercolor=accent)
     style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff")])
     _configure_classic_widgets(app, background=surface, foreground=text, accent=accent, border=border)
+    _configure_combobox_popdowns(app, background=surface, foreground=text, accent=accent)
 
 
 def _configure_classic_widgets(widget: tk.Misc, *, background: str, foreground: str, accent: str, border: str) -> None:
@@ -385,6 +384,28 @@ def _configure_classic_widgets(widget: tk.Misc, *, background: str, foreground: 
                 highlightbackground=border,
             )
         _configure_classic_widgets(child, background=background, foreground=foreground, accent=accent, border=border)
+
+
+def _configure_combobox_popdowns(widget: tk.Misc, *, background: str, foreground: str, accent: str) -> None:
+    for child in widget.children.values():
+        if isinstance(child, ttk.Combobox):
+            _install_combobox_popdown_style(child, background=background, foreground=foreground, accent=accent)
+        _configure_combobox_popdowns(child, background=background, foreground=foreground, accent=accent)
+
+
+def _install_combobox_popdown_style(combobox: ttk.Combobox, *, background: str, foreground: str, accent: str) -> None:
+    def apply_popdown_style() -> None:
+        try:
+            popdown = combobox.tk.call("ttk::combobox::PopdownWindow", combobox)
+            listbox = f"{popdown}.f.l"
+            combobox.tk.call(listbox, "configure", "-background", background)
+            combobox.tk.call(listbox, "configure", "-foreground", foreground)
+            combobox.tk.call(listbox, "configure", "-selectbackground", accent)
+            combobox.tk.call(listbox, "configure", "-selectforeground", "#ffffff")
+        except tk.TclError:
+            pass
+
+    combobox.configure(postcommand=apply_popdown_style)
 
 
 def configure_app_styles(app: tk.Tk) -> None:
@@ -420,9 +441,8 @@ def configure_app_styles(app: tk.Tk) -> None:
     style.configure("SettingsHint.TLabel", background="#f6f2eb", foreground="#6b655c")
     style.configure("SettingsValue.TLabel", background="#f6f2eb")
     style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w")
-    app.option_add("*TCombobox*Listbox.selectBackground", accent)
-    app.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
     _configure_classic_widgets(app, background="#ffffff", foreground="#111111", accent=accent, border="#b8b8b8")
+    _configure_combobox_popdowns(app, background="#ffffff", foreground="#111111", accent=accent)
 
 def build_main_ui(self) -> None:
     """Erstellt alle UI-Elemente."""
