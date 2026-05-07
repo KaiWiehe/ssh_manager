@@ -15,21 +15,24 @@ python -m pytest tests/
 python -m pytest tests/test_logic.py::test_build_wt_command_single_session
 
 # Syntax prüfen
-python -m py_compile ssh_manager.py
+python -m py_compile ssh_manager.py ssh_manager_app/*.py
+
+# Portable Windows-EXE bauen (auf Windows)
+powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 ```
 
-Keine externen Abhängigkeiten – nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `pathlib`, `socket`, `threading`, `xml.etree.ElementTree`).  
+App-Laufzeit: keine externen Abhängigkeiten – nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `pathlib`, `socket`, `threading`, `xml.etree.ElementTree`).  
 Aus tkinter genutzte Module: `tk`, `ttk`, `messagebox`, `simpledialog`, `filedialog`.
 
 ## Architektur
 
-Die App war ursprünglich fast komplett in `ssh_manager.py`, wurde inzwischen aber vorsichtig in Module aufgeteilt. `ssh_manager.py` enthält aktuell vor allem noch `SSHManagerApp` und die zentrale Verdrahtung.
+Die App war ursprünglich fast komplett in `ssh_manager.py`, wurde inzwischen aber vorsichtig in Module aufgeteilt. `ssh_manager.py` bleibt eine dünne Bootstrap-Shell mit `SSHManagerApp`, Fenster-Icon und zentraler Verdrahtung.
 
 ### Datenfluss
 
 ```
 Registry (WinSCP)      ──┐
-~/.ssh/config          ──┼──► storage/core ──► SSHManagerApp._build_visible_sessions() ──► SessionTree.populate()
+~/.ssh/config          ──┼──► storage/core ──► actions_ui.build_visible_sessions(app) ──► SessionTree.populate()
 FileZilla sitemanager  ──┤
 app_sessions.json      ──┤
 notes.json / settings  ──┘
@@ -40,15 +43,16 @@ notes.json / settings  ──┘
 ### Schichten / Module
 
 **`ssh_manager.py`**
-- enthält aktuell primär `SSHManagerApp`
+- enthält primär `SSHManagerApp` plus `set_window_icon()`
 - zentrale Verdrahtung zwischen UI, Tree, Dialogen, Storage und Terminal-/Registry-Logik
+- muss weiter direkt per `python ssh_manager.py` startbar bleiben
 
 **`ssh_manager_app/constants.py`**
 - App-Konstanten, Dateipfade, Standardordnernamen
 
 **`ssh_manager_app/models.py`**
 - `Session`
-- Settings-Dataclasses (`ToolbarSettings`, `WindowsTerminalSettings`, `SourceVisibilitySettings`, `AppSettings`)
+- Settings-Dataclasses (`ToolbarSettings`, `WindowsTerminalSettings`, `SourceVisibilitySettings`, `ImportSettings`, `AppearanceSettings`, `AppSettings`)
 - `color_tag()`
 - `default_settings()` / `settings_to_dict()`
 
@@ -102,8 +106,21 @@ notes.json / settings  ──┘
 - nur Kompatibilitäts-Aggregator für bestehende Imports
 
 **`ssh_manager_app/ui.py`**
-- `configure_app_styles()`
+- `configure_app_styles()` / Theme-Styling inkl. Dark Mode
+- `refresh_checkbox_images()`
 - `build_main_ui()`
+
+**`ssh_manager_app/themes.py`**
+- Theme-Paletten für Light/Dark/Midnight
+
+**`ssh_manager_app/version.py`**
+- `APP_NAME` / `APP_VERSION` für App-Name und Packaging
+
+**Packaging**
+- `assets/ssh-manager.ico` – App-/EXE-Icon
+- `ssh_manager.spec` – PyInstaller-Spec für portable Einzel-EXE
+- `scripts/build_windows.ps1` – Windows-Build-Script
+- `packaging/ssh_manager_version_info.txt` – Windows-Version-Metadaten
 
 **Datenquellen:**
 - `RegistryReader` – liest WinSCP-Sessions aus `HKCU\Software\Martin Prikryl\WinSCP 2\Sessions`
@@ -175,9 +192,11 @@ Früher kamen viele Defaults direkt aus Konstanten. Inzwischen ist das meiste in
 
 - Quick-Users und Default-User
 - Sichtbarkeit der Toolbar-Buttons
-- Sichtbarkeit der Quellen in der Hauptansicht (`WinSCP`, `SSH Config`, `FileZilla Config`, `Eigene App-Verbindungen`)
-- Sichtbarkeit der Spalten `Hostname`, `Port`, `Notizen`
-- Reihenfolge der zuschaltbaren Spalten, Default: `Name | Notiz | Hostname | Port`
+- Sichtbarkeit der Quellen in der Hauptansicht (`WinSCP`, `SSH Config`, `FileZilla Config`, `Eigene App-Verbindungen`, `Favoriten`, `Zuletzt verwendet`)
+- Import-Optionen für WinSCP-/FileZilla-Benutzer
+- Sichtbarkeit der Spalten `Benutzer`, `Hostname`, `Port`, `Notizen`
+- Reihenfolge der sichtbaren Spalten per Drag & Drop; `Name` ist die feste Tree-Spalte links
+- Themes, Akzentfarbe, UI-/Tree-Schrift und Tree-Zeilenhöhe
 - Windows-Terminal-Optik (Profilname, Farben, Titelmodus)
 
 Weiterhin als Konstanten relevant:
@@ -197,6 +216,7 @@ Weiterhin als Konstanten relevant:
 | `on_delete_session` | `(Session)` | Session löschen |
 | `on_delete_folder` | `(list[Session], str)` | Ordner löschen |
 | `on_rename_folder` | `(str)` | Ordner umbenennen (folder_key) |
+| `on_add_session` | `()` | Neue Session ohne Ordner-Preset, u. a. Empty State |
 | `on_add_session_in_folder` | `(str)` | Neue Session in Ordner |
 | `on_duplicate_ssh_alias` | `(Session)` | SSH-Alias duplizieren |
 | `on_duplicate_app_session` | `(Session)` | App-Session duplizieren |
@@ -212,16 +232,25 @@ Weiterhin als Konstanten relevant:
 | `on_ui_state_changed` | `()` | UI-State sofort persistieren |
 | `notes_getter` | `(session_key: str) -> str` | Notizen für Tooltip / Spalte |
 | `on_edit_note` | `(Session)` | Notiz bearbeiten |
+| `on_set_sessions_username` | `(list[Session])` | festen Benutzer für Auswahl setzen |
+| `on_clear_sessions_username` | `(list[Session])` | festen Benutzer für Auswahl entfernen |
+| `on_add_favorite` | `(Session, bool)` | einzelne Session zu Favoriten |
+| `on_add_favorites` | `(list[Session], bool)` | mehrere Sessions zu Favoriten |
+| `on_remove_favorite` | `(Session)` | Favorit entfernen |
+| `favorite_keys_getter` | `() -> set[str]` | Favoritenstatus für Kontextmenü |
 
 ### Neuere Features / Dinge, die leicht kaputtgehen können
 
-- `SettingsView` wirkt live auf Toolbar, Quellen und Spalten. Bei Änderungen an `ToolbarSettings` immer prüfen, ob `SessionTree.update_toolbar_settings()` weiter korrekt verdrahtet ist.
-- `displaycolumns` darf **nicht** `"tree"` enthalten. Die Baumspalte bleibt automatisch links, `displaycolumns` enthält nur echte Datenspalten.
+- `SettingsView` wirkt live auf Toolbar, Quellen, Spalten und Appearance. Bei Änderungen an `ToolbarSettings` immer prüfen, ob `SessionTree.update_toolbar_settings()` weiter korrekt verdrahtet ist.
+- `displaycolumns` darf **nicht** `"tree"` enthalten. Die Baumspalte bleibt automatisch links, `displaycolumns` enthält nur echte Datenspalten. Ausgeblendete Spalten dürfen nicht in der sichtbaren Reihenfolge auftauchen.
 - Notizen dürfen **nie** in WinSCP, FileZilla oder `~/.ssh/config` zurückgeschrieben werden. Nur `notes.json` verwenden.
 - FileZilla wird nur gelesen, nie geschrieben. Quelle ist `%APPDATA%\FileZilla\sitemanager.xml`.
 - Suchverlauf wird live gespeichert. Änderungen an der Suche betreffen auch `ui_state.json`.
 - Tooltip für Notizen hängt am `Treeview`-Hover und ist empfindlich. Bei Änderungen an Motion-/Leave-Events vorsichtig sein.
-- Zusätzlich gibt es unten ein robusteres Notiz-Info-Panel. Tooltip ist also nicht mehr die einzige Notes-Anzeige.
+- Leerer Startscreen/Empty State sitzt als Overlay im `SessionTree` und ruft `on_add_session` auf.
+- Favoriten und Zuletzt verwendet sind virtuelle Ordner aus `actions_ui.build_visible_sessions(app)`. Sie dürfen die Original-Quellen nicht verändern.
+- User-Overrides für importierte Quellen werden in `ui_state.json` unter `session_user_overrides` gespeichert, nicht in WinSCP/FileZilla/SSH Config.
+- Portable EXE-Build bleibt additive Packaging-Schicht. Python-Start darf dadurch nicht kaputtgehen.
 
 ### Refactor-Learnings (sehr wichtig)
 

@@ -11,7 +11,7 @@ Unterstützte Quellen:
 ## Voraussetzungen
 
 - Windows 10/11
-- Python 3.8+
+- Python 3.10+ empfohlen; getestet wird aktuell mit Python 3.14.2 auf Windows
 - [Windows Terminal](https://aka.ms/terminal) installiert
 - Git Bash-Profil in Windows Terminal vorhanden (Standard bei Git for Windows)
 - optional: WinSCP mit gespeicherten Sessions
@@ -25,15 +25,20 @@ python ssh_manager.py
 
 ## Wichtige Features
 
+- portable Windows-EXE mit eigenem Icon baubar; Python-Start bleibt möglich
 - mehrere Verbindungen gleichzeitig in **einem** Windows-Terminal-Fenster öffnen
 - Sessions aus mehreren Quellen zusammen anzeigen
 - Quellen in der Hauptansicht ein- und ausblenden
 - Ordner auf- und zuklappen, auch rekursiv per Rechtsklick
 - Live-Suche mit Suchverlauf
+- Favoriten und „Zuletzt verwendet“-Bereich
 - Session-Farben
 - Session-Notizen mit eigener Spalte und Tooltip
-- Toolbar und sichtbare Spalten konfigurierbar
-- Spaltenreihenfolge anpassbar
+- fester Benutzer pro Verbindung, Bulk-Benutzer setzen/entfernen und Quickselect-Benutzer
+- Toolbar und sichtbare Spalten getrennt konfigurierbar
+- Spaltenreihenfolge per Drag & Drop anpassbar
+- Themes inkl. Dark Mode und Akzentfarben
+- leerer Startscreen mit „Verbindung hinzufügen“
 - Einstellungen direkt in der App bearbeiten
 - Einstellungen als JSON exportieren / importieren
 - JSON-Dateien der App direkt in VS Code öffnen
@@ -47,18 +52,20 @@ python ssh_manager.py
 2. **Mehrere auf einmal** – Beliebig viele Haken setzen. Rechtsklick auf einen Ordner bietet u. a. Auswahl-, Farb- und Auf-/Zu-Aktionen.
 3. **Suche** – Oben im Suchfeld tippen filtert live nach Name und Hostname. Rechts daneben gibt es einen kleinen Verlauf-Button.
 4. **Verbinden** – Auf „Verbinden (N ausgewählt)" klicken.
-5. **Benutzernamen wählen** – Im Dialog einen der Schnellauswahl-Buttons klicken oder eigenen Namen eingeben, dann OK.
-6. Alle gewählten Server öffnen sich als neue Tabs **in einem Windows Terminal Fenster**.
+5. **Benutzernamen wählen** – Falls keine Verbindung einen festen Benutzer hat, im Dialog Quickselect nutzen oder eigenen Namen eingeben.
+6. Alle gewählten Server öffnen sich als neue Tabs **in einem Windows Terminal Fenster** und landen direkt unter **Zuletzt verwendet**.
 
 ## Einstellungen
 
 Die Einstellungen liegen direkt im Hauptfenster und enthalten u. a.:
 
 - Quick-User und Standardbenutzer
+- Import-Optionen für WinSCP-/FileZilla-Benutzer
 - sichtbare Toolbar-Buttons
-- sichtbare Quellen in der Hauptansicht
-- sichtbare Spalten (`Hostname`, `Port`, `Notizen`)
-- Reihenfolge der Spalten, Default: `Name | Notiz | Hostname | Port`
+- sichtbare Quellen in der Hauptansicht inkl. Favoriten und Zuletzt verwendet
+- sichtbare Spalten (`Benutzer`, `Hostname`, `Port`, `Notizen`)
+- Reihenfolge der sichtbaren Spalten per Drag & Drop, Baumspalte `Name` bleibt immer links
+- Design/Theme, Akzentfarbe, Schriftarten und Tree-Zeilenhöhe
 - Windows-Terminal-Optik (Profilname, Farben, Titel)
 - Export / Import der Einstellungen
 - Reset von Einstellungen sowie Ansichtszustand
@@ -108,9 +115,10 @@ Dort liegen z. B.:
 - `app_sessions.json`
 - `notes.json`
 
-## Kein pip erforderlich
+## Abhängigkeiten
 
-Nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `xml.etree.ElementTree` usw.).
+Die App selbst nutzt nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `xml.etree.ElementTree` usw.).
+Für Tests brauchst du `pytest`. Für den EXE-Build installiert das Build-Script bei Bedarf `PyInstaller`.
 
 ## Portable Windows-EXE bauen
 
