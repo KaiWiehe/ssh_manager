@@ -1830,7 +1830,7 @@ def test_add_session_appends_result_saves_and_rebuilds():
 
     get_folders.assert_called_once_with(app)
     get_aliases.assert_called_once_with(app)
-    dialog_cls.assert_called_once_with(app, ["Prod"], ssh_aliases=["alias1"], folder_preset="Prod")
+    dialog_cls.assert_called_once_with(app, ["Prod"], ssh_aliases=["alias1"], folder_preset="Prod", quick_users=[])
     app.wait_window.assert_called_once_with(dialog)
     assert app._app_sessions == [new_session]
     assert app._notes == {"s1": "wichtig"}
@@ -1856,7 +1856,7 @@ def test_edit_session_replaces_existing_session_and_updates_note():
          patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
         edit_session(app, original)
 
-    dialog_cls.assert_called_once_with(app, ["Prod", "Ops"], session=original, note="alt")
+    dialog_cls.assert_called_once_with(app, ["Prod", "Ops"], session=original, note="alt", quick_users=[])
     assert app._app_sessions == [updated]
     assert app._notes == {"s1": "neu"}
     save_notes.assert_called_once_with(app._notes)
@@ -1895,7 +1895,7 @@ def test_duplicate_app_session_appends_copy_and_rebuilds():
          patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
         duplicate_app_session(app, original)
 
-    dialog_cls.assert_called_once_with(app, ["Prod"], session=original, duplicate=True)
+    dialog_cls.assert_called_once_with(app, ["Prod"], session=original, duplicate=True, quick_users=[])
     assert app._app_sessions == [original, duplicate]
     save_sessions.assert_called_once_with(app._app_sessions)
     rebuild.assert_called_once_with(app)
@@ -1998,7 +1998,7 @@ def test_duplicate_ssh_alias_creates_app_session_and_rebuilds():
         duplicate_ssh_alias(app, source)
 
     get_aliases.assert_called_once_with(app)
-    dialog_cls.assert_called_once_with(app, ["App"], ssh_aliases=["prod-alias"], alias_preset="prod-alias")
+    dialog_cls.assert_called_once_with(app, ["App"], ssh_aliases=["prod-alias"], alias_preset="prod-alias", quick_users=[])
     assert app._app_sessions == [duplicate]
     save_sessions.assert_called_once_with(app._app_sessions)
     rebuild.assert_called_once_with(app)

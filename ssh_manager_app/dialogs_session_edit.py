@@ -6,8 +6,8 @@ from tkinter import messagebox, ttk
 from typing import Optional
 
 from . import Session
-from .constants import _APP_PREFIX, _SSH_ALIAS_PREFIX
-from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE
+from .constants import QUICK_USERS, _APP_PREFIX, _SSH_ALIAS_PREFIX
+from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons
 
 
 class SessionEditDialog(tk.Toplevel):
@@ -28,11 +28,13 @@ class SessionEditDialog(tk.Toplevel):
         alias_preset: str = "",
         duplicate: bool = False,
         note: str = "",
+        quick_users: list[str] | None = None,
     ):
         super().__init__(parent)
         self._existing_session = session
         self._duplicate = duplicate
         self._existing_folders = existing_folders
+        self._quick_users = list(quick_users) if quick_users else list(QUICK_USERS)
         self._ssh_aliases = ssh_aliases or []
         self._alias_preset = alias_preset
         self.note_result = note
@@ -136,17 +138,24 @@ class SessionEditDialog(tk.Toplevel):
         self._host_var = tk.StringVar(value=s.hostname if (s and s.is_app_session) else "")
         ttk.Entry(self._verbindung_frame, textvariable=self._host_var, width=32).grid(row=2, column=1, sticky="ew")
 
-        ttk.Label(self._verbindung_frame, text="Benutzername:").grid(row=3, column=0, sticky="w", pady=4, padx=(0, 8))
         self._user_var = tk.StringVar(value=s.username if (s and s.is_app_session) else "")
-        ttk.Entry(self._verbindung_frame, textvariable=self._user_var, width=32).grid(row=3, column=1, sticky="ew")
+        ttk.Label(self._verbindung_frame, text="Quickselect:").grid(row=3, column=0, sticky="nw", pady=4, padx=(0, 8))
+        quick_frame = _build_quickselect_buttons(self._verbindung_frame, self._quick_users, self._user_var)
+        quick_frame.grid(row=3, column=1, sticky="ew", pady=4)
 
-        ttk.Label(self._verbindung_frame, text="Port:").grid(row=4, column=0, sticky="w", pady=4, padx=(0, 8))
+        ttk.Label(self._verbindung_frame, text="Benutzername:").grid(row=4, column=0, sticky="w", pady=4, padx=(0, 8))
+        user_entry = ttk.Entry(self._verbindung_frame, textvariable=self._user_var, width=32)
+        user_entry.grid(row=4, column=1, sticky="ew")
+        active_text = f"Aktiv gesetzt: {s.username}" if (s and s.is_app_session and s.username) else "Aktiv gesetzt: keiner — beim Verbinden fragen"
+        ttk.Label(self._verbindung_frame, text=active_text, style="SettingsHint.TLabel").grid(row=5, column=1, sticky="w", pady=(2, 4))
+
+        ttk.Label(self._verbindung_frame, text="Port:").grid(row=6, column=0, sticky="w", pady=4, padx=(0, 8))
         self._port_var = tk.StringVar(value=str(s.port) if (s and s.is_app_session) else "22")
-        ttk.Entry(self._verbindung_frame, textvariable=self._port_var, width=8).grid(row=4, column=1, sticky="w")
+        ttk.Entry(self._verbindung_frame, textvariable=self._port_var, width=8).grid(row=6, column=1, sticky="w")
 
-        ttk.Label(self._verbindung_frame, text="Notizen:").grid(row=5, column=0, sticky="nw", pady=4, padx=(0, 8))
+        ttk.Label(self._verbindung_frame, text="Notizen:").grid(row=7, column=0, sticky="nw", pady=4, padx=(0, 8))
         self._note_text = tk.Text(self._verbindung_frame, width=32, height=4)
-        self._note_text.grid(row=5, column=1, sticky="ew", pady=4)
+        self._note_text.grid(row=7, column=1, sticky="ew", pady=4)
         if self.note_result:
             self._note_text.insert("1.0", self.note_result)
 

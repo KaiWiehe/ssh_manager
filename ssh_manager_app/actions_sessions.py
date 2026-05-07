@@ -6,7 +6,7 @@ from tkinter import messagebox, simpledialog, ttk
 from .actions_app import get_all_folder_names, get_ssh_aliases
 from .actions_ui import rebuild_sessions
 from .constants import _APPDATA_DIR
-from .dialogs_base import _USERNAME_RE
+from .dialogs_base import _USERNAME_RE, _build_quickselect_buttons
 from .dialogs_move_folder import MoveFolderDialog
 from .dialogs_session_edit import SessionEditDialog
 from .models import Session
@@ -20,6 +20,7 @@ def add_session(app, folder_preset: str = "") -> None:
         get_all_folder_names(app),
         ssh_aliases=get_ssh_aliases(app),
         folder_preset=folder_preset,
+        quick_users=list(app.settings.quick_users),
     )
     app.wait_window(dialog)
     if dialog.result is None:
@@ -36,7 +37,7 @@ def add_session(app, folder_preset: str = "") -> None:
 
 def edit_session(app, session: Session) -> None:
     """Öffnet den Dialog zum Bearbeiten einer App-Session."""
-    dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, note=app._notes.get(session.key, ""))
+    dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, note=app._notes.get(session.key, ""), quick_users=list(app.settings.quick_users))
     app.wait_window(dialog)
     if dialog.result is None:
         return
@@ -55,7 +56,7 @@ def edit_session(app, session: Session) -> None:
 
 def duplicate_app_session(app, session: Session) -> None:
     """Dupliziert eine App-Session (öffnet Dialog mit vorausgefüllten Daten, neue UUID)."""
-    dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, duplicate=True)
+    dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, duplicate=True, quick_users=list(app.settings.quick_users))
     app.wait_window(dialog)
     if dialog.result is None:
         return
@@ -170,6 +171,7 @@ def duplicate_ssh_alias(app, session: Session) -> None:
         get_all_folder_names(app),
         ssh_aliases=get_ssh_aliases(app),
         alias_preset=session.display_name,
+        quick_users=list(app.settings.quick_users),
     )
     app.wait_window(dialog)
     if dialog.result is None:
@@ -264,13 +266,20 @@ def edit_session_details(app, session: Session) -> None:
     frame.columnconfigure(1, weight=1)
 
     username_var = tk.StringVar(value=session.username)
+    quick_users = list(app.settings.quick_users)
     ttk.Label(frame, text=f"Verbindung: {session.display_name}").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
-    ttk.Label(frame, text="Fester Benutzer:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(0, 6))
-    ttk.Entry(frame, textvariable=username_var, width=34).grid(row=1, column=1, sticky="ew", pady=(0, 6))
-    ttk.Label(frame, text="Leer lassen = beim Verbinden fragen", foreground="#666666").grid(row=2, column=1, sticky="w", pady=(0, 10))
-    ttk.Label(frame, text="Notiz:").grid(row=3, column=0, sticky="nw", padx=(0, 8))
+    ttk.Label(frame, text="Quickselect:").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 4))
+    quick_frame = _build_quickselect_buttons(frame, quick_users, username_var)
+    quick_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+    ttk.Label(frame, text="Fester Benutzer:").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=(0, 6))
+    user_entry = ttk.Entry(frame, textvariable=username_var, width=34)
+    user_entry.grid(row=3, column=1, sticky="ew", pady=(0, 6))
+    user_entry.select_range(0, "end")
+    active_text = f"Aktiv gesetzt: {session.username}" if session.username else "Aktiv gesetzt: keiner — beim Verbinden fragen"
+    ttk.Label(frame, text=active_text, foreground="#666666").grid(row=4, column=1, sticky="w", pady=(0, 10))
+    ttk.Label(frame, text="Notiz:").grid(row=5, column=0, sticky="nw", padx=(0, 8))
     note_text = tk.Text(frame, width=42, height=6)
-    note_text.grid(row=3, column=1, sticky="ew")
+    note_text.grid(row=5, column=1, sticky="ew")
     note = app._notes.get(session.key, "")
     if note:
         note_text.insert("1.0", note)
@@ -296,7 +305,7 @@ def edit_session_details(app, session: Session) -> None:
         dialog.destroy()
 
     btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=4, column=0, columnspan=2, pady=(12, 0))
+    btn_frame.grid(row=6, column=0, columnspan=2, pady=(12, 0))
     ttk.Button(btn_frame, text="OK", command=on_ok, width=10).pack(side="left", padx=4)
     ttk.Button(btn_frame, text="Abbrechen", command=on_cancel, width=10).pack(side="left", padx=4)
     dialog.bind("<Escape>", lambda _e: on_cancel())
