@@ -146,14 +146,14 @@ class SettingsView(ttk.Frame):
         self.configure(style="SettingsRoot.TFrame")
         root = ttk.Frame(self, style="SettingsRoot.TFrame", padding=0)
         root.grid(row=0, column=0, sticky="nsew")
+        root.columnconfigure(0, minsize=260)
         root.columnconfigure(1, weight=1)
         root.rowconfigure(0, weight=1)
         self._root_frame = root
 
         nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(16, 20))
-        nav.grid(row=0, column=0, sticky="nsw")
+        nav.grid(row=0, column=0, sticky="nsew")
         nav.columnconfigure(0, minsize=230)
-        nav.grid_propagate(False)
         self._nav = nav
 
         content_wrap = ttk.Frame(root, style="SettingsContent.TFrame", padding=(28, 22, 28, 16))
