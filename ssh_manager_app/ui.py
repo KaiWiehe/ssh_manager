@@ -397,13 +397,24 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff")])
     _configure_classic_widgets(app, background=surface, foreground=text, accent=accent, border=border)
     _configure_combobox_popdowns(app, background=surface, foreground=text, accent=accent)
+    app.update_idletasks()
+
+
+def _safe_widget_configure(widget: tk.Misc, **options) -> None:
+    """Set widget options defensively because Tk/ttk support differs by platform/theme."""
+    for key, value in options.items():
+        try:
+            widget.configure(**{key: value})
+        except tk.TclError:
+            pass
 
 
 def _configure_classic_widgets(widget: tk.Misc, *, background: str, foreground: str, accent: str, border: str) -> None:
     """Apply runtime colors to classic Tk widgets that ttk styles do not cover."""
     for child in widget.children.values():
         if isinstance(child, tk.Entry) or isinstance(child, tk.Spinbox):
-            child.configure(
+            _safe_widget_configure(
+                child,
                 background=background,
                 foreground=foreground,
                 insertbackground=foreground,
@@ -413,7 +424,8 @@ def _configure_classic_widgets(widget: tk.Misc, *, background: str, foreground: 
                 highlightbackground=border,
             )
         if isinstance(child, tk.Listbox):
-            child.configure(
+            _safe_widget_configure(
+                child,
                 background=background,
                 foreground=foreground,
                 selectbackground=accent,
@@ -483,6 +495,7 @@ def configure_app_styles(app: tk.Tk) -> None:
     style.configure("SearchHistory.TButton", padding=(4, 1))
     _configure_classic_widgets(app, background="#ffffff", foreground="#111111", accent=accent, border="#b8b8b8")
     _configure_combobox_popdowns(app, background="#ffffff", foreground="#111111", accent=accent)
+    app.update_idletasks()
 
 def refresh_checkbox_images(app) -> None:
     """Rebuild tree checkbox icons from the active theme palette."""
