@@ -2478,20 +2478,21 @@ def test_settings_view_collect_settings_rejects_missing_quick_users():
         SettingsView._collect_settings(view)
 
 
-def test_settings_view_move_column_order_reorders_and_triggers_preview():
+def test_settings_view_drag_column_order_reorders_and_triggers_preview():
     view = SettingsView.__new__(SettingsView)
-    listbox = MagicMock()
-    listbox.curselection.return_value = (1,)
-    listbox.size.return_value = 3
-    listbox.get.return_value = "Hostname"
-    view._column_order_list = listbox
+    view._column_order_keys = ["username", "hostname", "port"]
+    view._drag_column_key = "hostname"
+    view._render_column_order_headers = MagicMock()
     view._on_toolbar_changed = MagicMock()
+    target = object()
+    view._column_header_widgets = {target: "username"}
+    event = MagicMock()
+    event.widget.winfo_containing.return_value = target
 
-    SettingsView._move_column_order(view, -1)
+    SettingsView._drag_column_over(view, event)
 
-    listbox.delete.assert_called_once_with(1)
-    listbox.insert.assert_called_once_with(0, "Hostname")
-    listbox.selection_set.assert_called_once_with(0)
+    assert view._column_order_keys == ["hostname", "username", "port"]
+    view._render_column_order_headers.assert_called_once_with()
     view._on_toolbar_changed.assert_called_once_with()
 
 

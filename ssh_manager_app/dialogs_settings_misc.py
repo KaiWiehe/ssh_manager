@@ -183,6 +183,7 @@ class SettingsView(ttk.Frame):
             ("appearance", "Design"),
             ("users", "Schnellauswahl-Benutzer"),
             ("toolbar", "Toolbar"),
+            ("columns", "Spalten"),
             ("terminal", "Windows Terminal"),
             ("transfer", "Export / Import"),
             ("reset", "Zurücksetzen"),
@@ -198,6 +199,7 @@ class SettingsView(ttk.Frame):
         self._section_frames["appearance"] = self._build_appearance_section()
         self._section_frames["users"] = self._build_users_section()
         self._section_frames["toolbar"] = self._build_toolbar_section()
+        self._section_frames["columns"] = self._build_columns_section()
         self._section_frames["terminal"] = self._build_terminal_section()
         self._section_frames["transfer"] = self._build_transfer_section()
         self._section_frames["reset"] = self._build_reset_section()
@@ -348,26 +350,40 @@ class SettingsView(ttk.Frame):
             ("show_reload", "Neu laden"),
             ("show_open_tunnel", "Tunnel öffnen…"),
             ("show_check_hosts", "Hosts prüfen"),
-            ("show_username_column", "Spalte Benutzer"),
-            ("show_hostname_column", "Spalte Hostname"),
-            ("show_port_column", "Spalte Port"),
-            ("show_notes_column", "Spalte Notizen"),
         ]
         for idx, (key, label) in enumerate(toolbar_items):
             var = tk.BooleanVar()
             self._toolbar_vars[key] = var
             ttk.Checkbutton(grid, text=label, variable=var, command=self._on_toolbar_changed).grid(row=idx // 2, column=idx % 2, sticky="w", padx=(0, 28), pady=6)
 
+        self._add_section_tools(frame, 3, "toolbar")
+        return frame
+
+    def _build_columns_section(self) -> ttk.Frame:
+        frame = self._build_section_frame("Spalten", "Lege fest, welche Tabellenspalten sichtbar sind und ziehe die sichtbaren Header in die gewünschte Reihenfolge.")
+        visibility = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        visibility.grid(row=2, column=0, sticky="nw")
+        column_items = [
+            ("show_username_column", "Benutzer"),
+            ("show_hostname_column", "Hostname"),
+            ("show_port_column", "Port"),
+            ("show_notes_column", "Notizen"),
+        ]
+        for idx, (key, label) in enumerate(column_items):
+            var = tk.BooleanVar()
+            self._toolbar_vars[key] = var
+            ttk.Checkbutton(visibility, text=label, variable=var, command=self._on_column_visibility_changed).grid(row=0, column=idx, sticky="w", padx=(0, 18), pady=6)
+
         order_frame = ttk.Frame(frame, style="SettingsPanel.TFrame")
-        order_frame.grid(row=3, column=0, sticky="nw", pady=(18, 0))
-        ttk.Label(order_frame, text="Spalten-Reihenfolge (ohne Name):", style="SettingsValue.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
-        self._column_order_list = tk.Listbox(order_frame, height=4, exportselection=False)
-        self._column_order_list.grid(row=1, column=0, rowspan=2, sticky="w")
-        btns = ttk.Frame(order_frame, style="SettingsPanel.TFrame")
-        btns.grid(row=1, column=1, sticky="nw", padx=(10, 0))
-        ttk.Button(btns, text="Hoch", command=lambda: self._move_column_order(-1), width=10).pack(anchor="w")
-        ttk.Button(btns, text="Runter", command=lambda: self._move_column_order(1), width=10).pack(anchor="w", pady=(6, 0))
-        self._add_section_tools(frame, 4, "toolbar")
+        order_frame.grid(row=3, column=0, sticky="ew", pady=(20, 0))
+        ttk.Label(order_frame, text="Reihenfolge der sichtbaren Spalten:", style="SettingsValue.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 8))
+        self._column_order_frame = ttk.Frame(order_frame, style="SettingsPanel.TFrame")
+        self._column_order_frame.grid(row=1, column=0, sticky="w")
+        self._column_order_keys: list[str] = []
+        self._column_header_widgets: dict[object, str] = {}
+        self._drag_column_key: str | None = None
+        ttk.Label(order_frame, text="Tipp: Header mit gedrückter Maustaste nach links/rechts ziehen.", style="SettingsHint.TLabel").grid(row=2, column=0, sticky="w", pady=(10, 0))
+        self._add_section_tools(frame, 4, "columns")
         return frame
 
     def _build_terminal_section(self) -> ttk.Frame:
@@ -456,6 +472,7 @@ class SettingsView(ttk.Frame):
             "appearance": "Design",
             "users": "Schnellauswahl-Benutzer",
             "toolbar": "Toolbar",
+            "columns": "Spalten",
             "terminal": "Windows Terminal",
             "transfer": "Export / Import",
             "reset": "Zurücksetzen",
@@ -477,9 +494,8 @@ class SettingsView(ttk.Frame):
         self._startup_expand_var.set(self.STARTUP_LABELS.get(settings.startup_expand_mode, self.STARTUP_LABELS["remember"]))
         for key, var in self._toolbar_vars.items():
             var.set(bool(getattr(settings.toolbar, key)))
-        self._column_order_list.delete(0, "end")
-        for col in settings.toolbar.column_order:
-            self._column_order_list.insert("end", self._column_label(col))
+        self._column_order_keys = self._visible_column_order(settings.toolbar)
+        self._render_column_order_headers()
         for key, var in self._source_visibility_vars.items():
             var.set(bool(getattr(settings.source_visibility, key)))
         self._profile_name_var.set(settings.windows_terminal.profile_name)
@@ -533,31 +549,71 @@ class SettingsView(ttk.Frame):
             "port": "Port",
         }[key]
 
-    def _column_key_from_label(self, label: str) -> str:
-        return {
-            "Benutzer": "username",
-            "Notiz": "notes",
-            "Hostname": "hostname",
-            "Port": "port",
-        }[label]
+    def _column_visibility_key(self, column: str) -> str:
+        return f"show_{column}_column"
 
-    def _move_column_order(self, direction: int) -> None:
-        selection = self._column_order_list.curselection()
-        if not selection:
+    def _visible_column_order(self, toolbar: ToolbarSettings) -> list[str]:
+        valid = ["username", "hostname", "port", "notes"]
+        ordered = [column for column in toolbar.column_order if column in valid and getattr(toolbar, self._column_visibility_key(column), False)]
+        for column in valid:
+            if getattr(toolbar, self._column_visibility_key(column), False) and column not in ordered:
+                ordered.append(column)
+        return ordered
+
+    def _render_column_order_headers(self) -> None:
+        if not hasattr(self, "_column_order_frame"):
             return
-        idx = selection[0]
-        new_idx = idx + direction
-        if not (0 <= new_idx < self._column_order_list.size()):
+        for child in self._column_order_frame.winfo_children():
+            child.destroy()
+        self._column_header_widgets = {}
+        for idx, column in enumerate(self._column_order_keys):
+            label = tk.Label(
+                self._column_order_frame,
+                text=self._column_label(column),
+                relief="raised",
+                borderwidth=1,
+                padx=16,
+                pady=7,
+                cursor="hand2",
+            )
+            label.grid(row=0, column=idx, padx=(0, 8), sticky="w")
+            self._column_header_widgets[label] = column
+            label.bind("<ButtonPress-1>", lambda _e, c=column: self._start_column_drag(c))
+            label.bind("<B1-Motion>", self._drag_column_over)
+            label.bind("<ButtonRelease-1>", lambda _e: self._end_column_drag())
+
+    def _start_column_drag(self, column: str) -> None:
+        self._drag_column_key = column
+
+    def _drag_column_over(self, event: tk.Event) -> None:
+        source = self._drag_column_key
+        target_widget = event.widget.winfo_containing(event.x_root, event.y_root)
+        target_column = self._column_header_widgets.get(target_widget)
+        if not source or not target_column or source == target_column or source not in self._column_order_keys or target_column not in self._column_order_keys:
             return
-        value = self._column_order_list.get(idx)
-        self._column_order_list.delete(idx)
-        self._column_order_list.insert(new_idx, value)
-        self._column_order_list.selection_set(new_idx)
+        source_index = self._column_order_keys.index(source)
+        target_index = self._column_order_keys.index(target_column)
+        self._column_order_keys.pop(source_index)
+        self._column_order_keys.insert(target_index, source)
+        self._render_column_order_headers()
+        self._on_toolbar_changed()
+
+    def _end_column_drag(self) -> None:
+        self._drag_column_key = None
+
+    def _on_column_visibility_changed(self) -> None:
+        current = self._collect_toolbar_settings()
+        self._column_order_keys = self._visible_column_order(current)
+        self._render_column_order_headers()
         self._on_toolbar_changed()
 
     def _collect_toolbar_settings(self) -> ToolbarSettings:
         data = {key: var.get() for key, var in self._toolbar_vars.items()}
-        data["column_order"] = [self._column_key_from_label(self._column_order_list.get(i)) for i in range(self._column_order_list.size())]
+        visible_order = [column for column in getattr(self, "_column_order_keys", []) if data.get(self._column_visibility_key(column), False)]
+        for column in ["username", "hostname", "port", "notes"]:
+            if data.get(self._column_visibility_key(column), False) and column not in visible_order:
+                visible_order.append(column)
+        data["column_order"] = visible_order
         return ToolbarSettings(**data)
 
     def _collect_source_visibility_settings(self) -> SourceVisibilitySettings:
@@ -656,7 +712,7 @@ class SettingsView(ttk.Frame):
 
         if section == "appearance":
             preview_appearance(self._app, persisted.appearance)
-        elif section == "toolbar":
+        elif section in {"toolbar", "columns"}:
             preview_toolbar_visibility(self._app, persisted.toolbar)
         elif section == "sources":
             self._app.settings.import_settings = persisted.import_settings
@@ -669,7 +725,7 @@ class SettingsView(ttk.Frame):
 
         if section == "appearance":
             preview_appearance(self._app, defaults.appearance)
-        elif section == "toolbar":
+        elif section in {"toolbar", "columns"}:
             preview_toolbar_visibility(self._app, defaults.toolbar)
         elif section == "sources":
             self._app.settings.import_settings = defaults.import_settings
