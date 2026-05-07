@@ -152,7 +152,8 @@ class SettingsView(ttk.Frame):
 
         nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(16, 20))
         nav.grid(row=0, column=0, sticky="nsw")
-        nav.columnconfigure(0, weight=1)
+        nav.columnconfigure(0, minsize=230)
+        nav.grid_propagate(False)
         self._nav = nav
 
         content_wrap = ttk.Frame(root, style="SettingsContent.TFrame", padding=(28, 22, 28, 16))
@@ -190,7 +191,7 @@ class SettingsView(ttk.Frame):
         ]
         ttk.Label(nav, text="Bereiche", style="SettingsNavTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 10))
         for idx, (key, label) in enumerate(sections, start=1):
-            btn = ttk.Button(nav, text=f"  {label}", command=lambda k=key: self._show_section(k), style="SettingsNav.TButton")
+            btn = ttk.Button(nav, text=f"  {label}", command=lambda k=key: self._show_section(k), style="SettingsNav.TButton", width=26)
             btn.grid(row=idx, column=0, sticky="ew", pady=4)
             self._nav_buttons[key] = btn
 
