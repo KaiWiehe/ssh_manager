@@ -172,10 +172,25 @@ class SettingsView(ttk.Frame):
         ttk.Label(header, text="Einstellungen", style="SettingsTitle.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(header, text="Direkt im Hauptfenster, optimiert für Fullscreen.", style="SettingsSubtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
 
-        self._content_host = ttk.Frame(content_wrap, style="SettingsContent.TFrame")
-        self._content_host.grid(row=1, column=0, sticky="nsew")
+        scroll_wrap = ttk.Frame(content_wrap, style="SettingsContent.TFrame")
+        scroll_wrap.grid(row=1, column=0, sticky="nsew")
+        scroll_wrap.columnconfigure(0, weight=1)
+        scroll_wrap.rowconfigure(0, weight=1)
+
+        self._content_canvas = tk.Canvas(scroll_wrap, highlightthickness=0, borderwidth=0)
+        self._content_canvas.grid(row=0, column=0, sticky="nsew")
+        self._content_scrollbar = ttk.Scrollbar(scroll_wrap, orient="vertical", command=self._content_canvas.yview)
+        self._content_scrollbar.grid(row=0, column=1, sticky="ns")
+        self._content_canvas.configure(yscrollcommand=self._content_scrollbar.set)
+
+        self._content_host = ttk.Frame(self._content_canvas, style="SettingsContent.TFrame")
         self._content_host.columnconfigure(0, weight=1)
         self._content_host.rowconfigure(0, weight=1)
+        self._content_window = self._content_canvas.create_window((0, 0), window=self._content_host, anchor="nw")
+        self._content_host.bind("<Configure>", self._on_scroll_content_configured)
+        self._content_canvas.bind("<Configure>", self._on_scroll_canvas_configured)
+        self._bind_mousewheel(self._content_canvas)
+        self._bind_mousewheel(self._content_host)
 
         actions = ttk.Frame(content_wrap, style="SettingsActions.TFrame", padding=(0, 16, 0, 0))
         actions.grid(row=2, column=0, sticky="ew")
@@ -209,7 +224,37 @@ class SettingsView(ttk.Frame):
         self._section_frames["terminal"] = self._build_terminal_section()
         self._section_frames["transfer"] = self._build_transfer_section()
         self._section_frames["reset"] = self._build_reset_section()
+        self._bind_mousewheel_recursive(self._content_host)
         self._show_section(self._active_section)
+
+    def _on_scroll_content_configured(self, _event=None) -> None:
+        if hasattr(self, "_content_canvas"):
+            self._content_canvas.configure(scrollregion=self._content_canvas.bbox("all"))
+
+    def _on_scroll_canvas_configured(self, event: tk.Event) -> None:
+        if hasattr(self, "_content_canvas") and hasattr(self, "_content_window"):
+            self._content_canvas.itemconfigure(self._content_window, width=event.width)
+
+    def _bind_mousewheel(self, widget: tk.Widget) -> None:
+        widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        widget.bind("<Button-4>", self._on_mousewheel, add="+")
+        widget.bind("<Button-5>", self._on_mousewheel, add="+")
+
+    def _bind_mousewheel_recursive(self, widget: tk.Widget) -> None:
+        self._bind_mousewheel(widget)
+        for child in widget.winfo_children():
+            self._bind_mousewheel_recursive(child)
+
+    def _on_mousewheel(self, event: tk.Event) -> None:
+        if not hasattr(self, "_content_canvas"):
+            return
+        if getattr(event, "num", None) == 4:
+            delta = -3
+        elif getattr(event, "num", None) == 5:
+            delta = 3
+        else:
+            delta = -1 * int(event.delta / 120)
+        self._content_canvas.yview_scroll(delta, "units")
 
     def _build_section_frame(self, title: str, description: str) -> ttk.Frame:
         frame = ttk.Frame(self._content_host, style="SettingsPanel.TFrame", padding=22)
