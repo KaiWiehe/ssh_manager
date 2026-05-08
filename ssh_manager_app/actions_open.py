@@ -72,8 +72,11 @@ def open_in_winscp(app, sessions: list[Session]) -> None:
             cmd = [winscp, full_path]
             if open_mode == "windows":
                 cmd.append("/newinstance")
-            subprocess.Popen(cmd)
+            process = subprocess.Popen(cmd)
             if open_mode == "tabs" and index < len(sessions) - 1:
-                time.sleep(0.25)
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    time.sleep(2)
     except OSError as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten von WinSCP:\n{exc}", parent=app)
