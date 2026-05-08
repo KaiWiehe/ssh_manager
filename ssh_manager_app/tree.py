@@ -19,6 +19,15 @@ def _session_values_text(sessions: list[Session], attribute: str) -> str:
     )
 
 
+def _session_notes_text(sessions: list[Session], notes_getter) -> str:
+    """Verkettet nicht-leere Session-Notizen zeilenweise für die Zwischenablage."""
+    return "\n".join(
+        note
+        for session in sessions
+        if (note := notes_getter(session.key).strip())
+    )
+
+
 class SessionTree(ttk.Frame):
     """
     ttk.Treeview-Wrapper mit Checkbox-Unterstützung.
@@ -397,6 +406,14 @@ class SessionTree(ttk.Frame):
             if checked
         ]
 
+    def _copy_session_values(self, sessions: list[Session], attribute: str) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(_session_values_text(sessions, attribute))
+
+    def _copy_session_notes(self, sessions: list[Session]) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(_session_notes_text(sessions, self._notes_getter))
+
     def get_single_context_session(self) -> Session | None:
         """Gibt die fokussierte Treeview-Session zurück, falls genau eine Zeile im Fokus ist."""
         item_id = self._tv.focus()
@@ -510,20 +527,21 @@ class SessionTree(ttk.Frame):
                     label=f"Benutzer entfernen… ({len(folder_sessions)})",
                     command=lambda ss=list(folder_sessions): self._on_clear_sessions_username(ss),
                 )
+            menu.add_separator()
             menu.add_command(
                 label="Hostnames kopieren",
-                command=lambda ss=list(folder_sessions): (
-                    self.clipboard_clear(),
-                    self.clipboard_append(_session_values_text(ss, "hostname")),
-                ),
+                command=lambda ss=list(folder_sessions): self._copy_session_values(ss, "hostname"),
             )
             menu.add_command(
                 label="Namen kopieren",
-                command=lambda ss=list(folder_sessions): (
-                    self.clipboard_clear(),
-                    self.clipboard_append(_session_values_text(ss, "display_name")),
-                ),
+                command=lambda ss=list(folder_sessions): self._copy_session_values(ss, "display_name"),
             )
+            if any(self._notes_getter(s.key).strip() for s in folder_sessions):
+                menu.add_command(
+                    label="Notizen kopieren",
+                    command=lambda ss=list(folder_sessions): self._copy_session_notes(ss),
+                )
+            menu.add_separator()
             menu.add_command(
                 label="Hosts prüfen",
                 command=lambda fid=item_id: self.check_folder_hosts(fid),
@@ -724,14 +742,20 @@ class SessionTree(ttk.Frame):
                     command=self._on_open_ssh_config_in_vscode,
                 )
             menu.add_separator()
+        menu.add_separator()
         menu.add_command(
             label="Hostname kopieren",
-            command=lambda h=session.hostname: (self.clipboard_clear(), self.clipboard_append(h)),
+            command=lambda s=session: self._copy_session_values([s], "hostname"),
         )
         menu.add_command(
             label="Name kopieren",
-            command=lambda n=session.display_name: (self.clipboard_clear(), self.clipboard_append(n)),
+            command=lambda s=session: self._copy_session_values([s], "display_name"),
         )
+        if self._notes_getter(session.key).strip():
+            menu.add_command(
+                label="Notiz kopieren",
+                command=lambda s=session: self._copy_session_notes([s]),
+            )
         selected = self.get_selected_sessions()
         if len(selected) >= 2:
             if self._on_set_sessions_username:
@@ -746,18 +770,17 @@ class SessionTree(ttk.Frame):
                 )
             menu.add_command(
                 label=f"Alle {len(selected)} Hostnamen kopieren",
-                command=lambda ss=list(selected): (
-                    self.clipboard_clear(),
-                    self.clipboard_append(_session_values_text(ss, "hostname")),
-                ),
+                command=lambda ss=list(selected): self._copy_session_values(ss, "hostname"),
             )
             menu.add_command(
                 label=f"Alle {len(selected)} Namen kopieren",
-                command=lambda ss=list(selected): (
-                    self.clipboard_clear(),
-                    self.clipboard_append(_session_values_text(ss, "display_name")),
-                ),
+                command=lambda ss=list(selected): self._copy_session_values(ss, "display_name"),
             )
+            if any(self._notes_getter(s.key).strip() for s in selected):
+                menu.add_command(
+                    label=f"Alle {len(selected)} Notizen kopieren",
+                    command=lambda ss=list(selected): self._copy_session_notes(ss),
+                )
         # Hosts prüfen
         if len(selected) >= 2:
             checked_pairs = [

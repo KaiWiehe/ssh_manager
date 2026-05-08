@@ -36,7 +36,7 @@ from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import DEFAULT_USER, PALETTE, QUICK_USERS, _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, _build_jump_ssh_command, _build_ssh_command, _shell_single_quote, _ssh_target, _terminal_profile_flag, _terminal_title_flag, build_wt_command, parse_session_key
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
-from ssh_manager_app.tree import _session_values_text
+from ssh_manager_app.tree import _session_notes_text, _session_values_text
 from ssh_manager_app.storage import (
     load_app_sessions,
     load_filezilla_config_sessions,
@@ -1187,6 +1187,17 @@ def test_session_values_text_joins_names_and_skips_empty_values():
     ]
 
     assert _session_values_text(sessions, "display_name") == "App\nDB"
+
+
+def test_session_notes_text_joins_notes_and_skips_empty_values():
+    sessions = [
+        Session("k1", "App", [], "10.0.0.1"),
+        Session("k2", "DB", [], "10.0.0.2"),
+        Session("k3", "Web", [], "10.0.0.3"),
+    ]
+    notes = {"k1": " first note ", "k2": "", "k3": "second note"}
+
+    assert _session_notes_text(sessions, lambda key: notes.get(key, "")) == "first note\nsecond note"
 
 
 def _mock_ssh_config(content: str):
