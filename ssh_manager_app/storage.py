@@ -17,7 +17,7 @@ from .constants import (
     _SSH_CONFIG_PREFIX,
     _STATE_FILE,
 )
-from .models import AppSettings, AppearanceSettings, ImportSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, default_settings, settings_to_dict
+from .models import AppSettings, AppearanceSettings, ImportSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, WinSCPSettings, default_settings, settings_to_dict
 
 
 def load_settings() -> AppSettings:
@@ -42,6 +42,9 @@ def load_settings_from_path(path: Path) -> AppSettings:
     wt_raw = raw_dict.get("windows_terminal", {})
     if not isinstance(wt_raw, dict):
         wt_raw = {}
+    winscp_raw = raw_dict.get("winscp", {})
+    if not isinstance(winscp_raw, dict):
+        winscp_raw = {}
     visibility_raw = raw_dict.get("source_visibility", {})
     if not isinstance(visibility_raw, dict):
         visibility_raw = {}
@@ -70,6 +73,9 @@ def load_settings_from_path(path: Path) -> AppSettings:
     startup_expand_mode = str(raw_dict.get("startup_expand_mode", defaults.startup_expand_mode))
     if startup_expand_mode not in {"remember", "expanded", "collapsed"}:
         startup_expand_mode = defaults.startup_expand_mode
+    winscp_open_mode = str(winscp_raw.get("open_mode", defaults.winscp.open_mode))
+    if winscp_open_mode not in {"tabs", "windows"}:
+        winscp_open_mode = defaults.winscp.open_mode
 
     theme = str(appearance_raw.get("theme", defaults.appearance.theme)).strip() or defaults.appearance.theme
     if theme not in {"default", "modern_light", "dark_neutral", "midnight"}:
@@ -135,6 +141,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
             use_tab_color=bool(wt_raw.get("use_tab_color", defaults.windows_terminal.use_tab_color)),
             title_mode=str(wt_raw.get("title_mode", defaults.windows_terminal.title_mode)),
         ),
+        winscp=WinSCPSettings(open_mode=winscp_open_mode),
         source_visibility=SourceVisibilitySettings(
             show_winscp=bool(visibility_raw.get("show_winscp", defaults.source_visibility.show_winscp)),
             show_ssh_config=bool(visibility_raw.get("show_ssh_config", defaults.source_visibility.show_ssh_config)),

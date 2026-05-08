@@ -2211,12 +2211,32 @@ def test_open_in_winscp_opens_all_selected_sessions():
     ]
 
     with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
-         patch("ssh_manager_app.actions_open.subprocess.Popen") as popen:
+         patch("ssh_manager_app.actions_open.subprocess.Popen") as popen, \
+         patch("ssh_manager_app.actions_open.time.sleep") as sleep:
         open_in_winscp(app, sessions)
 
     assert popen.call_count == 2
     assert popen.call_args_list[0].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/srv1"]
     assert popen.call_args_list[1].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/Db/srv2"]
+    sleep.assert_called_once_with(0.25)
+
+
+def test_open_in_winscp_can_force_separate_windows():
+    app = MagicMock()
+    app.settings.winscp.open_mode = "windows"
+    sessions = [
+        Session("s1", "srv1", ["Prod"], "10.0.0.1"),
+        Session("s2", "srv2", ["Prod", "Db"], "10.0.0.2"),
+    ]
+
+    with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
+         patch("ssh_manager_app.actions_open.subprocess.Popen") as popen, \
+         patch("ssh_manager_app.actions_open.time.sleep") as sleep:
+        open_in_winscp(app, sessions)
+
+    assert popen.call_args_list[0].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/srv1", "/newinstance"]
+    assert popen.call_args_list[1].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/Db/srv2", "/newinstance"]
+    sleep.assert_not_called()
 
 
 def test_open_ssh_config_in_vscode_shows_error_on_oserror():

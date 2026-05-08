@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from tkinter import messagebox
 
 from .constants import _SSH_CONFIG_FILE
@@ -36,8 +37,17 @@ def open_in_winscp(app, sessions: list[Session]) -> None:
         )
         return
     try:
-        for session in sessions:
+        winscp_settings = getattr(getattr(app, "settings", None), "winscp", None)
+        open_mode = getattr(winscp_settings, "open_mode", "tabs")
+        if open_mode not in {"tabs", "windows"}:
+            open_mode = "tabs"
+        for index, session in enumerate(sessions):
             full_path = "/".join(session.folder_path + [session.display_name])
-            subprocess.Popen([winscp, full_path])
+            cmd = [winscp, full_path]
+            if open_mode == "windows":
+                cmd.append("/newinstance")
+            subprocess.Popen(cmd)
+            if open_mode == "tabs" and index < len(sessions) - 1:
+                time.sleep(0.25)
     except OSError as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten von WinSCP:\n{exc}", parent=app)

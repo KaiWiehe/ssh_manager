@@ -61,6 +61,11 @@ class WindowsTerminalSettings:
 
 
 @dataclass
+class WinSCPSettings:
+    open_mode: str = "tabs"
+
+
+@dataclass
 class SourceVisibilitySettings:
     show_winscp: bool = True
     show_ssh_config: bool = True
@@ -95,6 +100,7 @@ class AppSettings:
     host_check_timeout_seconds: int = 3
     startup_expand_mode: str = "remember"
     windows_terminal: WindowsTerminalSettings = field(default_factory=WindowsTerminalSettings)
+    winscp: WinSCPSettings = field(default_factory=WinSCPSettings)
     source_visibility: SourceVisibilitySettings = field(default_factory=SourceVisibilitySettings)
     import_settings: ImportSettings = field(default_factory=ImportSettings)
     appearance: AppearanceSettings = field(default_factory=AppearanceSettings)

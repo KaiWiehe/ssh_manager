@@ -6,7 +6,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
-from . import AppSettings, AppearanceSettings, ImportSettings, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, settings_to_dict
+from . import AppSettings, AppearanceSettings, ImportSettings, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, WinSCPSettings, settings_to_dict
 from .constants import _SSH_CONFIG_FILE
 from .dialogs_toast import ToastNotification
 from .storage import load_settings_from_path
@@ -113,6 +113,10 @@ class SettingsView(ttk.Frame):
         "user_host": "Benutzer@Host",
         "name_host": "Name (Host)",
     }
+    WINSCP_OPEN_MODE_LABELS = {
+        "tabs": "Als Tabs im vorhandenen/gleichen Fenster",
+        "windows": "Jede Verbindung in eigenem Fenster",
+    }
 
     def __init__(self, parent: tk.Widget, app: "SSHManagerApp"):
         super().__init__(parent, padding=0)
@@ -124,6 +128,7 @@ class SettingsView(ttk.Frame):
         self._startup_expand_var = tk.StringVar()
         self._profile_name_var = tk.StringVar()
         self._title_mode_var = tk.StringVar()
+        self._winscp_open_mode_var = tk.StringVar()
         self._theme_var = tk.StringVar()
         self._accent_var = tk.StringVar()
         self._ui_font_family_var = tk.StringVar()
@@ -267,7 +272,26 @@ class SettingsView(ttk.Frame):
             text="Aus = importierte User ignorieren; feste Benutzer kannst du danach in der App setzen.",
             style="SettingsHint.TLabel",
         ).grid(row=3, column=0, sticky="w", pady=(2, 0), padx=(24, 0))
-        self._add_section_tools(frame, 4, "sources")
+
+        winscp_grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        winscp_grid.grid(row=4, column=0, sticky="nw", pady=(18, 0))
+        winscp_grid.columnconfigure(0, minsize=220)
+        winscp_grid.columnconfigure(1, minsize=360)
+        ttk.Label(winscp_grid, text="WinSCP öffnen:", style="SettingsValue.TLabel").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
+        self._winscp_open_mode_combo = ttk.Combobox(
+            winscp_grid,
+            textvariable=self._winscp_open_mode_var,
+            values=list(self.WINSCP_OPEN_MODE_LABELS.values()),
+            state="readonly",
+            width=42,
+        )
+        self._winscp_open_mode_combo.grid(row=0, column=1, sticky="ew", pady=6)
+        ttk.Label(
+            winscp_grid,
+            text="Default: Tabs. Für einzelne Fenster wird WinSCP mit /newinstance gestartet.",
+            style="SettingsHint.TLabel",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 0), padx=(24, 0))
+        self._add_section_tools(frame, 5, "sources")
         return frame
 
     def _build_appearance_section(self) -> ttk.Frame:
@@ -502,6 +526,7 @@ class SettingsView(ttk.Frame):
         self._profile_name_var.set(settings.windows_terminal.profile_name)
         self._use_tab_color_var.set(settings.windows_terminal.use_tab_color)
         self._title_mode_var.set(self.TITLE_MODE_LABELS.get(settings.windows_terminal.title_mode, self.TITLE_MODE_LABELS["default"]))
+        self._winscp_open_mode_var.set(self.WINSCP_OPEN_MODE_LABELS.get(settings.winscp.open_mode, self.WINSCP_OPEN_MODE_LABELS["tabs"]))
         self._winscp_include_username_var.set(settings.import_settings.winscp_include_username)
         self._filezilla_include_username_var.set(settings.import_settings.filezilla_include_username)
         self._set_listbox_selection(self._theme_list, list(self.THEME_LABELS).index(settings.appearance.theme if settings.appearance.theme in self.THEME_LABELS else "default"))
@@ -676,6 +701,8 @@ class SettingsView(ttk.Frame):
             raise ValueError("Timeout muss eine ganze Zahl >= 1 sein.") from e
         startup_expand_mode = next((key for key, label in self.STARTUP_LABELS.items() if label == self._startup_expand_var.get()), "remember")
         title_mode = next((key for key, label in self.TITLE_MODE_LABELS.items() if label == self._title_mode_var.get()), "default")
+        winscp_open_mode_label = getattr(getattr(self, "_winscp_open_mode_var", None), "get", lambda: self.WINSCP_OPEN_MODE_LABELS["tabs"])()
+        winscp_open_mode = next((key for key, label in self.WINSCP_OPEN_MODE_LABELS.items() if label == winscp_open_mode_label), "tabs")
         return AppSettings(
             quick_users=quick_users,
             default_user=default_user,
@@ -691,6 +718,7 @@ class SettingsView(ttk.Frame):
                 use_tab_color=self._use_tab_color_var.get(),
                 title_mode=title_mode,
             ),
+            winscp=WinSCPSettings(open_mode=winscp_open_mode),
             source_visibility=self._collect_source_visibility_settings(),
             appearance=self._collect_appearance_settings(),
         )
