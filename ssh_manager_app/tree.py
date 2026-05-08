@@ -537,20 +537,20 @@ class SessionTree(ttk.Frame):
                 )
             menu.add_separator()
             menu.add_command(
-                label="Hostnames kopieren",
+                label=f"Hostnames kopieren ({len(folder_sessions)})",
                 command=lambda ss=list(folder_sessions): self._copy_session_values(ss, "hostname"),
             )
             menu.add_command(
-                label="Namen kopieren",
+                label=f"Namen kopieren ({len(folder_sessions)})",
                 command=lambda ss=list(folder_sessions): self._copy_session_values(ss, "display_name"),
             )
             menu.add_command(
-                label="Notizen kopieren",
+                label=f"Notizen kopieren ({len(folder_sessions)})",
                 command=lambda ss=list(folder_sessions): self._copy_session_notes(ss),
             )
             menu.add_separator()
             menu.add_command(
-                label="Hosts prüfen",
+                label=f"Hosts prüfen ({len(folder_sessions)})",
                 command=lambda fid=item_id: self.check_folder_hosts(fid),
             )
             favorite_keys = self._favorite_keys_getter()
@@ -594,12 +594,12 @@ class SessionTree(ttk.Frame):
             menu.add_separator()
             if self._on_deploy_ssh_key:
                 menu.add_command(
-                    label="SSH Key übertragen…",
+                    label=f"SSH Key übertragen… ({len(folder_sessions)})",
                     command=lambda ss=list(folder_sessions): self._on_deploy_ssh_key(ss),
                 )
             if self._on_remove_ssh_key:
                 menu.add_command(
-                    label="SSH Key entfernen…",
+                    label=f"SSH Key entfernen… ({len(folder_sessions)})",
                     command=lambda ss=list(folder_sessions): self._on_remove_ssh_key(ss),
                 )
         menu.tk_popup(event.x_root, event.y_root)
