@@ -11,7 +11,7 @@ from .core import (
     build_ssh_remove_key_command,
     build_ssh_tunnel_command,
 )
-from .actions_sessions import set_session_username
+from .actions_sessions import _set_session_username, set_session_username
 from .actions_ui import add_recent_session, add_recent_sessions, rebuild_sessions
 from .dialogs_remote import (
     JumpHostDialog,
@@ -35,11 +35,21 @@ def connect_sessions(app, sessions: list[Session]) -> None:
     terminal_settings = app.settings.windows_terminal
     shared_user = ""
     if any(not session.username for session in sessions):
-        dialog = UserDialog(app, quick_users=quick_users, default_user=default_user)
+        dialog = UserDialog(
+            app,
+            quick_users=quick_users,
+            default_user=default_user,
+            allow_remember=True,
+            remember_label="Benutzer für alle Verbindungen merken",
+        )
         app.wait_window(dialog)
         if dialog.result is None:
             return
-        shared_user = dialog.result
+        shared_user, remember = dialog.result
+        if remember:
+            for session in sessions:
+                _set_session_username(app, session, shared_user)
+            rebuild_sessions(app)
     try:
         app._terminal_launcher.launch(
             sessions,

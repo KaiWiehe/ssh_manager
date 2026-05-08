@@ -42,13 +42,14 @@ class UserDialog(tk.Toplevel):
     Nach Schließen: self.result = gewählter Username (str), (Username, merken) oder None (Abbrechen).
     """
 
-    def __init__(self, parent: tk.Tk, title: str = "Benutzername auswählen", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, allow_remember: bool = False):
+    def __init__(self, parent: tk.Tk, title: str = "Benutzername auswählen", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, allow_remember: bool = False, remember_label: str = "Benutzer für diese Verbindung merken"):
         super().__init__(parent)
         self.title(title)
         self.resizable(False, False)
         self.result = None
         self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
         self._allow_remember = allow_remember
+        self._remember_label = remember_label
         self._remember_var = tk.BooleanVar(value=False)
 
         # Modal machen
@@ -86,7 +87,7 @@ class UserDialog(tk.Toplevel):
         entry.focus()
 
         if self._allow_remember:
-            ttk.Checkbutton(frame, text="Benutzer für diese Verbindung merken", variable=self._remember_var).grid(
+            ttk.Checkbutton(frame, text=self._remember_label, variable=self._remember_var).grid(
                 row=4, column=0, columnspan=quick_count, sticky="w", pady=(0, 12)
             )
 

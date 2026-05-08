@@ -2756,13 +2756,19 @@ def test_connect_sessions_uses_app_settings_directly():
     session = Session("s1", "srv1", [], "10.0.0.1")
 
     dialog = MagicMock()
-    dialog.result = "bob"
+    dialog.result = ("bob", False)
 
     with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog) as dialog_cls, \
          patch("ssh_manager_app.actions_remote.add_recent_sessions") as add_recent:
         connect_sessions(app, [session])
 
-    dialog_cls.assert_called_once_with(app, quick_users=["alice", "bob"], default_user="alice")
+    dialog_cls.assert_called_once_with(
+        app,
+        quick_users=["alice", "bob"],
+        default_user="alice",
+        allow_remember=True,
+        remember_label="Benutzer für alle Verbindungen merken",
+    )
     app.wait_window.assert_called_once_with(dialog)
     app._terminal_launcher.launch.assert_called_once_with(
         [session],
@@ -2773,6 +2779,38 @@ def test_connect_sessions_uses_app_settings_directly():
     add_recent.assert_called_once_with(app, [session])
 
 
+
+
+def test_connect_sessions_can_remember_shared_username_for_all_sessions():
+    app = MagicMock()
+    app.settings = AppSettings(quick_users=["alice", "bob"], default_user="alice")
+    app._tree.get_session_colors.return_value = {}
+    sessions = [
+        Session("s1", "srv1", [], "10.0.0.1"),
+        Session("s2", "srv2", [], "10.0.0.2", username="old"),
+    ]
+    app._app_sessions = sessions.copy()
+    app._session_user_overrides = {}
+
+    dialog = MagicMock()
+    dialog.result = ("bob", True)
+
+    with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog), \
+         patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
+         patch("ssh_manager_app.actions_remote.rebuild_sessions") as rebuild, \
+         patch("ssh_manager_app.actions_remote.add_recent_sessions"):
+        connect_sessions(app, sessions)
+
+    assert app._app_sessions[0].username == "bob"
+    assert app._app_sessions[1].username == "bob"
+    save_sessions.assert_called()
+    rebuild.assert_called_once_with(app)
+    app._terminal_launcher.launch.assert_called_once_with(
+        sessions,
+        "bob",
+        {},
+        terminal_settings=app.settings.windows_terminal,
+    )
 
 
 def test_connect_sessions_skips_user_dialog_when_all_sessions_have_usernames():
