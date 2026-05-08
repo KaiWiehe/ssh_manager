@@ -902,7 +902,7 @@ class SessionTree(ttk.Frame):
 
     def filter(self, query: str) -> None:
         """
-        Filtert sichtbare Sessions nach query (case-insensitive, Name + Hostname).
+        Filtert sichtbare Sessions nach query (case-insensitive, Name + Hostname + Ordnerpfad).
         Bei leerem query werden alle Sessions wieder angezeigt.
         Checkbox-Zustände bleiben beim Filtern erhalten.
         Während einer aktiven Suche wird der Tree vollständig aufgeklappt;
@@ -924,7 +924,12 @@ class SessionTree(ttk.Frame):
         if q:
             filtered = [
                 s for s in self._sessions
-                if q in s.display_name.lower() or q in s.hostname.lower()
+                if (
+                    q in s.display_name.lower()
+                    or q in s.hostname.lower()
+                    or q in "/".join(s.folder_path).lower()
+                    or any(q in folder.lower() for folder in s.folder_path)
+                )
             ]
             # Alle Ordner der Treffer aufklappen
             open_folders: set[str] | None = {
