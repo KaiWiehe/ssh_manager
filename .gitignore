@@ -5,3 +5,4 @@ build/
 dist/
 *.spec.bak
 .claude/settings.local.json
+PLAN.md

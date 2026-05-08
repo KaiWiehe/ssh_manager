@@ -2004,16 +2004,17 @@ def test_duplicate_ssh_alias_creates_app_session_and_rebuilds():
     rebuild.assert_called_once_with(app)
 
 
-def test_open_appdata_jsons_in_vscode_uses_popen_shell():
+def test_open_appdata_jsons_in_vscode_launches_code_with_shell():
     app = MagicMock()
     appdata_dir = MagicMock()
     appdata_dir.__str__.return_value = "/tmp/appdata"
 
-    with patch("ssh_manager_app.actions_sessions._APPDATA_DIR", appdata_dir):
+    with patch("ssh_manager_app.actions_sessions._APPDATA_DIR", appdata_dir), \
+         patch("ssh_manager_app.actions_sessions.subprocess.Popen") as popen:
         open_appdata_jsons_in_vscode(app)
 
     appdata_dir.mkdir.assert_called_once_with(parents=True, exist_ok=True)
-    app._popen_shell.assert_called_once_with('code "/tmp/appdata"')
+    popen.assert_called_once_with('code "/tmp/appdata"', shell=True)
 
 
 def test_add_session_returns_early_on_cancel():
@@ -2073,9 +2074,9 @@ def test_open_appdata_jsons_in_vscode_shows_error_on_oserror():
     app = MagicMock()
     appdata_dir = MagicMock()
     appdata_dir.__str__.return_value = "/tmp/appdata"
-    app._popen_shell.side_effect = OSError("boom")
 
     with patch("ssh_manager_app.actions_sessions._APPDATA_DIR", appdata_dir), \
+         patch("ssh_manager_app.actions_sessions.subprocess.Popen", side_effect=OSError("boom")), \
          patch("ssh_manager_app.actions_sessions.messagebox.showerror") as showerror:
         open_appdata_jsons_in_vscode(app)
 
