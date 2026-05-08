@@ -118,6 +118,8 @@ class SessionTree(ttk.Frame):
         self._tooltip_after_id = None
         self._last_tooltip_item: str | None = None
         self._suppress_next_click = False
+        self._left_press_item_id: str | None = None
+        self._left_press_was_folder = False
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
         self._item_to_session: dict[str, Session] = {}
@@ -178,6 +180,7 @@ class SessionTree(ttk.Frame):
         ttk.Button(card, text="+ Verbindung hinzufügen", style="Accent.TButton", command=self._empty_add_session).grid(row=2, column=0)
 
         # Events
+        self._tv.bind("<ButtonPress-1>", self._on_left_press)
         self._tv.bind("<ButtonRelease-1>", self._on_left_click)
         self._tv.bind("<Double-Button-1>", self._on_double_click)
         self._tv.bind("<ButtonRelease-3>", self._on_right_click)
@@ -185,7 +188,7 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<<TreeviewClose>>", lambda _e: self._notify_ui_state_changed())
         self._tv.bind("<Motion>", self._on_tree_motion)
         self._tv.bind("<Leave>", lambda _e: self._hide_tooltip())
-        self._tv.bind("<ButtonPress>", lambda _e: self._hide_tooltip())
+        self._tv.bind("<ButtonPress>", lambda _e: self._hide_tooltip(), add="+")
 
         self._configure_color_tags()
         self._apply_column_visibility()
@@ -360,13 +363,30 @@ class SessionTree(ttk.Frame):
 
         self._update_empty_state(sessions)
 
+    def _on_left_press(self, event: tk.Event) -> None:
+        """Merkt, auf welcher Zeile der Linksklick begonnen hat.
+
+        Treeview klappt Ordner bereits bei ButtonPress auf/zu. Wenn sich dadurch
+        Zeilen verschieben, darf ButtonRelease nicht versehentlich eine nun unter
+        der Maus liegende Session anhaken.
+        """
+        item_id = self._tv.identify_row(event.y)
+        self._left_press_item_id = item_id or None
+        self._left_press_was_folder = bool(item_id and self.TAG_FOLDER in self._tv.item(item_id, "tags"))
+
     def _on_left_click(self, event: tk.Event) -> None:
-        """Checkbox togglen wenn auf eine Session-Zeile geklickt wird."""
+        """Checkbox togglen wenn Press und Release auf derselben Session-Zeile liegen."""
         if self._suppress_next_click:
             self._suppress_next_click = False
+            self._left_press_item_id = None
+            self._left_press_was_folder = False
             return
         item_id = self._tv.identify_row(event.y)
-        if not item_id:
+        press_item_id = self._left_press_item_id
+        press_was_folder = self._left_press_was_folder
+        self._left_press_item_id = None
+        self._left_press_was_folder = False
+        if not item_id or press_was_folder or item_id != press_item_id:
             return
         self._tv.focus(item_id)
         if self.TAG_SESSION not in self._tv.item(item_id, "tags"):
