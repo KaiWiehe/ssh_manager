@@ -177,11 +177,12 @@ class SettingsView(ttk.Frame):
         scroll_wrap.columnconfigure(0, weight=1)
         scroll_wrap.rowconfigure(0, weight=1)
 
-        self._content_canvas = tk.Canvas(scroll_wrap, highlightthickness=0, borderwidth=0)
+        canvas_bg = ttk.Style().lookup("SettingsContent.TFrame", "background") or self.cget("background")
+        self._content_canvas = tk.Canvas(scroll_wrap, highlightthickness=0, borderwidth=0, background=canvas_bg)
         self._content_canvas.grid(row=0, column=0, sticky="nsew")
-        self._content_scrollbar = ttk.Scrollbar(scroll_wrap, orient="vertical", command=self._content_canvas.yview)
-        self._content_scrollbar.grid(row=0, column=1, sticky="ns")
-        self._content_canvas.configure(yscrollcommand=self._content_scrollbar.set)
+        self._content_vscrollbar = ttk.Scrollbar(scroll_wrap, orient="vertical", command=self._content_canvas.yview)
+        self._content_hscrollbar = ttk.Scrollbar(scroll_wrap, orient="horizontal", command=self._content_canvas.xview)
+        self._content_canvas.configure(xscrollcommand=self._on_xscroll, yscrollcommand=self._on_yscroll)
 
         self._content_host = ttk.Frame(self._content_canvas, style="SettingsContent.TFrame")
         self._content_host.columnconfigure(0, weight=1)
@@ -228,12 +229,32 @@ class SettingsView(ttk.Frame):
         self._show_section(self._active_section)
 
     def _on_scroll_content_configured(self, _event=None) -> None:
-        if hasattr(self, "_content_canvas"):
-            self._content_canvas.configure(scrollregion=self._content_canvas.bbox("all"))
+        self._update_scroll_region()
 
-    def _on_scroll_canvas_configured(self, event: tk.Event) -> None:
-        if hasattr(self, "_content_canvas") and hasattr(self, "_content_window"):
-            self._content_canvas.itemconfigure(self._content_window, width=event.width)
+    def _on_scroll_canvas_configured(self, _event: tk.Event) -> None:
+        self._update_scroll_region()
+
+    def _update_scroll_region(self) -> None:
+        if not hasattr(self, "_content_canvas") or not hasattr(self, "_content_window"):
+            return
+        canvas_width = max(1, self._content_canvas.winfo_width())
+        canvas_height = max(1, self._content_canvas.winfo_height())
+        content_width = max(1, self._content_host.winfo_reqwidth())
+        content_height = max(1, self._content_host.winfo_reqheight())
+        window_width = max(canvas_width, content_width)
+        window_height = max(canvas_height, content_height)
+        self._content_canvas.itemconfigure(self._content_window, width=window_width, height=window_height)
+        self._content_canvas.configure(scrollregion=(0, 0, window_width, window_height))
+        self._set_scrollbar_visibility(self._content_vscrollbar, content_height > canvas_height, row=0, column=1, sticky="ns")
+        self._set_scrollbar_visibility(self._content_hscrollbar, content_width > canvas_width, row=1, column=0, sticky="ew")
+
+    def _set_scrollbar_visibility(self, scrollbar: ttk.Scrollbar, visible: bool, *, row: int, column: int, sticky: str) -> None:
+        if visible:
+            if not scrollbar.winfo_ismapped():
+                scrollbar.grid(row=row, column=column, sticky=sticky)
+        else:
+            if scrollbar.winfo_ismapped():
+                scrollbar.grid_remove()
 
     def _bind_mousewheel(self, widget: tk.Widget) -> None:
         widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
@@ -245,8 +266,14 @@ class SettingsView(ttk.Frame):
         for child in widget.winfo_children():
             self._bind_mousewheel_recursive(child)
 
+    def _on_xscroll(self, first: str, last: str) -> None:
+        self._content_hscrollbar.set(first, last)
+
+    def _on_yscroll(self, first: str, last: str) -> None:
+        self._content_vscrollbar.set(first, last)
+
     def _on_mousewheel(self, event: tk.Event) -> None:
-        if not hasattr(self, "_content_canvas"):
+        if not hasattr(self, "_content_canvas") or not self._content_vscrollbar.winfo_ismapped():
             return
         if getattr(event, "num", None) == 4:
             delta = -3
@@ -254,6 +281,9 @@ class SettingsView(ttk.Frame):
             delta = 3
         else:
             delta = -1 * int(event.delta / 120)
+        first, last = self._content_canvas.yview()
+        if (delta < 0 and first <= 0) or (delta > 0 and last >= 1):
+            return
         self._content_canvas.yview_scroll(delta, "units")
 
     def _build_section_frame(self, title: str, description: str) -> ttk.Frame:
