@@ -28,7 +28,7 @@ from ssh_manager_app.dialogs_session_edit import SessionEditDialog
 from ssh_manager_app.dialogs_settings_misc import SettingsView, SshConfigInspectDialog
 from ssh_manager_app.dialogs_toast import ToastNotification
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
-from ssh_manager_app.actions_open import inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
+from ssh_manager_app.actions_open import _set_winscp_external_sessions_in_existing_window, inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, persist_ui_state, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
@@ -2211,10 +2211,12 @@ def test_open_in_winscp_opens_all_selected_sessions():
     ]
 
     with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
+         patch("ssh_manager_app.actions_open._set_winscp_external_sessions_in_existing_window") as set_existing_window, \
          patch("ssh_manager_app.actions_open.subprocess.Popen") as popen, \
          patch("ssh_manager_app.actions_open.time.sleep") as sleep:
         open_in_winscp(app, sessions)
 
+    set_existing_window.assert_called_once_with(True)
     assert popen.call_count == 2
     assert popen.call_args_list[0].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/srv1"]
     assert popen.call_args_list[1].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/Db/srv2"]
@@ -2230,13 +2232,38 @@ def test_open_in_winscp_can_force_separate_windows():
     ]
 
     with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
+         patch("ssh_manager_app.actions_open._set_winscp_external_sessions_in_existing_window") as set_existing_window, \
          patch("ssh_manager_app.actions_open.subprocess.Popen") as popen, \
          patch("ssh_manager_app.actions_open.time.sleep") as sleep:
         open_in_winscp(app, sessions)
 
+    set_existing_window.assert_not_called()
     assert popen.call_args_list[0].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/srv1", "/newinstance"]
     assert popen.call_args_list[1].args[0] == ["C:/Program Files/WinSCP/WinSCP.exe", "Prod/Db/srv2", "/newinstance"]
     sleep.assert_not_called()
+
+
+def test_set_winscp_external_sessions_in_existing_window_updates_registry():
+    fake_key = MagicMock()
+    fake_key.__enter__.return_value = "key"
+    fake_winreg = SimpleNamespace(
+        HKEY_CURRENT_USER="hkcu",
+        KEY_SET_VALUE=0x2,
+        REG_DWORD=4,
+        CreateKeyEx=MagicMock(return_value=fake_key),
+        SetValueEx=MagicMock(),
+    )
+
+    with patch.dict(sys.modules, {"winreg": fake_winreg}):
+        _set_winscp_external_sessions_in_existing_window(True)
+
+    fake_winreg.CreateKeyEx.assert_called_once_with(
+        "hkcu",
+        r"Software\Martin Prikryl\WinSCP 2\Configuration\Interface",
+        0,
+        0x2,
+    )
+    fake_winreg.SetValueEx.assert_called_once_with("key", "ExternalSessionInExistingInstance", 0, 4, 1)
 
 
 def test_open_ssh_config_in_vscode_shows_error_on_oserror():

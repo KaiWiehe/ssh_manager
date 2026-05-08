@@ -25,6 +25,30 @@ def open_ssh_config_in_vscode(app) -> None:
 
 
 
+def _set_winscp_external_sessions_in_existing_window(enabled: bool) -> None:
+    r"""Setzt die WinSCP-Option für extern geöffnete Sessions auf vorhandenes Fenster.
+
+    WinSCP entscheidet über Tabs vs. neue Fenster nicht allein pro CLI-Aufruf,
+    sondern über die persistente Einstellung
+    Configuration\Interface\ExternalSessionInExistingInstance. /rawconfig wäre
+    hier ungeeignet, weil WinSCP dann laut eigener Startlogik nicht an eine
+    vorhandene Instanz weiterreicht.
+    """
+    try:
+        import winreg
+    except ImportError:
+        return
+
+    key_path = r"Software\Martin Prikryl\WinSCP 2\Configuration\Interface"
+    try:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, "ExternalSessionInExistingInstance", 0, winreg.REG_DWORD, 1 if enabled else 0)
+    except (OSError, AttributeError):
+        # Öffnen soll nicht komplett scheitern, nur weil die Preference nicht
+        # geschrieben werden konnte. WinSCP nutzt dann seine vorhandene Einstellung.
+        return
+
+
 def open_in_winscp(app, sessions: list[Session]) -> None:
     """Öffnet eine oder mehrere WinSCP-Sessions direkt in WinSCP."""
     winscp = _find_winscp()
@@ -41,6 +65,8 @@ def open_in_winscp(app, sessions: list[Session]) -> None:
         open_mode = getattr(winscp_settings, "open_mode", "tabs")
         if open_mode not in {"tabs", "windows"}:
             open_mode = "tabs"
+        if open_mode == "tabs":
+            _set_winscp_external_sessions_in_existing_window(True)
         for index, session in enumerate(sessions):
             full_path = "/".join(session.folder_path + [session.display_name])
             cmd = [winscp, full_path]
