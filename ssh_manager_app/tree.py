@@ -49,6 +49,7 @@ class SessionTree(ttk.Frame):
         initial_open_folders: set[str] | None = None,
         initial_session_colors: dict[str, str] | None = None,
         on_quick_connect=None,           # Callable[[Session], None] | None
+        on_connect_sessions=None,        # Callable[[list[Session]], None] | None
         on_edit_session=None,            # Callable[[Session], None] | None
         on_set_sessions_username=None,   # Callable[[list[Session]], None] | None
         on_clear_sessions_username=None, # Callable[[list[Session]], None] | None
@@ -84,6 +85,7 @@ class SessionTree(ttk.Frame):
         self._img_checked = img_checked
         self._on_selection_changed = on_selection_changed
         self._on_quick_connect = on_quick_connect
+        self._on_connect_sessions = on_connect_sessions
         self._on_edit_session = on_edit_session
         self._on_set_sessions_username = on_set_sessions_username
         self._on_clear_sessions_username = on_clear_sessions_username
@@ -506,6 +508,12 @@ class SessionTree(ttk.Frame):
         )
         folder_sessions = self._get_folder_sessions(item_id)
         if folder_sessions:
+            if self._on_connect_sessions:
+                menu.add_separator()
+                menu.add_command(
+                    label=f"Alle im Ordner verbinden ({len(folder_sessions)})",
+                    command=lambda ss=list(folder_sessions): self._on_connect_sessions(ss),
+                )
             winscp_sessions = [s for s in folder_sessions if s.source == "winscp"]
             if winscp_sessions and self._on_open_in_winscp:
                 menu.add_command(
@@ -598,29 +606,41 @@ class SessionTree(ttk.Frame):
         menu.tk_popup(event.x_root, event.y_root)
 
     def _show_session_menu(self, item_id: str, event: tk.Event) -> None:
-        """Kontextmenü für Session-Zeilen mit Farb-Submenu."""
+        """Kontextmenü für Session-Zeilen, thematisch in Sektionen sortiert."""
         session = self._item_to_session[item_id]
+        selected = self.get_selected_sessions()
+        selected_count = len(selected)
+        favorite_keys = self._favorite_keys_getter()
         current_color = self._session_colors.get(session.key)
 
         menu = tk.Menu(self, tearoff=False)
-        color_menu = tk.Menu(menu, tearoff=False)
-        for name, hex_color in PALETTE:
-            prefix = "✓" if hex_color == current_color else "  "
-            color_menu.add_command(
-                label=f"{prefix} {name}",
-                command=lambda hc=hex_color, sk=session.key: self.set_session_color(sk, hc),
-            )
-        color_menu.add_separator()
-        color_menu.add_command(
-            label="✕ Farbe entfernen",
-            command=lambda sk=session.key: self.set_session_color(sk, None),
-        )
+
+        # Öffnen / Verbinden – immer ganz oben.
         if self._on_quick_connect:
             menu.add_command(
                 label="Verbindung öffnen",
                 command=lambda s=session: self._on_quick_connect(s),
             )
-        favorite_keys = self._favorite_keys_getter()
+        if selected_count >= 2 and self._on_connect_sessions:
+            menu.add_command(
+                label=f"Auswahl verbinden ({selected_count})",
+                command=lambda ss=list(selected): self._on_connect_sessions(ss),
+            )
+        if self._on_open_in_winscp and session.source == "winscp":
+            selected_winscp = [s for s in selected if s.source == "winscp"]
+            if len(selected_winscp) >= 2:
+                menu.add_command(
+                    label=f"Auswahl in WinSCP öffnen ({len(selected_winscp)})",
+                    command=lambda ss=selected_winscp: self._on_open_in_winscp(ss),
+                )
+            else:
+                menu.add_command(
+                    label="In WinSCP öffnen",
+                    command=lambda s=session: self._on_open_in_winscp([s]),
+                )
+
+        # Favoriten – einzelne Session und Auswahl zusammenhalten.
+        menu.add_separator()
         if session.key in favorite_keys:
             if self._on_remove_favorite:
                 menu.add_command(
@@ -632,19 +652,94 @@ class SessionTree(ttk.Frame):
                 label="Zu Favoriten hinzufügen…",
                 command=lambda s=session: self._add_favorite_with_dialog(s),
             )
+        if selected_count >= 2:
+            not_favorite = [s for s in selected if s.key not in favorite_keys]
+            if not_favorite and self._on_add_favorites:
+                menu.add_command(
+                    label=f"Auswahl zu Favoriten hinzufügen… ({len(not_favorite)})",
+                    command=lambda ss=list(not_favorite): self._add_favorites_with_dialog(ss),
+                )
 
-        if self._on_open_in_winscp and session.source == "winscp":
-            selected_winscp = [s for s in self.get_selected_sessions() if s.source == "winscp"]
-            if len(selected_winscp) >= 2:
+        # Bearbeiten / Organisation.
+        menu.add_separator()
+        if self._on_edit_session:
+            menu.add_command(
+                label="Bearbeiten…",
+                command=lambda s=session: self._on_edit_session(s),
+            )
+        if session.is_app_session:
+            if self._on_duplicate_app_session:
                 menu.add_command(
-                    label=f"Alle {len(selected_winscp)} in WinSCP öffnen",
-                    command=lambda ss=selected_winscp: self._on_open_in_winscp(ss),
+                    label="Duplizieren…",
+                    command=lambda s=session: self._on_duplicate_app_session(s),
                 )
-            else:
+            if self._on_move_session:
                 menu.add_command(
-                    label="In WinSCP öffnen",
-                    command=lambda s=session: self._on_open_in_winscp([s]),
+                    label="In Ordner verschieben…",
+                    command=lambda s=session: self._on_move_session(s),
                 )
+        elif session.source == "ssh_config":
+            if self._on_duplicate_ssh_alias:
+                menu.add_command(
+                    label="Als Alias in Ordner duplizieren…",
+                    command=lambda s=session: self._on_duplicate_ssh_alias(s),
+                )
+        elif session.is_ssh_alias_copy:
+            if self._on_move_session:
+                menu.add_command(
+                    label="In Ordner verschieben…",
+                    command=lambda s=session: self._on_move_session(s),
+                )
+        if selected_count >= 2:
+            moveable = [s for s in selected if s.source in ("app", "ssh_alias")]
+            if moveable and self._on_move_sessions:
+                menu.add_command(
+                    label=f"Ordner für Auswahl ändern… ({len(moveable)})",
+                    command=lambda ss=moveable: self._on_move_sessions(ss),
+                )
+            if self._on_set_sessions_username:
+                menu.add_command(
+                    label=f"Benutzer für Auswahl setzen… ({selected_count})",
+                    command=lambda ss=list(selected): self._on_set_sessions_username(ss),
+                )
+            if self._on_clear_sessions_username:
+                menu.add_command(
+                    label=f"Benutzer für Auswahl entfernen… ({selected_count})",
+                    command=lambda ss=list(selected): self._on_clear_sessions_username(ss),
+                )
+
+        # Kopieren – alles zusammen in eigener Sektion.
+        menu.add_separator()
+        menu.add_command(
+            label="Hostname kopieren",
+            command=lambda s=session: self._copy_session_values([s], "hostname"),
+        )
+        menu.add_command(
+            label="Name kopieren",
+            command=lambda s=session: self._copy_session_values([s], "display_name"),
+        )
+        if self._notes_getter(session.key).strip():
+            menu.add_command(
+                label="Notiz kopieren",
+                command=lambda s=session: self._copy_session_notes([s]),
+            )
+        if selected_count >= 2:
+            menu.add_command(
+                label=f"Auswahl-Hostnamen kopieren ({selected_count})",
+                command=lambda ss=list(selected): self._copy_session_values(ss, "hostname"),
+            )
+            menu.add_command(
+                label=f"Auswahl-Namen kopieren ({selected_count})",
+                command=lambda ss=list(selected): self._copy_session_values(ss, "display_name"),
+            )
+            if any(self._notes_getter(s.key).strip() for s in selected):
+                menu.add_command(
+                    label=f"Auswahl-Notizen kopieren ({selected_count})",
+                    command=lambda ss=list(selected): self._copy_session_notes(ss),
+                )
+
+        # Tools / Aktionen.
+        menu.add_separator()
         if self._on_open_tunnel:
             menu.add_command(
                 label="Tunnel öffnen…",
@@ -660,21 +755,44 @@ class SessionTree(ttk.Frame):
                 label="Befehl ausführen…",
                 command=lambda s=session: self._on_run_remote_command([s]),
             )
-            selected_runnable = [s for s in self.get_selected_sessions() if s.hostname]
+            selected_runnable = [s for s in selected if s.hostname]
             if len(selected_runnable) >= 2:
                 menu.add_command(
                     label=f"Befehl auf Auswahl ausführen… ({len(selected_runnable)})",
                     command=lambda ss=selected_runnable: self._on_run_remote_command(ss),
                 )
-        if self._on_quick_connect or self._on_open_tunnel or self._on_open_via_jumphost or self._on_run_remote_command:
-            menu.add_separator()
-        if self._on_edit_session:
+        if session.source in ("ssh_config", "ssh_alias"):
+            if self._on_inspect_ssh_config:
+                menu.add_command(
+                    label="Konfiguration anzeigen (ssh -G)…",
+                    command=lambda s=session: self._on_inspect_ssh_config(s),
+                )
+            if self._on_open_ssh_config_in_vscode:
+                menu.add_command(
+                    label="SSH Config in VS Code öffnen",
+                    command=self._on_open_ssh_config_in_vscode,
+                )
+
+        # Prüfen.
+        if selected_count >= 2:
+            checked_pairs = [
+                (iid, s) for iid, s in self._item_to_session.items()
+                if self._checked.get(iid) and s.hostname
+            ]
+            if checked_pairs:
+                menu.add_command(
+                    label=f"Auswahl-Hosts prüfen ({len(checked_pairs)})",
+                    command=lambda p=checked_pairs: self.check_hosts(p),
+                )
+        elif session.hostname:
             menu.add_command(
-                label="Bearbeiten…",
-                command=lambda s=session: self._on_edit_session(s),
+                label="Host prüfen",
+                command=lambda iid=item_id, s=session: self.check_hosts([(iid, s)]),
             )
-            menu.add_separator()
+
+        # SSH-Key-Verwaltung.
         if self._on_deploy_ssh_key or self._on_remove_ssh_key:
+            menu.add_separator()
             if self._on_deploy_ssh_key:
                 menu.add_command(
                     label="SSH Key übertragen…",
@@ -685,126 +803,23 @@ class SessionTree(ttk.Frame):
                     label="SSH Key entfernen…",
                     command=lambda s=session: self._on_remove_ssh_key([s]),
                 )
-            menu.add_separator()
-        if session.is_app_session:
-            if self._on_duplicate_app_session:
-                menu.add_command(
-                    label="Duplizieren…",
-                    command=lambda s=session: self._on_duplicate_app_session(s),
-                )
-            if self._on_move_session:
-                menu.add_command(
-                    label="In Ordner verschieben…",
-                    command=lambda s=session: self._on_move_session(s),
-                )
-            if self._on_delete_session:
-                menu.add_command(
-                    label="Löschen",
-                    command=lambda s=session: self._on_delete_session(s),
-                )
-            menu.add_separator()
-        elif session.source == "ssh_config":
-            if self._on_duplicate_ssh_alias:
-                menu.add_command(
-                    label="Als Alias in Ordner duplizieren…",
-                    command=lambda s=session: self._on_duplicate_ssh_alias(s),
-                )
-            if self._on_inspect_ssh_config:
-                menu.add_command(
-                    label="Konfiguration anzeigen (ssh -G)…",
-                    command=lambda s=session: self._on_inspect_ssh_config(s),
-                )
-            if self._on_open_ssh_config_in_vscode:
-                menu.add_command(
-                    label="In VS Code öffnen",
-                    command=self._on_open_ssh_config_in_vscode,
-                )
-            menu.add_separator()
-        elif session.is_ssh_alias_copy:
-            if self._on_delete_session:
-                menu.add_command(
-                    label="Löschen",
-                    command=lambda s=session: self._on_delete_session(s),
-                )
-            if self._on_move_session:
-                menu.add_command(
-                    label="In Ordner verschieben…",
-                    command=lambda s=session: self._on_move_session(s),
-                )
-            if self._on_inspect_ssh_config:
-                menu.add_command(
-                    label="Konfiguration anzeigen (ssh -G)…",
-                    command=lambda s=session: self._on_inspect_ssh_config(s),
-                )
-            if self._on_open_ssh_config_in_vscode:
-                menu.add_command(
-                    label="In VS Code öffnen",
-                    command=self._on_open_ssh_config_in_vscode,
-                )
-            menu.add_separator()
+
+        # Farbe.
         menu.add_separator()
-        menu.add_command(
-            label="Hostname kopieren",
-            command=lambda s=session: self._copy_session_values([s], "hostname"),
+        color_menu = tk.Menu(menu, tearoff=False)
+        for name, hex_color in PALETTE:
+            prefix = "✓" if hex_color == current_color else "  "
+            color_menu.add_command(
+                label=f"{prefix} {name}",
+                command=lambda hc=hex_color, sk=session.key: self.set_session_color(sk, hc),
+            )
+        color_menu.add_separator()
+        color_menu.add_command(
+            label="✕ Farbe entfernen",
+            command=lambda sk=session.key: self.set_session_color(sk, None),
         )
-        menu.add_command(
-            label="Name kopieren",
-            command=lambda s=session: self._copy_session_values([s], "display_name"),
-        )
-        if self._notes_getter(session.key).strip():
-            menu.add_command(
-                label="Notiz kopieren",
-                command=lambda s=session: self._copy_session_notes([s]),
-            )
-        selected = self.get_selected_sessions()
-        if len(selected) >= 2:
-            if self._on_set_sessions_username:
-                menu.add_command(
-                    label=f"Benutzer für Auswahl setzen… ({len(selected)})",
-                    command=lambda ss=list(selected): self._on_set_sessions_username(ss),
-                )
-            if self._on_clear_sessions_username:
-                menu.add_command(
-                    label=f"Benutzer für Auswahl entfernen… ({len(selected)})",
-                    command=lambda ss=list(selected): self._on_clear_sessions_username(ss),
-                )
-            menu.add_command(
-                label=f"Alle {len(selected)} Hostnamen kopieren",
-                command=lambda ss=list(selected): self._copy_session_values(ss, "hostname"),
-            )
-            menu.add_command(
-                label=f"Alle {len(selected)} Namen kopieren",
-                command=lambda ss=list(selected): self._copy_session_values(ss, "display_name"),
-            )
-            if any(self._notes_getter(s.key).strip() for s in selected):
-                menu.add_command(
-                    label=f"Alle {len(selected)} Notizen kopieren",
-                    command=lambda ss=list(selected): self._copy_session_notes(ss),
-                )
-        # Hosts prüfen
-        if len(selected) >= 2:
-            checked_pairs = [
-                (iid, s) for iid, s in self._item_to_session.items()
-                if self._checked.get(iid) and s.hostname
-            ]
-            menu.add_command(
-                label=f"Alle {len(selected)} Hosts prüfen",
-                command=lambda p=checked_pairs: self.check_hosts(p),
-            )
-        elif session.hostname:
-            menu.add_command(
-                label="Host prüfen",
-                command=lambda iid=item_id, s=session: self.check_hosts([(iid, s)]),
-            )
-        menu.add_separator()
-        if len(selected) >= 2:
-            favorite_keys = self._favorite_keys_getter()
-            not_favorite = [s for s in selected if s.key not in favorite_keys]
-            if not_favorite and self._on_add_favorites:
-                menu.add_command(
-                    label=f"Auswahl zu Favoriten hinzufügen… ({len(not_favorite)})",
-                    command=lambda ss=list(not_favorite): self._add_favorites_with_dialog(ss),
-                )
+        menu.add_cascade(label="Farbe…", menu=color_menu)
+        if selected_count >= 2:
             bulk_color_menu = tk.Menu(menu, tearoff=False)
             for name, hex_color in PALETTE:
                 bulk_color_menu.add_command(
@@ -820,15 +835,16 @@ class SessionTree(ttk.Frame):
                     self.set_session_color(s.key, None) for s in ss
                 ],
             )
-            menu.add_cascade(label=f"Farbe für Auswahl ({len(selected)})…", menu=bulk_color_menu)
-            moveable = [s for s in selected if s.source in ("app", "ssh_alias")]
-            if moveable and self._on_move_sessions:
-                menu.add_command(
-                    label=f"Ordner für Auswahl ({len(moveable)})…",
-                    command=lambda ss=moveable: self._on_move_sessions(ss),
-                )
-        else:
-            menu.add_cascade(label="Farbe…", menu=color_menu)
+            menu.add_cascade(label=f"Farbe für Auswahl ({selected_count})…", menu=bulk_color_menu)
+
+        # Destruktives unten.
+        if (session.is_app_session or session.is_ssh_alias_copy) and self._on_delete_session:
+            menu.add_separator()
+            menu.add_command(
+                label="Löschen",
+                command=lambda s=session: self._on_delete_session(s),
+            )
+
         menu.tk_popup(event.x_root, event.y_root)
 
     def _add_favorite_with_dialog(self, session: Session) -> None:

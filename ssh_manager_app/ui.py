@@ -40,10 +40,14 @@ def persist_ui_state_callback(app) -> None:
     persist_ui_state(app)
 
 
-def connect_selected_sessions_callback(app) -> None:
+def connect_sessions_callback(app, sessions) -> None:
     from .actions_remote import connect_sessions
 
-    connect_sessions(app, app._tree.get_selected_sessions())
+    connect_sessions(app, sessions)
+
+
+def connect_selected_sessions_callback(app) -> None:
+    connect_sessions_callback(app, app._tree.get_selected_sessions())
 
 
 def connect_selected_or_focused_callback(app) -> None:
@@ -620,6 +624,7 @@ def build_main_ui(self) -> None:
         initial_open_folders=self._initial_open_folders,
         initial_session_colors=self._initial_session_colors,
         on_quick_connect=lambda session: quick_connect_session_callback(self, session),
+        on_connect_sessions=lambda sessions: connect_sessions_callback(self, sessions),
         on_add_favorite=lambda session, only: add_favorite_session_callback(self, session, only),
         on_add_favorites=lambda sessions, only: add_favorite_sessions_callback(self, sessions, only),
         on_remove_favorite=lambda session: remove_favorite_session_callback(self, session),
