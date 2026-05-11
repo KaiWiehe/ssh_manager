@@ -70,6 +70,7 @@ class SessionTree(ttk.Frame):
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
         on_open_via_jumphost=None,          # Callable[[Session], None] | None
+        on_copy_ssh_command=None,           # Callable[[Session], None] | None
         on_ui_state_changed=None,           # Callable[[], None] | None
         notes_getter=None,                  # Callable[[str], str] | None
         on_edit_note=None,                  # Callable[[Session], None] | None
@@ -106,6 +107,7 @@ class SessionTree(ttk.Frame):
         self._on_open_in_winscp = on_open_in_winscp
         self._on_run_remote_command = on_run_remote_command
         self._on_open_via_jumphost = on_open_via_jumphost
+        self._on_copy_ssh_command = on_copy_ssh_command
         self._on_ui_state_changed = on_ui_state_changed
         self._notes_getter = notes_getter or (lambda _key: "")
         self._on_edit_note = on_edit_note
@@ -738,6 +740,11 @@ class SessionTree(ttk.Frame):
 
         # Kopieren – alles zusammen in eigener Sektion.
         menu.add_separator()
+        if self._on_copy_ssh_command:
+            menu.add_command(
+                label="SSH-Befehl kopieren",
+                command=lambda s=session: self._on_copy_ssh_command(s),
+            )
         menu.add_command(
             label="Hostname kopieren",
             command=lambda s=session: self._copy_session_values([s], "hostname"),

@@ -251,6 +251,35 @@ def run_remote_command(app, sessions: list[Session]) -> None:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
+def copy_ssh_command(app, session: Session) -> None:
+    """Kopiert einen simplen ssh-Befehl für eine Session in die Zwischenablage."""
+    if session.is_ssh_config_session:
+        command = f"ssh {session.display_name}"
+    else:
+        if not session.hostname:
+            messagebox.showwarning("Kein Host", "Für diese Verbindung ist kein Hostname hinterlegt.", parent=app)
+            return
+        user = session.username
+        if not user:
+            dialog = UserDialog(
+                app,
+                title=f"Benutzername für {session.display_name}",
+                quick_users=list(app.settings.quick_users),
+                default_user=app.settings.default_user,
+                allow_remember=False,
+            )
+            app.wait_window(dialog)
+            if dialog.result is None:
+                return
+            user = dialog.result[0] if isinstance(dialog.result, tuple) else dialog.result
+        command = f"ssh {user}@{session.hostname}"
+        if session.port and session.port != 22:
+            command = f"ssh -p {session.port} {user}@{session.hostname}"
+    app.clipboard_clear()
+    app.clipboard_append(command)
+    ToastNotification(app, f"Kopiert: {command}")
+
+
 def open_via_jumphost(app, session: Session) -> None:
     """Öffnet eine einzelne Verbindung temporär über einen Jumphost."""
     dialog = JumpHostDialog(app, session, app._sessions, open_folders_getter=app._tree.get_open_folders)

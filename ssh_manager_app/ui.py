@@ -239,6 +239,12 @@ def open_via_jumphost_callback(app, session) -> None:
     open_via_jumphost(app, session)
 
 
+def copy_ssh_command_callback(app, session) -> None:
+    from .actions_remote import copy_ssh_command
+
+    copy_ssh_command(app, session)
+
+
 def add_session_callback(app, folder_preset="") -> None:
     from .actions_sessions import add_session
 
@@ -649,6 +655,7 @@ def build_main_ui(self) -> None:
         on_open_in_winscp=lambda sessions: open_in_winscp_callback(self, sessions),
         on_run_remote_command=lambda sessions: run_remote_command_callback(self, sessions),
         on_open_via_jumphost=lambda session: open_via_jumphost_callback(self, session),
+        on_copy_ssh_command=lambda session: copy_ssh_command_callback(self, session),
         on_ui_state_changed=lambda: persist_ui_state_callback(self),
         notes_getter=lambda key: self._notes.get(key, ""),
         on_edit_note=lambda session: edit_session_note_callback(self, session),
