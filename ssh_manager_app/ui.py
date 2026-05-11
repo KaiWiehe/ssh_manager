@@ -239,10 +239,12 @@ def open_via_jumphost_callback(app, session) -> None:
     open_via_jumphost(app, session)
 
 
-def copy_ssh_command_callback(app, session) -> None:
-    from .actions_remote import copy_ssh_command
+def copy_ssh_command_callback(app, sessions) -> None:
+    from .actions_remote import copy_ssh_commands
 
-    copy_ssh_command(app, session)
+    if not isinstance(sessions, list):
+        sessions = [sessions]
+    copy_ssh_commands(app, sessions)
 
 
 def add_session_callback(app, folder_preset="") -> None:

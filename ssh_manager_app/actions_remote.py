@@ -251,33 +251,59 @@ def run_remote_command(app, sessions: list[Session]) -> None:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
+def _resolve_copy_user(app, sessions: list[Session]) -> str | None:
+    """Fragt einen Benutzer für alle Sessions ohne festen User ab."""
+    if not any((not s.username) and (not s.is_ssh_config_session) for s in sessions):
+        return ""
+    title = "Benutzername für SSH-Befehl" if len(sessions) == 1 else "Benutzername für SSH-Befehle"
+    dialog = UserDialog(
+        app,
+        title=title,
+        quick_users=list(app.settings.quick_users),
+        default_user=app.settings.default_user,
+        allow_remember=False,
+    )
+    app.wait_window(dialog)
+    if dialog.result is None:
+        return None
+    return dialog.result[0] if isinstance(dialog.result, tuple) else dialog.result
+
+
+def _ssh_copy_command_for_session(session: Session, fallback_user: str = "") -> str | None:
+    if session.is_ssh_config_session:
+        return f"ssh {session.display_name}"
+    if not session.hostname:
+        return None
+    user = session.username or fallback_user
+    if not user:
+        return None
+    if session.port and session.port != 22:
+        return f"ssh -p {session.port} {user}@{session.hostname}"
+    return f"ssh {user}@{session.hostname}"
+
+
+def copy_ssh_commands(app, sessions: list[Session]) -> None:
+    """Kopiert simple ssh-Befehle für eine oder mehrere Sessions in die Zwischenablage."""
+    runnable = [session for session in sessions if session.is_ssh_config_session or session.hostname]
+    if not runnable:
+        messagebox.showwarning("Keine Hosts", "Für die Auswahl sind keine kopierbaren SSH-Ziele hinterlegt.", parent=app)
+        return
+    fallback_user = _resolve_copy_user(app, runnable)
+    if fallback_user is None:
+        return
+    commands = [cmd for session in runnable if (cmd := _ssh_copy_command_for_session(session, fallback_user))]
+    if not commands:
+        messagebox.showwarning("Kein Benutzer", "Ohne Benutzer konnte kein SSH-Befehl erzeugt werden.", parent=app)
+        return
+    text = "\n".join(commands)
+    app.clipboard_clear()
+    app.clipboard_append(text)
+    ToastNotification(app, f"{len(commands)} SSH-Befehl(e) kopiert")
+
+
 def copy_ssh_command(app, session: Session) -> None:
     """Kopiert einen simplen ssh-Befehl für eine Session in die Zwischenablage."""
-    if session.is_ssh_config_session:
-        command = f"ssh {session.display_name}"
-    else:
-        if not session.hostname:
-            messagebox.showwarning("Kein Host", "Für diese Verbindung ist kein Hostname hinterlegt.", parent=app)
-            return
-        user = session.username
-        if not user:
-            dialog = UserDialog(
-                app,
-                title=f"Benutzername für {session.display_name}",
-                quick_users=list(app.settings.quick_users),
-                default_user=app.settings.default_user,
-                allow_remember=False,
-            )
-            app.wait_window(dialog)
-            if dialog.result is None:
-                return
-            user = dialog.result[0] if isinstance(dialog.result, tuple) else dialog.result
-        command = f"ssh {user}@{session.hostname}"
-        if session.port and session.port != 22:
-            command = f"ssh -p {session.port} {user}@{session.hostname}"
-    app.clipboard_clear()
-    app.clipboard_append(command)
-    ToastNotification(app, f"Kopiert: {command}")
+    copy_ssh_commands(app, [session])
 
 
 def open_via_jumphost(app, session: Session) -> None:

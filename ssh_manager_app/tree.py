@@ -558,6 +558,11 @@ class SessionTree(ttk.Frame):
                     command=lambda ss=list(folder_sessions): self._on_clear_sessions_username(ss),
                 )
             menu.add_separator()
+            if self._on_copy_ssh_command:
+                menu.add_command(
+                    label=f"SSH-Befehle kopieren ({len(folder_sessions)})",
+                    command=lambda ss=list(folder_sessions): self._on_copy_ssh_command(ss),
+                )
             menu.add_command(
                 label=f"Hostnames kopieren ({len(folder_sessions)})",
                 command=lambda ss=list(folder_sessions): self._copy_session_values(ss, "hostname"),
@@ -743,7 +748,7 @@ class SessionTree(ttk.Frame):
         if self._on_copy_ssh_command:
             menu.add_command(
                 label="SSH-Befehl kopieren",
-                command=lambda s=session: self._on_copy_ssh_command(s),
+                command=lambda s=session: self._on_copy_ssh_command([s]),
             )
         menu.add_command(
             label="Hostname kopieren",
@@ -758,6 +763,11 @@ class SessionTree(ttk.Frame):
             command=lambda s=session: self._copy_session_notes([s]),
         )
         if selected_count >= 2:
+            if self._on_copy_ssh_command:
+                menu.add_command(
+                    label=f"Auswahl-SSH-Befehle kopieren ({selected_count})",
+                    command=lambda ss=list(selected): self._on_copy_ssh_command(ss),
+                )
             menu.add_command(
                 label=f"Auswahl-Hostnamen kopieren ({selected_count})",
                 command=lambda ss=list(selected): self._copy_session_values(ss, "hostname"),
