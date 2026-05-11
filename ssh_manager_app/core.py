@@ -232,6 +232,40 @@ def _join_remote_steps(before: str, script_line: str, after: str) -> str:
     return "\n".join(steps)
 
 
+def _format_remote_execution_preview(spec: dict) -> str:
+    mode = str(spec.get("mode", "command"))
+    command = str(spec.get("command", ""))
+    if mode == "command":
+        return f"1. Remote-Befehl:\n{command}".strip()
+    lines: list[str] = []
+    step = 1
+    before = str(spec.get("before_command", "")).strip()
+    if before:
+        lines.append(f"{step}. Vor-Befehl:")
+        lines.append(before)
+        lines.append("")
+        step += 1
+    if mode == "local_script":
+        lines.append(f"{step}. Lokales Skript hochladen und ausführen:")
+        lines.append(str(spec.get("local_path") or spec.get("path") or ""))
+    else:
+        lines.append(f"{step}. Remote-Skript ausführen:")
+        lines.append(str(spec.get("remote_path") or spec.get("path") or ""))
+    interpreter = str(spec.get("interpreter", "")).strip()
+    arguments = str(spec.get("arguments", "")).strip()
+    if interpreter:
+        lines.append(f"Interpreter: {interpreter}")
+    if arguments:
+        lines.append(f"Argumente: {arguments}")
+    step += 1
+    after = str(spec.get("after_command", "")).strip()
+    if after:
+        lines.append("")
+        lines.append(f"{step}. Nach-Befehl:")
+        lines.append(after)
+    return "\n".join(lines).strip()
+
+
 def build_remote_script_wt_command(
     session_commands: list[tuple[Session, str, dict]],
     *,
@@ -281,12 +315,14 @@ def build_remote_script_wt_command(
             title = f"Remote-Befehl: {command.strip() or '-'}"
             remote_body = f"{ssh_cmd} {'-t ' if not close_on_success else ''}<<'__REMOTE_CMD__'\n{command}\n__REMOTE_CMD__"
 
+        execution_preview = _format_remote_execution_preview(spec)
         script_lines = [
             "#!/usr/bin/env bash",
-            f"printf '%s\\n' {_shell_single_quote('SSH Manager Ausführung')}",
-            f"printf '%s\\n' {_shell_single_quote(f'Host: {session.display_name} ({session.hostname})')}",
-            f"printf '%s\\n' {_shell_single_quote(f'User: {user}')}",
-            f"printf '%s\\n\\n' {_shell_single_quote(title)}",
+            f"printf '%s\n' {_shell_single_quote('SSH Manager Ausführung')}",
+            f"printf '%s\n' {_shell_single_quote(f'Host: {session.display_name} ({session.hostname})')}",
+            f"printf '%s\n' {_shell_single_quote(f'User: {user}')}",
+            "printf '%s\n' 'Reihenfolge:'",
+            f"printf '%s\n\n' {_shell_single_quote(execution_preview)}",
             remote_body,
             "status=$?",
         ]
