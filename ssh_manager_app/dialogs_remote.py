@@ -426,6 +426,94 @@ class SshRemoveKeyDialog(tk.Toplevel):
         self.geometry(f"+{x}+{y}")
 
 
+class RemoteFavoriteEditDialog(tk.Toplevel):
+    """Aufgeräumter Dialog zum Anlegen/Bearbeiten eines Remote-Runner-Favoriten."""
+
+    def __init__(self, parent: tk.Tk, item: dict, title: str = "Favorit bearbeiten"):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("560x420")
+        self.minsize(500, 360)
+        self.result: dict | None = None
+        self._item = dict(item)
+        self.transient(parent)
+        self.grab_set()
+        self._build()
+        self._center_on_parent(parent)
+        self.bind("<Escape>", lambda _: self._on_cancel())
+
+    def _build(self) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(1, weight=1)
+        frame.rowconfigure(3, weight=1)
+
+        ttk.Label(frame, text="Name:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=(0, 8))
+        self._name_var = tk.StringVar(value=self._item.get("name") or self._item.get("label") or self._item.get("path") or "")
+        name_entry = ttk.Entry(frame, textvariable=self._name_var)
+        name_entry.grid(row=0, column=1, sticky="ew", pady=(0, 8))
+        name_entry.focus()
+
+        self._pinned_var = tk.BooleanVar(value=bool(self._item.get("pinned", False)))
+        ttk.Checkbutton(frame, text="Oben anpinnen", variable=self._pinned_var).grid(row=1, column=1, sticky="w", pady=(0, 8))
+
+        summary = self._summary_text(self._item)
+        ttk.Label(frame, text="Ausführung:").grid(row=2, column=0, sticky="nw", padx=(0, 8))
+        summary_text = scrolledtext.ScrolledText(frame, wrap="word", height=5)
+        summary_text.grid(row=2, column=1, sticky="nsew", pady=(0, 10))
+        summary_text.insert("1.0", summary)
+        summary_text.configure(state="disabled")
+
+        ttk.Label(frame, text="Notiz:").grid(row=3, column=0, sticky="nw", padx=(0, 8))
+        self._note_text = scrolledtext.ScrolledText(frame, wrap="word", height=8)
+        self._note_text.grid(row=3, column=1, sticky="nsew")
+        self._note_text.insert("1.0", self._item.get("note", ""))
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=4, column=0, columnspan=2, sticky="e", pady=(14, 0))
+        ttk.Button(buttons, text="Speichern", command=self._on_ok, width=12).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=4)
+
+    def _summary_text(self, item: dict) -> str:
+        mode = item.get("mode", "command")
+        if mode == "command":
+            return item.get("command", "") or "Remote-Befehl"
+        path = item.get("local_path") or item.get("remote_path") or item.get("path", "")
+        parts = ["Lokales Skript" if mode == "local_script" else "Remote-Skript", path]
+        if item.get("interpreter"):
+            parts.append(f"Interpreter: {item.get('interpreter')}")
+        if item.get("arguments"):
+            parts.append(f"Argumente: {item.get('arguments')}")
+        if item.get("before_command"):
+            parts.append("Vor-Befehl: ja")
+        if item.get("after_command"):
+            parts.append("Nach-Befehl: ja")
+        return "\n".join(p for p in parts if p)
+
+    def _on_ok(self) -> None:
+        name = self._name_var.get().strip()
+        if not name:
+            messagebox.showwarning("Kein Name", "Bitte einen Namen für den Favoriten eingeben.", parent=self)
+            return
+        item = dict(self._item)
+        item["name"] = name
+        item["label"] = name
+        item["note"] = self._note_text.get("1.0", "end").strip()
+        item["pinned"] = self._pinned_var.get()
+        self.result = item
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width(); ph = parent.winfo_height(); px = parent.winfo_x(); py = parent.winfo_y()
+        w = self.winfo_width(); h = self.winfo_height()
+        self.geometry(f"{w}x{h}+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+
+
 class RemoteCommandDialog(tk.Toplevel):
     """Dialog für Remote-Befehl, Skript-Runbooks, Verlauf und Favoriten."""
 
@@ -534,6 +622,8 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Button(fav_buttons, text="Übernehmen", command=lambda: self._load_selected(self._favorites_list, self._favorites)).pack(side="left")
         ttk.Button(fav_buttons, text="Neu", command=self._add_favorite).pack(side="left", padx=4)
         ttk.Button(fav_buttons, text="Bearbeiten", command=self._edit_selected_favorite).pack(side="left")
+        ttk.Button(fav_buttons, text="Löschen", command=self._delete_selected_favorite).pack(side="left", padx=4)
+        ttk.Button(fav_buttons, text="Anpinnen", command=self._toggle_pin_selected_favorite).pack(side="left")
 
         history_box = ttk.LabelFrame(right, text="Zuletzt verwendet", padding=8)
         history_box.grid(row=1, column=0, sticky="nsew")
@@ -559,6 +649,7 @@ class RemoteCommandDialog(tk.Toplevel):
 
     def _refresh_lists(self) -> None:
         if hasattr(self, "_favorites_list"):
+            self._favorites.sort(key=lambda item: (not bool(item.get("pinned")), str(item.get("name") or item.get("label") or "").lower()))
             self._favorites_list.delete(0, "end")
             for item in self._favorites:
                 self._favorites_list.insert("end", self._item_label(item))
@@ -570,7 +661,8 @@ class RemoteCommandDialog(tk.Toplevel):
     def _item_label(self, item: dict) -> str:
         name = item.get("name") or item.get("label") or item.get("path") or item.get("command", "")
         note = item.get("note", "")
-        return (f"{name} — {note}" if note else name)[:100]
+        prefix = "📌 " if item.get("pinned") else ""
+        return (prefix + (f"{name} — {note}" if note else name))[:100]
 
     def _choose_file(self) -> None:
         filename = filedialog.askopenfilename(parent=self, title="Skript auswählen", filetypes=(("Skripte", "*.sh *.bash *.py"), ("Alle Dateien", "*.*")))
@@ -655,21 +747,13 @@ class RemoteCommandDialog(tk.Toplevel):
             return
         self._apply_spec(items[sel[0]])
 
-    def _prompt_metadata(self, item: dict) -> dict | None:
-        name = simpledialog.askstring("Favorit", "Name für den Favorit:", initialvalue=item.get("name") or item.get("label") or item.get("path") or "", parent=self)
-        if name is None:
-            return None
-        note = simpledialog.askstring("Favorit", "Notiz / Erklärung:", initialvalue=item.get("note", ""), parent=self)
-        if note is None:
-            return None
-        item = dict(item)
-        item["name"] = name.strip() or item.get("path") or item.get("command", "Favorit")
-        item["note"] = note.strip()
-        item["label"] = item["name"]
-        return item
+    def _prompt_metadata(self, item: dict, title: str = "Favorit bearbeiten") -> dict | None:
+        dialog = RemoteFavoriteEditDialog(self, item, title=title)
+        self.wait_window(dialog)
+        return dialog.result
 
     def _add_favorite(self) -> None:
-        item = self._prompt_metadata(self._current_spec(include_metadata=True))
+        item = self._prompt_metadata(self._current_spec(include_metadata=True), title="Favorit anlegen")
         if item is None:
             return
         self._favorites.insert(0, item)
@@ -681,11 +765,32 @@ class RemoteCommandDialog(tk.Toplevel):
             messagebox.showinfo("Kein Favorit", "Bitte zuerst einen Favorit auswählen.", parent=self)
             return
         index = sel[0]
-        item = self._prompt_metadata(self._favorites[index])
+        item = self._prompt_metadata(self._favorites[index], title="Favorit bearbeiten")
         if item is None:
             return
         self._favorites[index] = item
         self._apply_spec(item)
+        self._refresh_lists()
+
+    def _delete_selected_favorite(self) -> None:
+        sel = self._favorites_list.curselection()
+        if not sel:
+            messagebox.showinfo("Kein Favorit", "Bitte zuerst einen Favorit auswählen.", parent=self)
+            return
+        index = sel[0]
+        label = self._item_label(self._favorites[index])
+        if not messagebox.askyesno("Favorit löschen", f"Favorit wirklich löschen?\n\n{label}", parent=self):
+            return
+        del self._favorites[index]
+        self._refresh_lists()
+
+    def _toggle_pin_selected_favorite(self) -> None:
+        sel = self._favorites_list.curselection()
+        if not sel:
+            messagebox.showinfo("Kein Favorit", "Bitte zuerst einen Favorit auswählen.", parent=self)
+            return
+        item = self._favorites[sel[0]]
+        item["pinned"] = not bool(item.get("pinned"))
         self._refresh_lists()
 
     def _on_ok(self) -> None:
@@ -713,7 +818,7 @@ class RemoteCommandDialog(tk.Toplevel):
             messagebox.showwarning("Kein Skriptpfad", "Bitte einen lokalen oder Remote-Skriptpfad eingeben.", parent=self); return
         save_favorite = self._save_favorite.get()
         if save_favorite:
-            item = self._prompt_metadata({**spec, "name": spec.get("path") or spec.get("command", "")})
+            item = self._prompt_metadata({**spec, "name": spec.get("path") or spec.get("command", "")}, title="Favorit speichern")
             if item is None:
                 return
             spec.update(item)
