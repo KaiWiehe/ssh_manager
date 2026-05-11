@@ -221,13 +221,26 @@ def build_remote_command_wt_command(
 
 
 
+def _remote_output_header(title: str) -> str:
+    return "\n".join([
+        "printf '\\n'",
+        "printf '%s\\n' '========================================'",
+        f"printf '%s\\n' {_shell_single_quote(title)}",
+        "printf '%s\\n' '========================================'",
+        "printf '\\n'",
+    ])
+
+
 def _join_remote_steps(before: str, script_line: str, after: str) -> str:
     steps: list[str] = []
     if before.strip():
+        steps.append(_remote_output_header("Output vom Vor-Befehl"))
         steps.append(before.strip())
     if script_line.strip():
+        steps.append(_remote_output_header("Output vom Skript"))
         steps.append(script_line.strip())
     if after.strip():
+        steps.append(_remote_output_header("Output vom Nach-Befehl"))
         steps.append(after.strip())
     return "\n".join(steps)
 
