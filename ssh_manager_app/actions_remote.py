@@ -225,7 +225,7 @@ def run_remote_command(app, sessions: list[Session]) -> None:
     if session_users is None:
         return
 
-    preview = spec.get("name") or spec.get("path") or command
+    preview = spec if spec.get("mode") != "command" else command
     confirm = RemoteCommandConfirmDialog(app, preview, session_users, close_on_success)
     app.wait_window(confirm)
     if not confirm.result:

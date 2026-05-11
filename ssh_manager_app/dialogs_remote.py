@@ -484,22 +484,26 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Radiobutton(source, text="Nur Remote-Befehl", variable=self._run_mode, value="command", command=self._update_help).grid(row=0, column=0, sticky="w")
         ttk.Radiobutton(source, text="Lokales Skript hochladen", variable=self._run_mode, value="local_script", command=self._update_help).grid(row=1, column=0, sticky="w")
         ttk.Radiobutton(source, text="Skript liegt auf Server", variable=self._run_mode, value="remote_script", command=self._update_help).grid(row=2, column=0, sticky="w")
-        self._path_var = tk.StringVar()
-        ttk.Label(source, text="Skriptpfad:").grid(row=1, column=1, sticky="w", padx=(10, 0))
-        self._path_entry = ttk.Entry(source, textvariable=self._path_var)
+        self._remote_path_var = tk.StringVar()
+        self._local_path_var = tk.StringVar(value="Keine lokale Datei ausgewählt")
+        ttk.Label(source, text="Remote-Skriptpfad:").grid(row=1, column=1, sticky="w", padx=(10, 0))
+        self._path_entry = ttk.Entry(source, textvariable=self._remote_path_var)
         self._path_entry.grid(row=2, column=1, sticky="ew", padx=(10, 8))
         self._file_button = ttk.Button(source, text="Lokale Datei…", command=self._choose_file)
         self._file_button.grid(row=2, column=2, sticky="e")
+        ttk.Label(source, text="Lokale Datei:").grid(row=3, column=1, sticky="w", padx=(10, 0), pady=(8, 0))
+        self._local_file_label = ttk.Label(source, textvariable=self._local_path_var, foreground="#555555", wraplength=430)
+        self._local_file_label.grid(row=4, column=1, columnspan=2, sticky="w", padx=(10, 0))
         self._interpreter = tk.StringVar(value="bash")
         ttk.Label(source, text="Interpreter:").grid(row=0, column=1, sticky="e", padx=(10, 8))
         self._interpreter_combo = ttk.Combobox(source, textvariable=self._interpreter, values=("bash", "sh", "python3", "python", "direct"), width=12, state="readonly")
         self._interpreter_combo.grid(row=0, column=2, sticky="e")
         self._arguments_var = tk.StringVar()
-        ttk.Label(source, text="Argumente:").grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(source, text="Argumente:").grid(row=5, column=0, sticky="w", pady=(8, 0))
         self._arguments_entry = ttk.Entry(source, textvariable=self._arguments_var)
-        self._arguments_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+        self._arguments_entry.grid(row=5, column=1, columnspan=2, sticky="ew", pady=(8, 0))
         self._help_var = tk.StringVar()
-        ttk.Label(source, textvariable=self._help_var, foreground="#666666", wraplength=620).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Label(source, textvariable=self._help_var, foreground="#666666", wraplength=620).grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         flow = ttk.LabelFrame(left, text="Ablauf", padding=8)
         flow.grid(row=3, column=0, sticky="nsew")
@@ -572,7 +576,7 @@ class RemoteCommandDialog(tk.Toplevel):
     def _choose_file(self) -> None:
         filename = filedialog.askopenfilename(parent=self, title="Skript auswählen", filetypes=(("Skripte", "*.sh *.bash *.py"), ("Alle Dateien", "*.*")))
         if filename:
-            self._path_var.set(filename)
+            self._local_path_var.set(filename)
             if filename.lower().endswith(".py"):
                 self._interpreter.set("python3")
             elif filename.lower().endswith((".sh", ".bash")):
@@ -588,7 +592,7 @@ class RemoteCommandDialog(tk.Toplevel):
             return
         mode = self._run_mode.get()
         script_mode = mode != "command"
-        self._path_entry.configure(state="normal" if script_mode else "disabled")
+        self._path_entry.configure(state="normal" if mode == "remote_script" else "disabled")
         self._interpreter_combo.configure(state="readonly" if script_mode else "disabled")
         self._arguments_entry.configure(state="normal" if script_mode else "disabled")
         self._file_button.configure(state="normal" if mode == "local_script" else "disabled")
@@ -599,7 +603,7 @@ class RemoteCommandDialog(tk.Toplevel):
             self._help_var.set("Modus: Nur Remote-Befehl. Pflicht ist nur das große Feld 'Remote-Befehl'. Skriptpfad, Interpreter, Argumente sowie Vor-/Nach-Befehl sind deaktiviert.")
             self._command_label.configure(text="Remote-Befehl (Pflicht)")
         elif mode == "local_script":
-            self._help_var.set("Modus: Lokales Skript. Pflicht ist der lokale Skriptpfad. Optional: Argumente, Vor-Befehl und Nach-Befehl. Das Feld 'Remote-Befehl' ist deaktiviert.")
+            self._help_var.set("Modus: Lokales Skript. Pflicht ist eine lokale Datei über den Button. Das Remote-Pfad-Feld ist deaktiviert. Optional: Argumente, Vor-Befehl und Nach-Befehl.")
             self._command_label.configure(text="Remote-Befehl — bei Skript-Ausführung deaktiviert")
         else:
             self._help_var.set("Modus: Remote-Skript. Pflicht ist der Pfad auf dem Zielhost. Optional: Argumente, Vor-Befehl und Nach-Befehl. Das Feld 'Remote-Befehl' ist deaktiviert.")
@@ -608,7 +612,11 @@ class RemoteCommandDialog(tk.Toplevel):
     def _current_spec(self, *, include_metadata: bool = False) -> dict:
         mode = self._run_mode.get() if hasattr(self, "_run_mode") else "command"
         command = self._command_text.get("1.0", "end").strip()
-        path = self._path_var.get().strip() if hasattr(self, "_path_var") else ""
+        local_path = self._local_path_var.get().strip() if hasattr(self, "_local_path_var") else ""
+        if local_path == "Keine lokale Datei ausgewählt":
+            local_path = ""
+        remote_path = self._remote_path_var.get().strip() if hasattr(self, "_remote_path_var") else ""
+        path = local_path if mode == "local_script" else remote_path
         spec = {
             "mode": mode,
             "command": command,
@@ -631,7 +639,11 @@ class RemoteCommandDialog(tk.Toplevel):
         self._run_mode.set(item.get("mode", "command"))
         self._interpreter.set(item.get("interpreter", "bash"))
         self._arguments_var.set(item.get("arguments", ""))
-        self._path_var.set(item.get("path") or item.get("local_path") or item.get("remote_path") or "")
+        local_path = item.get("local_path", "")
+        remote_path = item.get("remote_path", "")
+        path = item.get("path", "")
+        self._local_path_var.set(local_path or (path if item.get("mode") == "local_script" else "") or "Keine lokale Datei ausgewählt")
+        self._remote_path_var.set(remote_path or (path if item.get("mode") == "remote_script" else ""))
         for widget, key in ((self._before_text, "before_command"), (self._command_text, "command"), (self._after_text, "after_command")):
             widget.configure(state="normal")
             widget.delete("1.0", "end")
@@ -723,7 +735,7 @@ class RemoteCommandDialog(tk.Toplevel):
 class RemoteCommandConfirmDialog(tk.Toplevel):
     """Bestätigungsdialog für Remote-Befehle."""
 
-    def __init__(self, parent: tk.Tk, command: str, session_users: list[tuple[Session, str]], close_on_success: bool):
+    def __init__(self, parent: tk.Tk, command: str | dict, session_users: list[tuple[Session, str]], close_on_success: bool):
         super().__init__(parent)
         self.title("Remote-Befehl bestätigen")
         self.geometry("760x520")
@@ -736,7 +748,7 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
         self._center_on_parent(parent)
         self.bind("<Escape>", lambda _: self._on_cancel())
 
-    def _build(self, command: str, session_users: list[tuple[Session, str]], close_on_success: bool) -> None:
+    def _build(self, command: str | dict, session_users: list[tuple[Session, str]], close_on_success: bool) -> None:
         frame = ttk.Frame(self, padding=16)
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(0, weight=1)
@@ -766,13 +778,13 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
         )
         hosts_text.configure(state="disabled")
 
-        cmd_frame = ttk.LabelFrame(frame, text="Befehl", padding=8)
+        cmd_frame = ttk.LabelFrame(frame, text="Reihenfolge / Ausführung", padding=8)
         cmd_frame.grid(row=3, column=0, sticky="nsew")
         cmd_frame.columnconfigure(0, weight=1)
         cmd_frame.rowconfigure(0, weight=1)
         cmd_text = scrolledtext.ScrolledText(cmd_frame, wrap="word", height=8)
         cmd_text.grid(row=0, column=0, sticky="nsew")
-        cmd_text.insert("1.0", command)
+        cmd_text.insert("1.0", self._format_execution_preview(command))
         cmd_text.configure(state="disabled")
 
         btn_frame = ttk.Frame(frame)
@@ -780,6 +792,42 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
         ttk.Button(btn_frame, text="Ausführen", command=self._on_ok, width=12).pack(side="left", padx=4)
         ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=4)
 
+
+    def _format_execution_preview(self, command: str | dict) -> str:
+        if not isinstance(command, dict):
+            return str(command)
+        mode = command.get("mode", "command")
+        lines: list[str] = []
+        if mode == "command":
+            lines.append("1. Remote-Befehl:")
+            lines.append(command.get("command", ""))
+            return "\n".join(lines).strip()
+        step = 1
+        before = command.get("before_command", "").strip()
+        if before:
+            lines.append(f"{step}. Vor-Befehl:")
+            lines.append(before)
+            lines.append("")
+            step += 1
+        if mode == "local_script":
+            lines.append(f"{step}. Lokales Skript hochladen und ausführen:")
+            lines.append(command.get("local_path") or command.get("path", ""))
+        else:
+            lines.append(f"{step}. Remote-Skript ausführen:")
+            lines.append(command.get("remote_path") or command.get("path", ""))
+        interpreter = command.get("interpreter", "")
+        arguments = command.get("arguments", "")
+        if interpreter:
+            lines.append(f"Interpreter: {interpreter}")
+        if arguments:
+            lines.append(f"Argumente: {arguments}")
+        step += 1
+        after = command.get("after_command", "").strip()
+        if after:
+            lines.append("")
+            lines.append(f"{step}. Nach-Befehl:")
+            lines.append(after)
+        return "\n".join(lines).strip()
     def _on_ok(self) -> None:
         self.result = True
         self.destroy()
