@@ -44,6 +44,12 @@ python ssh_manager.py
 - JSON-Dateien der App direkt in VS Code öffnen
 - SSH-Tunnel öffnen
 - Remote-Befehle auf mehrere Hosts ausführen
+- Python-/Shell-Skripte per SSH ausführen:
+  - lokale Skripte vorher nach `/tmp` hochladen und danach wieder löschen
+  - vorhandene Skripte per Remote-Pfad starten
+  - optionaler Vor-Befehl, Skript-Argumente und Nach-Befehl
+  - Ausführungsreihenfolge und getrennte Output-Header im Terminal
+  - Verlauf und Favoriten inkl. Name, Notiz, Bearbeiten, Löschen und Anpinnen
 - SSH-Keys verteilen oder entfernen
 
 ## Bedienung
@@ -54,6 +60,20 @@ python ssh_manager.py
 4. **Verbinden** – Auf „Verbinden (N ausgewählt)" klicken.
 5. **Benutzernamen wählen** – Falls keine Verbindung einen festen Benutzer hat, im Dialog Quickselect nutzen oder eigenen Namen eingeben.
 6. Alle gewählten Server öffnen sich als neue Tabs **in einem Windows Terminal Fenster** und landen direkt unter **Zuletzt verwendet**.
+
+## Remote-Befehle und Skripte
+
+Über **Remote-Befehl ausführen** kann eine Auswahl von Hosts mit einer Befehlskette gestartet werden. Für die komplette Befehlskette wird ein Benutzer verwendet.
+
+Modi:
+
+- **Nur Remote-Befehl** – führt den eingegebenen Befehl direkt per SSH aus. Keine weiteren Skript-Einstellungen nötig.
+- **Lokales Skript hochladen** – wählt eine lokale `.py`-/`.sh`-/beliebige Datei, lädt sie per `scp` nach `/tmp`, führt sie mit dem gewählten Interpreter und optionalen Argumenten aus und löscht sie anschließend wieder.
+- **Skript liegt auf Server** – führt ein bereits vorhandenes Skript über seinen Remote-Pfad aus.
+
+Für Skript-Modi kann optional ein **Vor-Befehl** und **Nach-Befehl** angegeben werden, z. B. `cd /opt/app`, Service-Stop/Start oder Statusausgaben. Im Bestätigungsdialog und oben im Terminal wird die genaue Reihenfolge angezeigt. Während der Ausführung trennt die App den Output mit klaren Headern, z. B. `Output vom Vor-Befehl`, `Output vom Skript`, `Output vom Nach-Befehl`.
+
+Favoriten speichern komplette Runbooks inkl. Modus, Pfaden, Interpreter, Argumenten, Vor-/Nach-Befehl, Name und Notiz. Favoriten können angelegt, bearbeitet, gelöscht und oben angepinnt werden. Zuletzt verwendete Ausführungen bleiben für schnelles Wiederholen verfügbar.
 
 ## Einstellungen
 

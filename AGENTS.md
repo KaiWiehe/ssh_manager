@@ -65,6 +65,7 @@ notes.json / settings  ──┘
 - `build_wt_command()`
 - `build_jump_wt_command()`
 - `build_remote_command_wt_command()`
+- `build_remote_script_wt_command()` für lokale/remote Skript-Runbooks per SSH
 - `build_ssh_copy_id_command()`
 - `build_ssh_remove_key_command()`
 - `build_ssh_tunnel_command()`
@@ -86,7 +87,8 @@ notes.json / settings  ──┘
 
 **`ssh_manager_app/dialogs_remote.py`**
 - `JumpHostDialog`
-- `RemoteCommandDialog`
+- `RemoteCommandDialog` für Remote-Befehle und Skript-Runbooks
+- `RemoteFavoriteEditDialog` für Runbook-Favoriten mit Name, Notiz und Pin-Status
 - `RemoteCommandConfirmDialog`
 - `SshCopyIdDialog`
 - `SshRemoveKeyDialog`
@@ -156,6 +158,26 @@ Kritisch für alle `build_*_command()`-Funktionen:
 - WinSCP wird mit `subprocess.Popen([winscp_path, session_name])` ohne `shell=True` gestartet (direkte Binary).  
   `session_name` = `"/".join(session.folder_path + [session.display_name])`, z.B. `"TOM/TOM Client/NBB-SVM267"`.
 - Bei neuen Features mit Terminal-Startpfaden den kompletten Ausführungspfad Ende-zu-Ende mitdenken: Windows → wt.exe → Git Bash → ssh → Remote-Shell.
+
+### Remote-Befehle und Skript-Runbooks
+
+`RemoteCommandDialog` unterstützt drei Modi:
+
+1. `command` – nur ein Remote-Befehl, keine weiteren Skript-Einstellungen.
+2. `local_script` – lokale Datei auswählen, per `scp` nach `/tmp` übertragen, mit Interpreter/Argumenten ausführen und danach wieder löschen.
+3. `remote_script` – vorhandenes Skript auf dem Zielhost per Remote-Pfad starten.
+
+Für Skript-Modi gibt es optional `before_command`, `arguments` und `after_command`. Die UI zeigt immer nur die Einstellungen des aktiven Modus; irrelevante Bereiche sollen nicht sichtbar sein. Es gibt keinen Modus „Benutzer pro Host“ mehr: eine komplette Befehlskette nutzt genau einen Benutzer.
+
+Favoriten liegen im UI-State (`remote_command_favorites`) und enthalten das komplette Spec-Dict plus Metadaten wie `name`, `note` und `pinned`. `RemoteFavoriteEditDialog` ist der zentrale Dialog zum Anlegen/Bearbeiten; keine mehreren `simpledialog`-Popups verwenden. Favoriten müssen löschbar und anpinnbar bleiben; angepinnte Einträge stehen oben. History liegt unter `remote_command_history` und ist leichtergewichtig, kann aber ebenfalls Notizen/Labels anzeigen.
+
+`build_remote_script_wt_command()` schreibt lokale temporäre Bash-Dateien und startet diese in Windows Terminal/Git Bash. Der Terminal-Output soll oben die geplante Reihenfolge anzeigen und die tatsächlichen Outputs mit klaren Headern trennen:
+
+- `Output vom Vor-Befehl`
+- `Output vom Skript`
+- `Output vom Nach-Befehl`
+
+Bei lokalen Skripten zusätzlich den Upload-Schritt sichtbar machen. Änderungen in diesem Bereich müssen Windows → WT → Git Bash → scp/ssh → Remote-Shell Ende-zu-Ende mitdenken.
 
 ### SSH-Tunnel (`build_ssh_tunnel_command`)
 
@@ -248,7 +270,8 @@ Weiterhin als Konstanten relevant:
 - Suchverlauf wird live gespeichert. Änderungen an der Suche betreffen auch `ui_state.json`.
 - Tooltip für Notizen hängt am `Treeview`-Hover und ist empfindlich. Bei Änderungen an Motion-/Leave-Events vorsichtig sein.
 - Leerer Startscreen/Empty State sitzt als Overlay im `SessionTree` und ruft `on_add_session` auf.
-- Favoriten und Zuletzt verwendet sind virtuelle Ordner aus `actions_ui.build_visible_sessions(app)`. Sie dürfen die Original-Quellen nicht verändern.
+- Session-Favoriten und Zuletzt verwendet sind virtuelle Ordner aus `actions_ui.build_visible_sessions(app)`. Sie dürfen die Original-Quellen nicht verändern.
+- Remote-Runner-Favoriten sind davon getrennt und leben als `remote_command_favorites` im UI-State.
 - User-Overrides für importierte Quellen werden in `ui_state.json` unter `session_user_overrides` gespeichert, nicht in WinSCP/FileZilla/SSH Config.
 - Portable EXE-Build bleibt additive Packaging-Schicht. Python-Start darf dadurch nicht kaputtgehen.
 
