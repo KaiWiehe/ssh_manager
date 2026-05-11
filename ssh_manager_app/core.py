@@ -221,6 +221,17 @@ def build_remote_command_wt_command(
 
 
 
+def _join_remote_steps(before: str, script_line: str, after: str) -> str:
+    steps: list[str] = []
+    if before.strip():
+        steps.append(before.strip())
+    if script_line.strip():
+        steps.append(script_line.strip())
+    if after.strip():
+        steps.append(after.strip())
+    return "\n".join(steps)
+
+
 def build_remote_script_wt_command(
     session_commands: list[tuple[Session, str, dict]],
     *,
@@ -239,13 +250,17 @@ def build_remote_script_wt_command(
         mode = str(spec.get("mode", "command"))
         interpreter = str(spec.get("interpreter", "bash") or "bash")
         command = str(spec.get("command", ""))
+        before_command = str(spec.get("before_command", ""))
+        after_command = str(spec.get("after_command", ""))
+        arguments = str(spec.get("arguments", ""))
         remote_path = str(spec.get("remote_path", ""))
         local_path = str(spec.get("local_path", ""))
 
         if mode == "remote_script":
-            remote_exec = f"{interpreter} {_shell_single_quote(remote_path)}" if interpreter != "direct" else _shell_single_quote(remote_path)
+            script_line = f"{interpreter} {_shell_single_quote(remote_path)} {arguments}" if interpreter != "direct" else f"{_shell_single_quote(remote_path)} {arguments}"
+            remote_script = _join_remote_steps(before_command, script_line, after_command)
             title = f"Remote-Skript: {remote_path}"
-            remote_body = f"{ssh_cmd} -t <<'__REMOTE_CMD__'\n{remote_exec}\n__REMOTE_CMD__"
+            remote_body = f"{ssh_cmd} -t <<'__REMOTE_CMD__'\n{remote_script}\n__REMOTE_CMD__"
         elif mode == "local_script":
             basename = Path(local_path).name or "script"
             remote_tmp = f"/tmp/ssh-manager-$(date +%s)-$$-{basename}"
@@ -256,11 +271,12 @@ def build_remote_script_wt_command(
                 scp_target = _ssh_target(session.hostname or session.display_name, user, session.port)
                 scp_port = f"-P {session.port} " if session.port != 22 else ""
             upload = f"scp {scp_port}{_shell_single_quote(local_path)} {scp_target}:{_shell_single_quote(remote_tmp)}"
-            remote_exec = f"chmod +x {_shell_single_quote(remote_tmp)} && "
-            remote_exec += f"{interpreter} {_shell_single_quote(remote_tmp)}" if interpreter != "direct" else _shell_single_quote(remote_tmp)
-            remote_exec += f"; status=$?; rm -f {_shell_single_quote(remote_tmp)}; exit $status"
+            script_line = f"chmod +x {_shell_single_quote(remote_tmp)} && "
+            script_line += f"{interpreter} {_shell_single_quote(remote_tmp)} {arguments}" if interpreter != "direct" else f"{_shell_single_quote(remote_tmp)} {arguments}"
+            remote_script = _join_remote_steps(before_command, script_line, after_command)
+            remote_script += f"\nstatus=$?\nrm -f {_shell_single_quote(remote_tmp)}\nexit $status"
             title = f"Lokales Skript: {local_path}"
-            remote_body = f"{upload}\nif [ $? -ne 0 ]; then exit 1; fi\n{ssh_cmd} -t <<'__REMOTE_CMD__'\n{remote_exec}\n__REMOTE_CMD__"
+            remote_body = f"{upload}\nif [ $? -ne 0 ]; then exit 1; fi\n{ssh_cmd} -t <<'__REMOTE_CMD__'\n{remote_script}\n__REMOTE_CMD__"
         else:
             title = f"Remote-Befehl: {command.strip() or '-'}"
             remote_body = f"{ssh_cmd} {'-t ' if not close_on_success else ''}<<'__REMOTE_CMD__'\n{command}\n__REMOTE_CMD__"
@@ -285,7 +301,6 @@ def build_remote_script_wt_command(
         tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
     return " ; ".join(parts)
-
 
 def _write_temp_bash_script(prefix: str, content: str) -> str:
     """Schreibt ein temporäres Bash-Skript für WT/Git Bash und gibt den Windows-Pfad zurück."""

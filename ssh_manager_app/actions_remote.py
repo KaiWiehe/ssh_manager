@@ -206,9 +206,11 @@ def run_remote_command(app, sessions: list[Session]) -> None:
     else:
         user_mode, spec, close_on_success, save_favorite = dialog.result
         command = spec.get("command", "")
+    if hasattr(dialog, "_favorites"):
+        app._initial_toolbar_search_texts["remote_command_favorites"] = list(dialog._favorites)[:25]
     app._initial_toolbar_search_texts["last_remote_command"] = command
     history = list(app._initial_toolbar_search_texts.get("remote_command_history", []))
-    label = spec.get("path") or command.splitlines()[0] if command else spec.get("path", "")
+    label = spec.get("name") or spec.get("path") or (command.splitlines()[0] if command else "Ausführung")
     history_item = {"label": label, **spec}
     history = [item for item in history if item != history_item]
     history.insert(0, history_item)
@@ -223,7 +225,8 @@ def run_remote_command(app, sessions: list[Session]) -> None:
     if session_users is None:
         return
 
-    confirm = RemoteCommandConfirmDialog(app, spec.get("path") or command, session_users, close_on_success)
+    preview = spec.get("name") or spec.get("path") or command
+    confirm = RemoteCommandConfirmDialog(app, preview, session_users, close_on_success)
     app.wait_window(confirm)
     if not confirm.result:
         return

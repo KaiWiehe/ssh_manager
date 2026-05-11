@@ -427,13 +427,13 @@ class SshRemoveKeyDialog(tk.Toplevel):
 
 
 class RemoteCommandDialog(tk.Toplevel):
-    """Dialog für Remote-Befehl, lokale Skripte und Remote-Skriptpfade."""
+    """Dialog für Remote-Befehl, Skript-Runbooks, Verlauf und Favoriten."""
 
     def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, history: list[dict] | None = None, favorites: list[dict] | None = None):
         super().__init__(parent)
         self.title("Befehl/Skript ausführen")
-        self.geometry("820x620")
-        self.minsize(720, 520)
+        self.geometry("980x760")
+        self.minsize(860, 660)
         self.result: tuple[str, dict, bool, bool] | None = None
         self._last_command = last_command
         self._history = history or []
@@ -446,80 +446,121 @@ class RemoteCommandDialog(tk.Toplevel):
         self.bind("<Escape>", lambda _: self._on_cancel())
 
     def _build(self, target_count: int) -> None:
-        frame = ttk.Frame(self, padding=16)
-        frame.pack(fill="both", expand=True)
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(4, weight=1)
-        ttk.Label(frame, text=f"Remote-Ausführung für {target_count} Host(s)", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 6))
-        ttk.Label(frame, text="Befehl direkt ausführen, lokales Skript hochladen oder vorhandenes Remote-Skript starten.", foreground="#666666").grid(row=1, column=0, sticky="w", pady=(0, 12))
+        root = ttk.Frame(self, padding=14)
+        root.pack(fill="both", expand=True)
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(2, weight=1)
+        ttk.Label(root, text=f"Remote-Ausführung für {target_count} Host(s)", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(root, text="Ablauf: optionaler Vor-Befehl → optionales Skript mit Argumenten → optionaler Nach-Befehl.", foreground="#666666").grid(row=1, column=0, sticky="w", pady=(2, 10))
 
-        mode_frame = ttk.LabelFrame(frame, text="Benutzer-Auswahl", padding=12)
-        mode_frame.grid(row=2, column=0, sticky="ew", pady=(0, 12))
-        mode_frame.columnconfigure(0, weight=1)
+        body = ttk.PanedWindow(root, orient="horizontal")
+        body.grid(row=2, column=0, sticky="nsew")
+
+        left = ttk.Frame(body, padding=(0, 0, 10, 0))
+        right = ttk.Frame(body)
+        body.add(left, weight=3)
+        body.add(right, weight=1)
+        left.columnconfigure(0, weight=1)
+        left.rowconfigure(3, weight=1)
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+
+        mode_frame = ttk.LabelFrame(left, text="Benutzer", padding=10)
+        mode_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        mode_frame.columnconfigure(1, weight=1)
         self._user_mode = tk.StringVar(value="all")
-        ttk.Radiobutton(mode_frame, text="Ein Benutzer für alle Hosts", variable=self._user_mode, value="all").grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(mode_frame, text="Benutzer pro Host auswählen", variable=self._user_mode, value="per_host").grid(row=1, column=0, sticky="w", pady=(4, 8))
-        ttk.Label(mode_frame, text="Quickselect:").grid(row=2, column=0, sticky="w", pady=(0, 4))
+        ttk.Radiobutton(mode_frame, text="Ein Benutzer für alle Hosts", variable=self._user_mode, value="all").grid(row=0, column=0, sticky="w", columnspan=2)
+        ttk.Radiobutton(mode_frame, text="Benutzer pro Host auswählen", variable=self._user_mode, value="per_host").grid(row=1, column=0, sticky="w", columnspan=2)
         self._user_var = tk.StringVar(value=self._default_user)
-        _build_quickselect_buttons(mode_frame, self._quick_users, self._user_var).grid(row=3, column=0, sticky="ew", pady=(0, 6))
-        user_entry_frame = ttk.Frame(mode_frame)
-        user_entry_frame.grid(row=4, column=0, sticky="ew")
-        user_entry_frame.columnconfigure(1, weight=1)
-        ttk.Label(user_entry_frame, text="Benutzername:").grid(row=0, column=0, sticky="w", padx=(0, 8))
-        ttk.Entry(user_entry_frame, textvariable=self._user_var).grid(row=0, column=1, sticky="ew")
+        ttk.Label(mode_frame, text="Benutzername:").grid(row=2, column=0, sticky="w", pady=(8, 0), padx=(0, 8))
+        ttk.Entry(mode_frame, textvariable=self._user_var).grid(row=2, column=1, sticky="ew", pady=(8, 0))
+        _build_quickselect_buttons(mode_frame, self._quick_users, self._user_var).grid(row=3, column=1, sticky="ew", pady=(6, 0))
 
-        source = ttk.LabelFrame(frame, text="Was ausführen?", padding=10)
-        source.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        source = ttk.LabelFrame(left, text="Skript / Modus", padding=10)
+        source.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         source.columnconfigure(1, weight=1)
         self._run_mode = tk.StringVar(value="command")
-        ttk.Radiobutton(source, text="Remote-Befehl", variable=self._run_mode, value="command").grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(source, text="Lokales Skript hochladen", variable=self._run_mode, value="local_script").grid(row=1, column=0, sticky="w")
-        ttk.Radiobutton(source, text="Skript liegt schon auf Server", variable=self._run_mode, value="remote_script").grid(row=2, column=0, sticky="w")
+        ttk.Radiobutton(source, text="Nur Remote-Befehl", variable=self._run_mode, value="command", command=self._update_help).grid(row=0, column=0, sticky="w")
+        ttk.Radiobutton(source, text="Lokales Skript hochladen", variable=self._run_mode, value="local_script", command=self._update_help).grid(row=1, column=0, sticky="w")
+        ttk.Radiobutton(source, text="Skript liegt auf Server", variable=self._run_mode, value="remote_script", command=self._update_help).grid(row=2, column=0, sticky="w")
         self._path_var = tk.StringVar()
-        ttk.Entry(source, textvariable=self._path_var).grid(row=1, column=1, rowspan=2, sticky="ew", padx=8)
-        ttk.Button(source, text="Datei…", command=self._choose_file).grid(row=1, column=2, padx=4)
+        ttk.Label(source, text="Skriptpfad:").grid(row=1, column=1, sticky="w", padx=(10, 0))
+        ttk.Entry(source, textvariable=self._path_var).grid(row=2, column=1, sticky="ew", padx=(10, 8))
+        ttk.Button(source, text="Lokale Datei…", command=self._choose_file).grid(row=2, column=2, sticky="e")
         self._interpreter = tk.StringVar(value="bash")
-        ttk.Combobox(source, textvariable=self._interpreter, values=("bash", "sh", "python3", "python", "direct"), width=12, state="readonly").grid(row=0, column=2, padx=4)
+        ttk.Label(source, text="Interpreter:").grid(row=0, column=1, sticky="e", padx=(10, 8))
+        ttk.Combobox(source, textvariable=self._interpreter, values=("bash", "sh", "python3", "python", "direct"), width=12, state="readonly").grid(row=0, column=2, sticky="e")
+        self._arguments_var = tk.StringVar()
+        ttk.Label(source, text="Argumente:").grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(source, textvariable=self._arguments_var).grid(row=3, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+        self._help_var = tk.StringVar()
+        ttk.Label(source, textvariable=self._help_var, foreground="#666666", wraplength=620).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
-        body = ttk.Frame(frame)
-        body.grid(row=4, column=0, sticky="nsew")
-        body.columnconfigure(0, weight=2)
-        body.columnconfigure(1, weight=1)
-        body.rowconfigure(0, weight=1)
-        script_frame = ttk.LabelFrame(body, text="Remote-Befehl", padding=8)
-        script_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        script_frame.columnconfigure(0, weight=1); script_frame.rowconfigure(0, weight=1)
-        self._command_text = scrolledtext.ScrolledText(script_frame, wrap="word", height=12)
-        self._command_text.grid(row=0, column=0, sticky="nsew")
+        flow = ttk.LabelFrame(left, text="Ablauf", padding=8)
+        flow.grid(row=3, column=0, sticky="nsew")
+        flow.columnconfigure(0, weight=1)
+        flow.rowconfigure(1, weight=1)
+        flow.rowconfigure(3, weight=1)
+        flow.rowconfigure(5, weight=1)
+        ttk.Label(flow, text="1. Vor-Befehl (optional) — z.B. cd /opt/app oder systemctl stop …").grid(row=0, column=0, sticky="w")
+        self._before_text = scrolledtext.ScrolledText(flow, wrap="word", height=4)
+        self._before_text.grid(row=1, column=0, sticky="nsew", pady=(2, 8))
+        ttk.Label(flow, text="2. Remote-Befehl (nur bei Modus 'Nur Remote-Befehl')").grid(row=2, column=0, sticky="w")
+        self._command_text = scrolledtext.ScrolledText(flow, wrap="word", height=5)
+        self._command_text.grid(row=3, column=0, sticky="nsew", pady=(2, 8))
         if self._last_command:
             self._command_text.insert("1.0", self._last_command)
-        side = ttk.Frame(body)
-        side.grid(row=0, column=1, sticky="nsew")
-        side.rowconfigure(0, weight=1); side.rowconfigure(1, weight=1); side.columnconfigure(0, weight=1)
-        self._history_list = tk.Listbox(side, height=7)
-        ttk.Label(side, text="Zuletzt").grid(row=0, column=0, sticky="nw")
-        self._history_list.grid(row=0, column=0, sticky="nsew", pady=(18,8))
-        self._favorites_list = tk.Listbox(side, height=7)
-        ttk.Label(side, text="Favoriten").grid(row=1, column=0, sticky="nw")
-        self._favorites_list.grid(row=1, column=0, sticky="nsew", pady=(18,0))
-        for item in self._history:
-            self._history_list.insert("end", item.get("label", item.get("command", ""))[:80])
-        for item in self._favorites:
-            self._favorites_list.insert("end", item.get("label", item.get("command", ""))[:80])
+        ttk.Label(flow, text="3. Nach-Befehl (optional) — z.B. status prüfen oder Log anzeigen").grid(row=4, column=0, sticky="w")
+        self._after_text = scrolledtext.ScrolledText(flow, wrap="word", height=4)
+        self._after_text.grid(row=5, column=0, sticky="nsew", pady=(2, 0))
+
+        favorites_box = ttk.LabelFrame(right, text="Favoriten", padding=8)
+        favorites_box.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
+        favorites_box.columnconfigure(0, weight=1); favorites_box.rowconfigure(0, weight=1)
+        self._favorites_list = tk.Listbox(favorites_box, height=9)
+        self._favorites_list.grid(row=0, column=0, sticky="nsew")
+        fav_buttons = ttk.Frame(favorites_box); fav_buttons.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        ttk.Button(fav_buttons, text="Übernehmen", command=lambda: self._load_selected(self._favorites_list, self._favorites)).pack(side="left")
+        ttk.Button(fav_buttons, text="Neu", command=self._add_favorite).pack(side="left", padx=4)
+        ttk.Button(fav_buttons, text="Bearbeiten", command=self._edit_selected_favorite).pack(side="left")
+
+        history_box = ttk.LabelFrame(right, text="Zuletzt verwendet", padding=8)
+        history_box.grid(row=1, column=0, sticky="nsew")
+        history_box.columnconfigure(0, weight=1); history_box.rowconfigure(0, weight=1)
+        self._history_list = tk.Listbox(history_box, height=9)
+        self._history_list.grid(row=0, column=0, sticky="nsew")
+        ttk.Button(history_box, text="Übernehmen", command=lambda: self._load_selected(self._history_list, self._history)).grid(row=1, column=0, sticky="w", pady=(6, 0))
         self._history_list.bind("<Double-Button-1>", lambda _e: self._load_selected(self._history_list, self._history))
         self._favorites_list.bind("<Double-Button-1>", lambda _e: self._load_selected(self._favorites_list, self._favorites))
 
-        options = ttk.Frame(frame)
-        options.grid(row=5, column=0, sticky="ew", pady=(12, 0))
+        options = ttk.Frame(root)
+        options.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         self._close_on_success = tk.BooleanVar(value=False)
         self._save_favorite = tk.BooleanVar(value=False)
         ttk.Checkbutton(options, text="Tab direkt schließen, wenn erfolgreich", variable=self._close_on_success).pack(side="left")
-        ttk.Checkbutton(options, text="Als Favorit speichern", variable=self._save_favorite).pack(side="left", padx=18)
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=6, column=0, pady=(14, 0))
-        ttk.Button(btn_frame, text="Ausführen", command=self._on_ok, width=12).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+        ttk.Checkbutton(options, text="Diese Ausführung als Favorit speichern", variable=self._save_favorite).pack(side="left", padx=18)
+        ttk.Button(options, text="Ausführen", command=self._on_ok, width=12).pack(side="right", padx=(6, 0))
+        ttk.Button(options, text="Abbrechen", command=self._on_cancel, width=10).pack(side="right")
+
+        self._refresh_lists()
+        self._update_help()
         self._command_text.focus()
+
+    def _refresh_lists(self) -> None:
+        if hasattr(self, "_favorites_list"):
+            self._favorites_list.delete(0, "end")
+            for item in self._favorites:
+                self._favorites_list.insert("end", self._item_label(item))
+        if hasattr(self, "_history_list"):
+            self._history_list.delete(0, "end")
+            for item in self._history:
+                self._history_list.insert("end", self._item_label(item))
+
+    def _item_label(self, item: dict) -> str:
+        name = item.get("name") or item.get("label") or item.get("path") or item.get("command", "")
+        note = item.get("note", "")
+        return (f"{name} — {note}" if note else name)[:100]
 
     def _choose_file(self) -> None:
         filename = filedialog.askopenfilename(parent=self, title="Skript auswählen", filetypes=(("Skripte", "*.sh *.bash *.py"), ("Alle Dateien", "*.*")))
@@ -530,16 +571,89 @@ class RemoteCommandDialog(tk.Toplevel):
             elif filename.lower().endswith((".sh", ".bash")):
                 self._interpreter.set("bash")
             self._run_mode.set("local_script")
+            self._update_help()
+
+    def _update_help(self) -> None:
+        if not hasattr(self, "_help_var"):
+            return
+        mode = self._run_mode.get()
+        if mode == "command":
+            self._help_var.set("Ausgefüllt werden muss nur das Feld 'Remote-Befehl'. Skriptpfad und Argumente werden ignoriert. Vor-/Nach-Befehl nutzt du hier normalerweise nicht.")
+        elif mode == "local_script":
+            self._help_var.set("Pflicht: lokaler Skriptpfad. Die App lädt die Datei per scp nach /tmp hoch, führt sie mit Interpreter + Argumenten aus und löscht sie danach wieder. Vor-/Nach-Befehl laufen auf dem Zielhost.")
+        else:
+            self._help_var.set("Pflicht: Remote-Skriptpfad. Das Skript muss auf dem Zielhost existieren. Interpreter + Argumente werden davor/dahinter gesetzt. Vor-/Nach-Befehl laufen auf dem Zielhost.")
+
+    def _current_spec(self, *, include_metadata: bool = False) -> dict:
+        mode = self._run_mode.get() if hasattr(self, "_run_mode") else "command"
+        command = self._command_text.get("1.0", "end").strip()
+        path = self._path_var.get().strip() if hasattr(self, "_path_var") else ""
+        spec = {
+            "mode": mode,
+            "command": command,
+            "before_command": self._before_text.get("1.0", "end").strip() if hasattr(self, "_before_text") else "",
+            "after_command": self._after_text.get("1.0", "end").strip() if hasattr(self, "_after_text") else "",
+            "interpreter": self._interpreter.get() if hasattr(self, "_interpreter") else "bash",
+            "arguments": self._arguments_var.get().strip() if hasattr(self, "_arguments_var") else "",
+            "path": path,
+        }
+        if mode == "local_script":
+            spec["local_path"] = path
+        if mode == "remote_script":
+            spec["remote_path"] = path
+        if include_metadata:
+            spec.setdefault("name", spec.get("path") or (command.splitlines()[0] if command else "Neuer Favorit"))
+            spec.setdefault("note", "")
+        return spec
+
+    def _apply_spec(self, item: dict) -> None:
+        self._run_mode.set(item.get("mode", "command"))
+        self._interpreter.set(item.get("interpreter", "bash"))
+        self._arguments_var.set(item.get("arguments", ""))
+        self._path_var.set(item.get("path") or item.get("local_path") or item.get("remote_path") or "")
+        for widget, key in ((self._before_text, "before_command"), (self._command_text, "command"), (self._after_text, "after_command")):
+            widget.delete("1.0", "end")
+            widget.insert("1.0", item.get(key, ""))
+        self._update_help()
 
     def _load_selected(self, listbox: tk.Listbox, items: list[dict]) -> None:
         sel = listbox.curselection()
-        if not sel: return
-        item = items[sel[0]]
-        self._run_mode.set(item.get("mode", "command"))
-        self._interpreter.set(item.get("interpreter", "bash"))
-        self._path_var.set(item.get("path", ""))
-        self._command_text.delete("1.0", "end")
-        self._command_text.insert("1.0", item.get("command", ""))
+        if not sel:
+            return
+        self._apply_spec(items[sel[0]])
+
+    def _prompt_metadata(self, item: dict) -> dict | None:
+        name = simpledialog.askstring("Favorit", "Name für den Favorit:", initialvalue=item.get("name") or item.get("label") or item.get("path") or "", parent=self)
+        if name is None:
+            return None
+        note = simpledialog.askstring("Favorit", "Notiz / Erklärung:", initialvalue=item.get("note", ""), parent=self)
+        if note is None:
+            return None
+        item = dict(item)
+        item["name"] = name.strip() or item.get("path") or item.get("command", "Favorit")
+        item["note"] = note.strip()
+        item["label"] = item["name"]
+        return item
+
+    def _add_favorite(self) -> None:
+        item = self._prompt_metadata(self._current_spec(include_metadata=True))
+        if item is None:
+            return
+        self._favorites.insert(0, item)
+        self._refresh_lists()
+
+    def _edit_selected_favorite(self) -> None:
+        sel = self._favorites_list.curselection()
+        if not sel:
+            messagebox.showinfo("Kein Favorit", "Bitte zuerst einen Favorit auswählen.", parent=self)
+            return
+        index = sel[0]
+        item = self._prompt_metadata(self._favorites[index])
+        if item is None:
+            return
+        self._favorites[index] = item
+        self._apply_spec(item)
+        self._refresh_lists()
 
     def _on_ok(self) -> None:
         legacy_mode = not hasattr(self, "_run_mode")
@@ -553,21 +667,24 @@ class RemoteCommandDialog(tk.Toplevel):
                 messagebox.showwarning("Kein Benutzername", "Bitte einen Benutzernamen eingeben oder per Quickselect wählen.", parent=self); return
             if not _USERNAME_RE.match(user_value):
                 messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self); return
-        mode = self._run_mode.get() if hasattr(self, "_run_mode") else "command"
-        command = self._command_text.get("1.0", "end").strip()
-        path = self._path_var.get().strip() if hasattr(self, "_path_var") else ""
-        if mode == "command" and not command:
-            messagebox.showwarning("Kein Befehl", "Bitte einen Befehl eingeben.", parent=self); return
-        if mode != "command" and not path:
-            messagebox.showwarning("Kein Skriptpfad", "Bitte einen lokalen oder Remote-Skriptpfad eingeben.", parent=self); return
         if legacy_mode:
+            command = self._command_text.get("1.0", "end").strip()
             self.result = (self._user_mode.get(), command, self._close_on_success.get())
             self.destroy()
             return
-        spec = {"mode": mode, "command": command, "interpreter": self._interpreter.get(), "path": path}
-        if mode == "local_script": spec["local_path"] = path
-        if mode == "remote_script": spec["remote_path"] = path
-        self.result = (self._user_mode.get(), spec, self._close_on_success.get(), self._save_favorite.get())
+        spec = self._current_spec()
+        mode = spec["mode"]
+        if mode == "command" and not spec["command"]:
+            messagebox.showwarning("Kein Befehl", "Bitte einen Remote-Befehl eingeben.", parent=self); return
+        if mode != "command" and not spec["path"]:
+            messagebox.showwarning("Kein Skriptpfad", "Bitte einen lokalen oder Remote-Skriptpfad eingeben.", parent=self); return
+        save_favorite = self._save_favorite.get()
+        if save_favorite:
+            item = self._prompt_metadata({**spec, "name": spec.get("path") or spec.get("command", "")})
+            if item is None:
+                return
+            spec.update(item)
+        self.result = (self._user_mode.get(), spec, self._close_on_success.get(), save_favorite)
         self.destroy()
 
     def _on_cancel(self) -> None:
@@ -575,7 +692,10 @@ class RemoteCommandDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks(); pw=parent.winfo_width(); ph=parent.winfo_height(); px=parent.winfo_x(); py=parent.winfo_y(); w=self.winfo_width(); h=self.winfo_height(); self.geometry(f"{w}x{h}+{px+(pw-w)//2}+{py+(ph-h)//2}")
+        self.update_idletasks()
+        pw = parent.winfo_width(); ph = parent.winfo_height(); px = parent.winfo_x(); py = parent.winfo_y()
+        w = self.winfo_width(); h = self.winfo_height()
+        self.geometry(f"{w}x{h}+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
 
 
 class RemoteCommandConfirmDialog(tk.Toplevel):
