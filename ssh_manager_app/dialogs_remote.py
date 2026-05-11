@@ -566,31 +566,61 @@ class RemoteCommandDialog(tk.Toplevel):
 
         source = ttk.LabelFrame(left, text="Skript / Modus", padding=10)
         source.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        source.columnconfigure(1, weight=1)
+        source.columnconfigure(0, weight=1)
+
         self._run_mode = tk.StringVar(value="command")
-        ttk.Radiobutton(source, text="Nur Remote-Befehl", variable=self._run_mode, value="command", command=self._update_help).grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(source, text="Lokales Skript hochladen", variable=self._run_mode, value="local_script", command=self._update_help).grid(row=1, column=0, sticky="w")
-        ttk.Radiobutton(source, text="Skript liegt auf Server", variable=self._run_mode, value="remote_script", command=self._update_help).grid(row=2, column=0, sticky="w")
-        self._remote_path_var = tk.StringVar()
+        mode_row = ttk.Frame(source)
+        mode_row.grid(row=0, column=0, sticky="ew")
+        ttk.Radiobutton(mode_row, text="Nur Remote-Befehl", variable=self._run_mode, value="command", command=self._update_help).pack(side="left", padx=(0, 18))
+        ttk.Radiobutton(mode_row, text="Lokales Skript hochladen", variable=self._run_mode, value="local_script", command=self._update_help).pack(side="left", padx=(0, 18))
+        ttk.Radiobutton(mode_row, text="Skript liegt auf Server", variable=self._run_mode, value="remote_script", command=self._update_help).pack(side="left")
+
+        self._settings_container = ttk.Frame(source)
+        self._settings_container.grid(row=1, column=0, sticky="ew", pady=(10, 0))
+        self._settings_container.columnconfigure(0, weight=1)
+
+        self._command_settings_frame = ttk.LabelFrame(self._settings_container, text="Remote-Befehl", padding=10)
+        self._command_settings_frame.grid(row=0, column=0, sticky="ew")
+        ttk.Label(
+            self._command_settings_frame,
+            text="Keine weiteren Einstellungen nötig. Trage den Befehl unten im Feld 'Remote-Befehl' ein.",
+            foreground="#666666",
+        ).grid(row=0, column=0, sticky="w")
+
+        self._local_settings_frame = ttk.LabelFrame(self._settings_container, text="Lokales Skript", padding=10)
+        self._local_settings_frame.columnconfigure(1, weight=1)
         self._local_path_var = tk.StringVar(value="Keine lokale Datei ausgewählt")
-        ttk.Label(source, text="Remote-Skriptpfad:").grid(row=1, column=1, sticky="w", padx=(10, 0))
-        self._path_entry = ttk.Entry(source, textvariable=self._remote_path_var)
-        self._path_entry.grid(row=2, column=1, sticky="ew", padx=(10, 8))
-        self._file_button = ttk.Button(source, text="Lokale Datei…", command=self._choose_file)
-        self._file_button.grid(row=2, column=2, sticky="e")
-        ttk.Label(source, text="Lokale Datei:").grid(row=3, column=1, sticky="w", padx=(10, 0), pady=(8, 0))
-        self._local_file_label = ttk.Label(source, textvariable=self._local_path_var, foreground="#555555", wraplength=430)
-        self._local_file_label.grid(row=4, column=1, columnspan=2, sticky="w", padx=(10, 0))
+        ttk.Label(self._local_settings_frame, text="Datei:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self._local_file_label = ttk.Label(self._local_settings_frame, textvariable=self._local_path_var, foreground="#555555", wraplength=520)
+        self._local_file_label.grid(row=0, column=1, sticky="w")
+        self._file_button = ttk.Button(self._local_settings_frame, text="Lokale Datei…", command=self._choose_file)
+        self._file_button.grid(row=0, column=2, sticky="e", padx=(8, 0))
+
         self._interpreter = tk.StringVar(value="bash")
-        ttk.Label(source, text="Interpreter:").grid(row=0, column=1, sticky="e", padx=(10, 8))
-        self._interpreter_combo = ttk.Combobox(source, textvariable=self._interpreter, values=("bash", "sh", "python3", "python", "direct"), width=12, state="readonly")
-        self._interpreter_combo.grid(row=0, column=2, sticky="e")
+        ttk.Label(self._local_settings_frame, text="Interpreter:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
+        self._local_interpreter_combo = ttk.Combobox(self._local_settings_frame, textvariable=self._interpreter, values=("bash", "sh", "python3", "python", "direct"), width=14, state="readonly")
+        self._local_interpreter_combo.grid(row=1, column=1, sticky="w", pady=(8, 0))
         self._arguments_var = tk.StringVar()
-        ttk.Label(source, text="Argumente:").grid(row=5, column=0, sticky="w", pady=(8, 0))
-        self._arguments_entry = ttk.Entry(source, textvariable=self._arguments_var)
-        self._arguments_entry.grid(row=5, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+        ttk.Label(self._local_settings_frame, text="Argumente:").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
+        self._local_arguments_entry = ttk.Entry(self._local_settings_frame, textvariable=self._arguments_var)
+        self._local_arguments_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+        ttk.Label(self._local_settings_frame, text="Die Datei wird nach /tmp hochgeladen, ausgeführt und danach gelöscht.", foreground="#666666").grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+
+        self._remote_settings_frame = ttk.LabelFrame(self._settings_container, text="Skript auf Server", padding=10)
+        self._remote_settings_frame.columnconfigure(1, weight=1)
+        self._remote_path_var = tk.StringVar()
+        ttk.Label(self._remote_settings_frame, text="Remote-Pfad:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self._path_entry = ttk.Entry(self._remote_settings_frame, textvariable=self._remote_path_var)
+        self._path_entry.grid(row=0, column=1, sticky="ew")
+        ttk.Label(self._remote_settings_frame, text="Interpreter:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
+        self._remote_interpreter_combo = ttk.Combobox(self._remote_settings_frame, textvariable=self._interpreter, values=("bash", "sh", "python3", "python", "direct"), width=14, state="readonly")
+        self._remote_interpreter_combo.grid(row=1, column=1, sticky="w", pady=(8, 0))
+        ttk.Label(self._remote_settings_frame, text="Argumente:").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
+        self._remote_arguments_entry = ttk.Entry(self._remote_settings_frame, textvariable=self._arguments_var)
+        self._remote_arguments_entry.grid(row=2, column=1, sticky="ew", pady=(8, 0))
+        ttk.Label(self._remote_settings_frame, text="Das Skript muss bereits auf dem Zielhost vorhanden sein.", foreground="#666666").grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
         self._help_var = tk.StringVar()
-        ttk.Label(source, textvariable=self._help_var, foreground="#666666", wraplength=620).grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         flow = ttk.LabelFrame(left, text="Ablauf", padding=8)
         flow.grid(row=3, column=0, sticky="nsew")
@@ -682,22 +712,25 @@ class RemoteCommandDialog(tk.Toplevel):
         if not hasattr(self, "_help_var"):
             return
         mode = self._run_mode.get()
-        script_mode = mode != "command"
-        self._path_entry.configure(state="normal" if mode == "remote_script" else "disabled")
-        self._interpreter_combo.configure(state="readonly" if script_mode else "disabled")
-        self._arguments_entry.configure(state="normal" if script_mode else "disabled")
-        self._file_button.configure(state="normal" if mode == "local_script" else "disabled")
-        self._set_text_state(self._before_text, script_mode)
-        self._set_text_state(self._after_text, script_mode)
-        self._set_text_state(self._command_text, mode == "command")
+        for frame in (self._command_settings_frame, self._local_settings_frame, self._remote_settings_frame):
+            frame.grid_remove()
         if mode == "command":
-            self._help_var.set("Modus: Nur Remote-Befehl. Pflicht ist nur das große Feld 'Remote-Befehl'. Skriptpfad, Interpreter, Argumente sowie Vor-/Nach-Befehl sind deaktiviert.")
+            self._command_settings_frame.grid(row=0, column=0, sticky="ew")
+            self._set_text_state(self._before_text, False)
+            self._set_text_state(self._after_text, False)
+            self._set_text_state(self._command_text, True)
             self._command_label.configure(text="Remote-Befehl (Pflicht)")
         elif mode == "local_script":
-            self._help_var.set("Modus: Lokales Skript. Pflicht ist eine lokale Datei über den Button. Das Remote-Pfad-Feld ist deaktiviert. Optional: Argumente, Vor-Befehl und Nach-Befehl.")
+            self._local_settings_frame.grid(row=0, column=0, sticky="ew")
+            self._set_text_state(self._before_text, True)
+            self._set_text_state(self._after_text, True)
+            self._set_text_state(self._command_text, False)
             self._command_label.configure(text="Remote-Befehl — bei Skript-Ausführung deaktiviert")
         else:
-            self._help_var.set("Modus: Remote-Skript. Pflicht ist der Pfad auf dem Zielhost. Optional: Argumente, Vor-Befehl und Nach-Befehl. Das Feld 'Remote-Befehl' ist deaktiviert.")
+            self._remote_settings_frame.grid(row=0, column=0, sticky="ew")
+            self._set_text_state(self._before_text, True)
+            self._set_text_state(self._after_text, True)
+            self._set_text_state(self._command_text, False)
             self._command_label.configure(text="Remote-Befehl — bei Skript-Ausführung deaktiviert")
 
     def _current_spec(self, *, include_metadata: bool = False) -> dict:
