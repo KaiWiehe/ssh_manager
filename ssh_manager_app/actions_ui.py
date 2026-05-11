@@ -38,6 +38,12 @@ def persist_ui_state(app) -> None:
         "last_remote_command": app._initial_toolbar_search_texts.get("last_remote_command", ""),
         "search_history": list(app._search_history),
     }
+    remote_history = list(app._initial_toolbar_search_texts.get("remote_command_history", []))
+    if remote_history:
+        toolbar_texts["remote_command_history"] = remote_history
+    remote_favorites = list(app._initial_toolbar_search_texts.get("remote_command_favorites", []))
+    if remote_favorites:
+        toolbar_texts["remote_command_favorites"] = remote_favorites
     if "_favorite_sessions" in getattr(app, "__dict__", {}):
         toolbar_texts["favorite_sessions"] = dict(app._favorite_sessions)
     if "_recent_sessions" in getattr(app, "__dict__", {}):

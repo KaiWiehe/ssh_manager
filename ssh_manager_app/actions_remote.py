@@ -7,6 +7,7 @@ from .core import (
     _append_ssh_config_alias,
     build_jump_wt_command,
     build_remote_command_wt_command,
+    build_remote_script_wt_command,
     build_ssh_copy_id_command,
     build_ssh_remove_key_command,
     build_ssh_tunnel_command,
@@ -182,34 +183,65 @@ def run_remote_command(app, sessions: list[Session]) -> None:
         messagebox.showwarning("Keine Hosts", "Keine ausführbaren Hosts ausgewählt.", parent=app)
         return
 
-    dialog = RemoteCommandDialog(
-        app,
-        target_count=len(runnable),
-        last_command=app._initial_toolbar_search_texts.get("last_remote_command", ""),
-        quick_users=list(app.settings.quick_users),
-        default_user=app.settings.default_user,
-    )
+    dialog_kwargs = {
+        "target_count": len(runnable),
+        "last_command": app._initial_toolbar_search_texts.get("last_remote_command", ""),
+        "quick_users": list(app.settings.quick_users),
+        "default_user": app.settings.default_user,
+    }
+    remote_history = list(app._initial_toolbar_search_texts.get("remote_command_history", []))
+    remote_favorites = list(app._initial_toolbar_search_texts.get("remote_command_favorites", []))
+    if remote_history:
+        dialog_kwargs["history"] = remote_history
+    if remote_favorites:
+        dialog_kwargs["favorites"] = remote_favorites
+    dialog = RemoteCommandDialog(app, **dialog_kwargs)
     app.wait_window(dialog)
     if dialog.result is None:
         return
-    user_mode, command, close_on_success = dialog.result
+    if len(dialog.result) == 3:
+        user_mode, command, close_on_success = dialog.result
+        spec = {"mode": "command", "command": command, "interpreter": "bash", "path": ""}
+        save_favorite = False
+    else:
+        user_mode, spec, close_on_success, save_favorite = dialog.result
+        command = spec.get("command", "")
     app._initial_toolbar_search_texts["last_remote_command"] = command
+    history = list(app._initial_toolbar_search_texts.get("remote_command_history", []))
+    label = spec.get("path") or command.splitlines()[0] if command else spec.get("path", "")
+    history_item = {"label": label, **spec}
+    history = [item for item in history if item != history_item]
+    history.insert(0, history_item)
+    app._initial_toolbar_search_texts["remote_command_history"] = history[:25]
+    if save_favorite:
+        favorites = list(app._initial_toolbar_search_texts.get("remote_command_favorites", []))
+        if history_item not in favorites:
+            favorites.insert(0, history_item)
+        app._initial_toolbar_search_texts["remote_command_favorites"] = favorites[:25]
 
     session_users = resolve_users_for_sessions(app, runnable, user_mode)
     if session_users is None:
         return
 
-    confirm = RemoteCommandConfirmDialog(app, command, session_users, close_on_success)
+    confirm = RemoteCommandConfirmDialog(app, spec.get("path") or command, session_users, close_on_success)
     app.wait_window(confirm)
     if not confirm.result:
         return
 
-    cmd = build_remote_command_wt_command(
-        [(session, user, command) for session, user in session_users],
-        close_on_success=close_on_success,
-        session_colors=app._tree.get_session_colors(),
-        terminal_settings=app.settings.windows_terminal,
-    )
+    if spec.get("mode") == "command":
+        cmd = build_remote_command_wt_command(
+            [(session, user, command) for session, user in session_users],
+            close_on_success=close_on_success,
+            session_colors=app._tree.get_session_colors(),
+            terminal_settings=app.settings.windows_terminal,
+        )
+    else:
+        cmd = build_remote_script_wt_command(
+            [(session, user, spec) for session, user in session_users],
+            close_on_success=close_on_success,
+            session_colors=app._tree.get_session_colors(),
+            terminal_settings=app.settings.windows_terminal,
+        )
     try:
         subprocess.Popen(cmd, shell=True)
     except OSError as exc:

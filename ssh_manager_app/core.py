@@ -220,6 +220,73 @@ def build_remote_command_wt_command(
 
 
 
+
+def build_remote_script_wt_command(
+    session_commands: list[tuple[Session, str, dict]],
+    *,
+    close_on_success: bool,
+    session_colors: dict[str, str] | None = None,
+    terminal_settings: WindowsTerminalSettings | None = None,
+) -> str:
+    """Erzeugt WT-Tabs für Remote-Befehle sowie lokale/remote Python- oder Shell-Skripte."""
+    settings = terminal_settings or WindowsTerminalSettings()
+    git_bash = _find_git_bash()
+    colors = session_colors or {}
+    profile_flag = _terminal_profile_flag(settings.profile_name)
+    parts = []
+    for i, (session, user, spec) in enumerate(session_commands):
+        ssh_cmd = _build_ssh_command(session, user)
+        mode = str(spec.get("mode", "command"))
+        interpreter = str(spec.get("interpreter", "bash") or "bash")
+        command = str(spec.get("command", ""))
+        remote_path = str(spec.get("remote_path", ""))
+        local_path = str(spec.get("local_path", ""))
+
+        if mode == "remote_script":
+            remote_exec = f"{interpreter} {_shell_single_quote(remote_path)}" if interpreter != "direct" else _shell_single_quote(remote_path)
+            title = f"Remote-Skript: {remote_path}"
+            remote_body = f"{ssh_cmd} -t <<'__REMOTE_CMD__'\n{remote_exec}\n__REMOTE_CMD__"
+        elif mode == "local_script":
+            basename = Path(local_path).name or "script"
+            remote_tmp = f"/tmp/ssh-manager-$(date +%s)-$$-{basename}"
+            if session.is_ssh_config_session:
+                scp_target = session.display_name
+                scp_port = ""
+            else:
+                scp_target = _ssh_target(session.hostname or session.display_name, user, session.port)
+                scp_port = f"-P {session.port} " if session.port != 22 else ""
+            upload = f"scp {scp_port}{_shell_single_quote(local_path)} {scp_target}:{_shell_single_quote(remote_tmp)}"
+            remote_exec = f"chmod +x {_shell_single_quote(remote_tmp)} && "
+            remote_exec += f"{interpreter} {_shell_single_quote(remote_tmp)}" if interpreter != "direct" else _shell_single_quote(remote_tmp)
+            remote_exec += f"; status=$?; rm -f {_shell_single_quote(remote_tmp)}; exit $status"
+            title = f"Lokales Skript: {local_path}"
+            remote_body = f"{upload}\nif [ $? -ne 0 ]; then exit 1; fi\n{ssh_cmd} -t <<'__REMOTE_CMD__'\n{remote_exec}\n__REMOTE_CMD__"
+        else:
+            title = f"Remote-Befehl: {command.strip() or '-'}"
+            remote_body = f"{ssh_cmd} {'-t ' if not close_on_success else ''}<<'__REMOTE_CMD__'\n{command}\n__REMOTE_CMD__"
+
+        script_lines = [
+            "#!/usr/bin/env bash",
+            f"printf '%s\\n' {_shell_single_quote('SSH Manager Ausführung')}",
+            f"printf '%s\\n' {_shell_single_quote(f'Host: {session.display_name} ({session.hostname})')}",
+            f"printf '%s\\n' {_shell_single_quote(f'User: {user}')}",
+            f"printf '%s\\n\\n' {_shell_single_quote(title)}",
+            remote_body,
+            "status=$?",
+        ]
+        if not close_on_success:
+            script_lines.append("if [ $status -eq 0 ]; then exec bash; fi")
+        script_lines.append("if [ $status -ne 0 ]; then read; fi")
+        script_lines.append("exit $status")
+        script_path = _write_temp_bash_script("remote_script_", "\n".join(script_lines) + "\n")
+        color = colors.get(session.key) if settings.use_tab_color else None
+        color_flag = f'--tabColor "{color}" ' if color else ""
+        title_flag = _terminal_title_flag(session, user, settings.title_mode)
+        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
+        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
+    return " ; ".join(parts)
+
+
 def _write_temp_bash_script(prefix: str, content: str) -> str:
     """Schreibt ein temporäres Bash-Skript für WT/Git Bash und gibt den Windows-Pfad zurück."""
     script_dir = _STATE_FILE.parent / "tmp"

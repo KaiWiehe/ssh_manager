@@ -183,6 +183,12 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
         if not isinstance(history, list):
             history = []
         toolbar_texts["search_history"] = [str(item).strip() for item in history if str(item).strip()]
+        remote_history = toolbar_texts.get("remote_command_history")
+        if isinstance(remote_history, list):
+            toolbar_texts["remote_command_history"] = [item for item in remote_history if isinstance(item, dict)]
+        remote_favorites = toolbar_texts.get("remote_command_favorites")
+        if isinstance(remote_favorites, list):
+            toolbar_texts["remote_command_favorites"] = [item for item in remote_favorites if isinstance(item, dict)]
         favorites = data.get("favorite_sessions", {})
         if not isinstance(favorites, dict):
             favorites = {}
