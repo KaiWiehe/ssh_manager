@@ -486,14 +486,18 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Radiobutton(source, text="Skript liegt auf Server", variable=self._run_mode, value="remote_script", command=self._update_help).grid(row=2, column=0, sticky="w")
         self._path_var = tk.StringVar()
         ttk.Label(source, text="Skriptpfad:").grid(row=1, column=1, sticky="w", padx=(10, 0))
-        ttk.Entry(source, textvariable=self._path_var).grid(row=2, column=1, sticky="ew", padx=(10, 8))
-        ttk.Button(source, text="Lokale Datei…", command=self._choose_file).grid(row=2, column=2, sticky="e")
+        self._path_entry = ttk.Entry(source, textvariable=self._path_var)
+        self._path_entry.grid(row=2, column=1, sticky="ew", padx=(10, 8))
+        self._file_button = ttk.Button(source, text="Lokale Datei…", command=self._choose_file)
+        self._file_button.grid(row=2, column=2, sticky="e")
         self._interpreter = tk.StringVar(value="bash")
         ttk.Label(source, text="Interpreter:").grid(row=0, column=1, sticky="e", padx=(10, 8))
-        ttk.Combobox(source, textvariable=self._interpreter, values=("bash", "sh", "python3", "python", "direct"), width=12, state="readonly").grid(row=0, column=2, sticky="e")
+        self._interpreter_combo = ttk.Combobox(source, textvariable=self._interpreter, values=("bash", "sh", "python3", "python", "direct"), width=12, state="readonly")
+        self._interpreter_combo.grid(row=0, column=2, sticky="e")
         self._arguments_var = tk.StringVar()
         ttk.Label(source, text="Argumente:").grid(row=3, column=0, sticky="w", pady=(8, 0))
-        ttk.Entry(source, textvariable=self._arguments_var).grid(row=3, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+        self._arguments_entry = ttk.Entry(source, textvariable=self._arguments_var)
+        self._arguments_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(8, 0))
         self._help_var = tk.StringVar()
         ttk.Label(source, textvariable=self._help_var, foreground="#666666", wraplength=620).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
@@ -503,16 +507,19 @@ class RemoteCommandDialog(tk.Toplevel):
         flow.rowconfigure(1, weight=1)
         flow.rowconfigure(3, weight=1)
         flow.rowconfigure(5, weight=1)
-        ttk.Label(flow, text="1. Vor-Befehl (optional) — z.B. cd /opt/app oder systemctl stop …").grid(row=0, column=0, sticky="w")
-        self._before_text = scrolledtext.ScrolledText(flow, wrap="word", height=4)
+        self._before_label = ttk.Label(flow, text="1. Vor-Befehl (optional) — läuft vor dem Skript auf dem Zielhost")
+        self._before_label.grid(row=0, column=0, sticky="w")
+        self._before_text = scrolledtext.ScrolledText(flow, wrap="word", height=3)
         self._before_text.grid(row=1, column=0, sticky="nsew", pady=(2, 8))
-        ttk.Label(flow, text="2. Remote-Befehl (nur bei Modus 'Nur Remote-Befehl')").grid(row=2, column=0, sticky="w")
+        self._command_label = ttk.Label(flow, text="2. Remote-Befehl — nur im Modus 'Nur Remote-Befehl' aktiv")
+        self._command_label.grid(row=2, column=0, sticky="w")
         self._command_text = scrolledtext.ScrolledText(flow, wrap="word", height=5)
         self._command_text.grid(row=3, column=0, sticky="nsew", pady=(2, 8))
         if self._last_command:
             self._command_text.insert("1.0", self._last_command)
-        ttk.Label(flow, text="3. Nach-Befehl (optional) — z.B. status prüfen oder Log anzeigen").grid(row=4, column=0, sticky="w")
-        self._after_text = scrolledtext.ScrolledText(flow, wrap="word", height=4)
+        self._after_label = ttk.Label(flow, text="3. Nach-Befehl (optional) — läuft nach dem Skript auf dem Zielhost")
+        self._after_label.grid(row=4, column=0, sticky="w")
+        self._after_text = scrolledtext.ScrolledText(flow, wrap="word", height=3)
         self._after_text.grid(row=5, column=0, sticky="nsew", pady=(2, 0))
 
         favorites_box = ttk.LabelFrame(right, text="Favoriten", padding=8)
@@ -573,16 +580,30 @@ class RemoteCommandDialog(tk.Toplevel):
             self._run_mode.set("local_script")
             self._update_help()
 
+    def _set_text_state(self, widget: scrolledtext.ScrolledText, enabled: bool) -> None:
+        widget.configure(state="normal" if enabled else "disabled", background="white" if enabled else "#f0f0f0")
+
     def _update_help(self) -> None:
         if not hasattr(self, "_help_var"):
             return
         mode = self._run_mode.get()
+        script_mode = mode != "command"
+        self._path_entry.configure(state="normal" if script_mode else "disabled")
+        self._interpreter_combo.configure(state="readonly" if script_mode else "disabled")
+        self._arguments_entry.configure(state="normal" if script_mode else "disabled")
+        self._file_button.configure(state="normal" if mode == "local_script" else "disabled")
+        self._set_text_state(self._before_text, script_mode)
+        self._set_text_state(self._after_text, script_mode)
+        self._set_text_state(self._command_text, mode == "command")
         if mode == "command":
-            self._help_var.set("Ausgefüllt werden muss nur das Feld 'Remote-Befehl'. Skriptpfad und Argumente werden ignoriert. Vor-/Nach-Befehl nutzt du hier normalerweise nicht.")
+            self._help_var.set("Modus: Nur Remote-Befehl. Pflicht ist nur das große Feld 'Remote-Befehl'. Skriptpfad, Interpreter, Argumente sowie Vor-/Nach-Befehl sind deaktiviert.")
+            self._command_label.configure(text="Remote-Befehl (Pflicht)")
         elif mode == "local_script":
-            self._help_var.set("Pflicht: lokaler Skriptpfad. Die App lädt die Datei per scp nach /tmp hoch, führt sie mit Interpreter + Argumenten aus und löscht sie danach wieder. Vor-/Nach-Befehl laufen auf dem Zielhost.")
+            self._help_var.set("Modus: Lokales Skript. Pflicht ist der lokale Skriptpfad. Optional: Argumente, Vor-Befehl und Nach-Befehl. Das Feld 'Remote-Befehl' ist deaktiviert.")
+            self._command_label.configure(text="Remote-Befehl — bei Skript-Ausführung deaktiviert")
         else:
-            self._help_var.set("Pflicht: Remote-Skriptpfad. Das Skript muss auf dem Zielhost existieren. Interpreter + Argumente werden davor/dahinter gesetzt. Vor-/Nach-Befehl laufen auf dem Zielhost.")
+            self._help_var.set("Modus: Remote-Skript. Pflicht ist der Pfad auf dem Zielhost. Optional: Argumente, Vor-Befehl und Nach-Befehl. Das Feld 'Remote-Befehl' ist deaktiviert.")
+            self._command_label.configure(text="Remote-Befehl — bei Skript-Ausführung deaktiviert")
 
     def _current_spec(self, *, include_metadata: bool = False) -> dict:
         mode = self._run_mode.get() if hasattr(self, "_run_mode") else "command"
@@ -612,6 +633,7 @@ class RemoteCommandDialog(tk.Toplevel):
         self._arguments_var.set(item.get("arguments", ""))
         self._path_var.set(item.get("path") or item.get("local_path") or item.get("remote_path") or "")
         for widget, key in ((self._before_text, "before_command"), (self._command_text, "command"), (self._after_text, "after_command")):
+            widget.configure(state="normal")
             widget.delete("1.0", "end")
             widget.insert("1.0", item.get(key, ""))
         self._update_help()
