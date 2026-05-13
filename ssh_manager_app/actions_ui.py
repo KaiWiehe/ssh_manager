@@ -266,7 +266,7 @@ def add_recent_sessions(app, sessions: list[Session]) -> None:
     app._recent_sessions = recent[:10]
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
-    if hasattr(app._tree, "open_folder_key"):
+    if hasattr(app._tree, "open_folder_key") and not app._tree.is_filter_active():
         app._tree.open_folder_key("↺ Zuletzt verwendet")
     persist_ui_state(app)
 
