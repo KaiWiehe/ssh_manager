@@ -992,10 +992,6 @@ class SessionTree(ttk.Frame):
             state = self._checked.get(item_id, False)
             self._tv.item(item_id, image=self._img_checked if state else self._img_unchecked)
 
-    def is_filter_active(self) -> bool:
-        """Gibt zurück, ob aktuell ein Suchfilter aktiv ist."""
-        return bool(self._active_filter_query.strip())
-
     def refresh(self, sessions: list[Session]) -> None:
         """Baut den Baum mit neuen Sessions neu auf, behält Ordner-Status und Checkboxen."""
         open_folders = self.get_open_folders()
