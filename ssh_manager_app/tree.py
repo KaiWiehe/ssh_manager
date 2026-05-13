@@ -134,6 +134,7 @@ class SessionTree(ttk.Frame):
         # session.key → hex-Farbe
         self._session_colors: dict[str, str] = dict(initial_session_colors or {})
         self._pre_search_open_folders: set[str] | None = None
+        self._active_filter_query = ""
         self._empty_state: ttk.Frame | None = None
 
         self._build()
@@ -926,6 +927,7 @@ class SessionTree(ttk.Frame):
         beim Leeren wird der Zustand von vor der Suche wiederhergestellt.
         """
         q = query.strip().lower()
+        self._active_filter_query = query
 
         # Checkbox-Zustände vor dem Neuaufbau sichern (item_id ändert sich)
         checked_keys = {
@@ -997,6 +999,9 @@ class SessionTree(ttk.Frame):
             s.key for iid, s in self._item_to_session.items() if self._checked.get(iid)
         }
         self._sessions = sessions
+        if self._active_filter_query.strip():
+            self.filter(self._active_filter_query)
+            return
         self.populate(sessions, open_folders=open_folders)
         self._apply_column_visibility()
         for item_id, session in self._item_to_session.items():
