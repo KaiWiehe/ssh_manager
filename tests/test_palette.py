@@ -7,7 +7,17 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from ssh_manager_app.palette import CommandPaletteItem, _parse_query, fuzzy_match, rank_items
+from unittest.mock import MagicMock
+
+import tkinter as tk
+
+from ssh_manager_app.palette import (
+    CommandPaletteDialog,
+    CommandPaletteItem,
+    _parse_query,
+    fuzzy_match,
+    rank_items,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -158,3 +168,134 @@ def test_default_mode_mixes_sessions_and_actions():
     kinds = {item.kind for item, _ in results}
     # Both kinds should appear because pool was mixed.
     assert kinds == {"session", "action"}
+
+
+# ---------------------------------------------------------------------------
+# Dialog teardown / grab release (regression for "UI frozen after Strg+P")
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_dialog():
+    """Build a stand-in for ``CommandPaletteDialog`` good enough for the
+    teardown-related methods. We treat the unbound methods on the class as
+    plain functions and pass our fake as ``self``.
+    """
+    fake = MagicMock()
+    fake._closing = False
+    fake._master = MagicMock()
+    # We want to observe the call order across these methods.
+    fake._mock_order = []
+
+    def _record(name):
+        def _inner(*args, **kwargs):
+            fake._mock_order.append(name)
+        return _inner
+
+    fake.unbind.side_effect = _record("unbind")
+    fake.grab_release.side_effect = _record("grab_release")
+    fake._master.focus_set.side_effect = _record("master_focus_set")
+    fake.destroy.side_effect = _record("destroy")
+    return fake
+
+
+def test_close_releases_grab_restores_focus_then_destroys():
+    """``_close`` must release the Tk grab and hand focus back to the main
+    window BEFORE destroying the popup, otherwise the main window stays
+    frozen for a few seconds after running a palette action."""
+    fake = _make_fake_dialog()
+
+    CommandPaletteDialog._close(fake)
+
+    assert fake._closing is True
+    fake.unbind.assert_called_once_with("<FocusOut>")
+    fake.grab_release.assert_called_once()
+    fake._master.focus_set.assert_called_once()
+    fake.destroy.assert_called_once()
+    # Order matters: unbind -> grab_release -> master focus -> destroy.
+    assert fake._mock_order == ["unbind", "grab_release", "master_focus_set", "destroy"]
+
+
+def test_close_is_idempotent():
+    fake = _make_fake_dialog()
+    CommandPaletteDialog._close(fake)
+    CommandPaletteDialog._close(fake)
+    # Only the first invocation should reach destroy()/grab_release().
+    assert fake.destroy.call_count == 1
+    assert fake.grab_release.call_count == 1
+
+
+def test_close_still_releases_grab_when_destroy_raises():
+    fake = _make_fake_dialog()
+    fake.destroy.side_effect = tk.TclError("boom")
+    # Must not propagate; grab_release must still have happened.
+    CommandPaletteDialog._close(fake)
+    fake.grab_release.assert_called_once()
+    fake._master.focus_set.assert_called_once()
+
+
+def _wire_real_close(fake):
+    """Bind the real ``_close`` to the fake so ``_execute_selected`` triggers
+    the actual teardown logic instead of a MagicMock no-op."""
+    fake._close.side_effect = lambda: CommandPaletteDialog._close(fake)
+
+
+def test_execute_selected_closes_popup_before_running_callback():
+    """Regression: previously the dialog called ``self.destroy()`` and then ran
+    the action inline. With the leftover grab still being torn down by Tk this
+    could freeze input on the main window. The fix closes the popup first and
+    schedules the callback via ``after_idle`` so Tk fully releases the grab
+    before the action runs."""
+    callback = MagicMock()
+    fake = _make_fake_dialog()
+    _wire_real_close(fake)
+    fake._listbox = MagicMock()
+    fake._listbox.curselection.return_value = (0,)
+    fake._ranked = [(CommandPaletteItem(id="x", label="Alles auswählen", callback=callback), [])]
+
+    # ``after_idle`` should be invoked with the callback wrapper.
+    scheduled = []
+    fake._master.after_idle.side_effect = lambda fn: scheduled.append(fn)
+
+    result = CommandPaletteDialog._execute_selected(fake)
+
+    assert result == "break"
+    # Popup teardown happened before scheduling the action.
+    fake.destroy.assert_called_once()
+    fake._master.focus_set.assert_called_once()
+    fake.grab_release.assert_called_once()
+    # _close ran before after_idle was used to schedule the action.
+    assert fake._mock_order == ["unbind", "grab_release", "master_focus_set", "destroy"]
+    # The callback was NOT invoked synchronously; it's deferred.
+    callback.assert_not_called()
+    assert len(scheduled) == 1
+    # Running the scheduled wrapper invokes the user callback.
+    scheduled[0]()
+    callback.assert_called_once()
+
+
+def test_execute_selected_swallows_callback_exception():
+    bad = MagicMock(side_effect=RuntimeError("kaboom"))
+    fake = _make_fake_dialog()
+    _wire_real_close(fake)
+    fake._listbox = MagicMock()
+    fake._listbox.curselection.return_value = (0,)
+    fake._ranked = [(CommandPaletteItem(id="x", label="x", callback=bad), [])]
+    scheduled = []
+    fake._master.after_idle.side_effect = lambda fn: scheduled.append(fn)
+
+    CommandPaletteDialog._execute_selected(fake)
+    # Running the deferred wrapper must not propagate the exception.
+    scheduled[0]()
+    bad.assert_called_once()
+
+
+def test_focus_out_no_ops_when_closing_in_progress():
+    """If the programmatic close path already started, a stray FocusOut event
+    must not trigger a second ``_close``/``destroy`` cycle."""
+    fake = _make_fake_dialog()
+    fake._closing = True
+
+    CommandPaletteDialog._on_focus_out(fake, MagicMock())
+
+    fake.destroy.assert_not_called()
+    fake.grab_release.assert_not_called()

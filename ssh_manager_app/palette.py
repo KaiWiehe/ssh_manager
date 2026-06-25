@@ -132,6 +132,9 @@ class CommandPaletteDialog(tk.Toplevel):
         self._sessions = list(sessions)
         self._actions = list(actions)
         self._ranked: list[tuple[CommandPaletteItem, list[int]]] = []
+        # True once the popup has begun tearing itself down; guards against the
+        # ``<FocusOut>`` handler racing with the programmatic close path.
+        self._closing = False
 
         self.withdraw()
         self.overrideredirect(True)
@@ -193,8 +196,8 @@ class CommandPaletteDialog(tk.Toplevel):
         self._listbox.bind("<Return>", lambda _e: self._execute_selected())
         self._listbox.bind("<Double-Button-1>", lambda _e: self._execute_selected())
         self._entry.bind("<Return>", lambda _e: self._execute_selected())
-        self._entry.bind("<Escape>", lambda _e: self.destroy())
-        self._listbox.bind("<Escape>", lambda _e: self.destroy())
+        self._entry.bind("<Escape>", lambda _e: self._close())
+        self._listbox.bind("<Escape>", lambda _e: self._close())
         self._entry.bind("<Down>", self._move_selection_down)
         self._entry.bind("<Up>", self._move_selection_up)
         self._listbox.bind("<Up>", self._move_selection_up)
@@ -217,17 +220,52 @@ class CommandPaletteDialog(tk.Toplevel):
         self.geometry(f"{target_w}x420+{x}+{y}")
 
     def _on_focus_out(self, event):
+        # If we're already in the middle of closing programmatically (Enter
+        # picked an action), bail out so we don't race with that teardown and
+        # leave a stale grab/focus on the main window.
+        if self._closing:
+            return
         # Skip when a child of the dialog took focus.
         focused = self.focus_get()
         if focused is None:
-            self.destroy()
+            self._close()
             return
         try:
             if str(focused).startswith(str(self)):
                 return
         except Exception:
             pass
-        self.destroy()
+        self._close()
+
+    def _close(self) -> None:
+        """Tear the popup down: release grab, restore focus, then destroy.
+
+        Safe to call multiple times. Guarantees the Tk grab is released even
+        if ``destroy`` itself throws, otherwise the main window stays frozen.
+        """
+        if self._closing:
+            return
+        self._closing = True
+        # Drop the FocusOut binding first so the grab/focus dance during
+        # teardown can't fire a recursive ``_close``.
+        try:
+            self.unbind("<FocusOut>")
+        except tk.TclError:
+            pass
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        # Hand focus back to the main window before destroying ourselves so
+        # the OS/Tk doesn't get confused about where keyboard input should go.
+        try:
+            self._master.focus_set()
+        except tk.TclError:
+            pass
+        try:
+            self.destroy()
+        except tk.TclError:
+            pass
 
     # --------------------------------------------------------- rendering
     def _current_query(self) -> str:
@@ -292,13 +330,27 @@ class CommandPaletteDialog(tk.Toplevel):
         cur = self._listbox.curselection()
         idx = cur[0] if cur else 0
         item, _ = self._ranked[idx]
-        self.destroy()
-        if item.callback is not None:
+        callback = item.callback
+        # Close the popup FIRST (release grab + restore focus + destroy) so the
+        # main window can receive input immediately. Schedule the action via
+        # ``after_idle`` on the master so Tk has fully processed the teardown
+        # before the callback runs; otherwise a callback that opens another
+        # modal can collide with the dying grab and freeze the UI for a few
+        # seconds.
+        self._close()
+        if callback is not None:
+            def _run_callback():
+                try:
+                    callback()
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+
             try:
-                item.callback()
-            except Exception:
-                import traceback
-                traceback.print_exc()
+                self._master.after_idle(_run_callback)
+            except tk.TclError:
+                # Master is gone; run inline as a last resort.
+                _run_callback()
         return "break"
 
 
