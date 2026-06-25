@@ -65,6 +65,73 @@ def set_window_icon(window: tk.Tk) -> None:
             # taskbar may just group/cache more aggressively on Windows.
             pass
 
+    def _apply_native_windows_icon(ico_file: Path) -> None:
+        """Set the real HWND icon via Win32 WM_SETICON.
+
+        Tk's ``iconphoto``/``iconbitmap`` can be unreliable for frozen apps on
+        Windows 11.  Sending ``WM_SETICON`` to the underlying HWND forces the
+        title-bar, Alt+Tab and taskbar window icon to use our multi-frame ICO.
+        """
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            hwnd = wintypes.HWND(window.winfo_id())
+
+            IMAGE_ICON = 1
+            LR_LOADFROMFILE = 0x0010
+            LR_DEFAULTCOLOR = 0x0000
+            WM_SETICON = 0x0080
+            ICON_SMALL = 0
+            ICON_BIG = 1
+            ICON_SMALL2 = 2
+            SM_CXICON = 11
+            SM_CYICON = 12
+            SM_CXSMICON = 49
+            SM_CYSMICON = 50
+
+            user32.LoadImageW.restype = wintypes.HANDLE
+            user32.LoadImageW.argtypes = [
+                wintypes.HINSTANCE,
+                wintypes.LPCWSTR,
+                wintypes.UINT,
+                ctypes.c_int,
+                ctypes.c_int,
+                wintypes.UINT,
+            ]
+            user32.SendMessageW.restype = wintypes.LPARAM
+            user32.SendMessageW.argtypes = [
+                wintypes.HWND,
+                wintypes.UINT,
+                wintypes.WPARAM,
+                wintypes.LPARAM,
+            ]
+
+            small_w = user32.GetSystemMetrics(SM_CXSMICON) or 16
+            small_h = user32.GetSystemMetrics(SM_CYSMICON) or 16
+            big_w = user32.GetSystemMetrics(SM_CXICON) or 32
+            big_h = user32.GetSystemMetrics(SM_CYICON) or 32
+
+            hicon_small = user32.LoadImageW(
+                None, str(ico_file), IMAGE_ICON, small_w, small_h, LR_LOADFROMFILE | LR_DEFAULTCOLOR
+            )
+            hicon_big = user32.LoadImageW(
+                None, str(ico_file), IMAGE_ICON, big_w, big_h, LR_LOADFROMFILE | LR_DEFAULTCOLOR
+            )
+            if hicon_small:
+                user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small)
+                user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL2, hicon_small)
+            if hicon_big:
+                user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big)
+
+            # Keep HICON handles alive for the lifetime of the window.
+            window._native_icon_handles = (hicon_small, hicon_big)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
     base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     asset_dir = base_path / "assets"
     fallback_dir = Path(__file__).resolve().parent / "assets"
@@ -92,7 +159,9 @@ def set_window_icon(window: tk.Tk) -> None:
 
     def _apply() -> None:
         # On Windows, set the ICO first (native titlebar/taskbar fallback), then
-        # iconphoto last so the high-resolution PNG wins for the Tk window.
+        # iconphoto last so the high-resolution PNG wins for Tk's own image
+        # state.  Finally force the real HWND icon through Win32; this is the
+        # most reliable path for frozen PyInstaller apps on Windows 11.
         if ico_path is not None:
             try:
                 window.iconbitmap(default=str(ico_path))
@@ -103,10 +172,13 @@ def set_window_icon(window: tk.Tk) -> None:
                 window.iconphoto(True, photo)
             except tk.TclError:
                 pass
+        if ico_path is not None:
+            _apply_native_windows_icon(ico_path)
 
     _apply()
     try:
         window.after_idle(_apply)
+        window.after(250, _apply)
     except tk.TclError:
         pass
 
