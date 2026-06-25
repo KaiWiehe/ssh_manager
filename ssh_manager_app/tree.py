@@ -662,8 +662,8 @@ class SessionTree(ttk.Frame):
             self._session_colors.pop(session_key, None)
         for item_id, session in self._item_to_session.items():
             if session.key == session_key:
-                color_tag = color_tag(hex_color) if hex_color else None
-                tags = (self.TAG_SESSION,) + ((color_tag,) if color_tag else ())
+                tag = color_tag(hex_color) if hex_color else None
+                tags = (self.TAG_SESSION,) + ((tag,) if tag else ())
                 self._tv.item(item_id, tags=tags)
                 break
         self._notify_ui_state_changed()
