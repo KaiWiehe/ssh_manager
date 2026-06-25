@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 
 from .constants import DEFAULT_USER, QUICK_USERS
+from .shortcuts import default_shortcuts
 
 
 def color_tag(hex_color: str) -> str:
@@ -104,6 +105,7 @@ class AppSettings:
     source_visibility: SourceVisibilitySettings = field(default_factory=SourceVisibilitySettings)
     import_settings: ImportSettings = field(default_factory=ImportSettings)
     appearance: AppearanceSettings = field(default_factory=AppearanceSettings)
+    keyboard_shortcuts: dict = field(default_factory=default_shortcuts)
 
 
 def default_settings() -> AppSettings:

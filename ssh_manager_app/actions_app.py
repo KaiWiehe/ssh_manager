@@ -50,3 +50,10 @@ def import_settings_dialog(app) -> None:
 def close_app(app) -> None:
     persist_ui_state(app)
     app.destroy()
+
+
+def open_command_palette(app) -> None:
+    """Open the VSCode-style command palette (implemented in a follow-up commit)."""
+    from .dialogs_toast import ToastNotification
+
+    ToastNotification(app, "Befehlspalette folgt im nächsten Commit.")

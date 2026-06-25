@@ -127,6 +127,8 @@ def apply_settings(app, settings: AppSettings) -> None:
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
     app._search_entry.focus_set()
+    from .ui import reapply_shortcut_bindings
+    reapply_shortcut_bindings(app)
     ToastNotification(app, "Einstellungen gespeichert")
 
 
@@ -355,6 +357,41 @@ def delete_focused_editable_session(app) -> None:
 def focus_search(app) -> None:
     app._search_entry.focus_set()
     app._search_entry.select_range(0, "end")
+
+
+def toggle_recent_folder(app) -> None:
+    """Toggle visibility of the virtual 'Recently used' folder."""
+    visibility = app.settings.source_visibility
+    new_visibility = replace(visibility, show_recent=not visibility.show_recent)
+    persisted = getattr(app, "_persisted_settings", app.settings)
+    new_settings = replace(persisted, source_visibility=new_visibility)
+    app.settings = new_settings
+    app._persisted_settings = new_settings
+    save_settings(new_settings)
+    preview_source_visibility(app, new_visibility)
+    state = "sichtbar" if new_visibility.show_recent else "ausgeblendet"
+    ToastNotification(app, f"'Zuletzt verwendet' jetzt {state}")
+
+
+def edit_focused_session(app) -> None:
+    """Edit the currently focused or single-selected editable session."""
+    from .actions_sessions import edit_session, edit_session_details
+
+    selected = app._tree.get_selected_sessions()
+    target = selected[0] if len(selected) == 1 else app._tree.get_single_context_session()
+    if target is None:
+        return
+    if target.source in ("app", "ssh_alias"):
+        edit_session(app, target)
+    else:
+        edit_session_details(app, target)
+
+
+def open_command_palette(app) -> None:
+    """Open the VSCode-style command palette."""
+    from .actions_app import open_command_palette as _impl
+
+    _impl(app)
 
 
 def reload_sessions(app) -> None:

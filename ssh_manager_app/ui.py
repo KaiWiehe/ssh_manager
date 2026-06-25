@@ -5,6 +5,7 @@ from tkinter import ttk
 
 from .dialogs_settings_misc import SettingsView
 from .core import _create_checkbox_images
+from .shortcuts import ShortcutAction, ShortcutManager
 from .themes import THEME_PALETTES, ThemePalette
 from .tree import SessionTree
 
@@ -337,6 +338,12 @@ def deselect_all_callback(app) -> None:
     deselect_all(app)
 
 
+def open_command_palette_callback(app) -> None:
+    from .actions_app import open_command_palette
+
+    open_command_palette(app)
+
+
 def expand_all_callback(app) -> None:
     from .actions_ui import expand_all
 
@@ -543,35 +550,105 @@ def refresh_checkbox_images(app) -> None:
         tree.set_checkbox_images(app._img_unchecked, app._img_checked)
 
 
+def install_shortcut_manager(app) -> None:
+    """Build the ``ShortcutManager`` for ``app`` and apply persisted bindings."""
+    from .actions_ui import (
+        collapse_all,
+        connect_selected_or_focused,
+        delete_focused_editable_session,
+        deselect_all,
+        focus_search,
+        invert_selection,
+        reload_sessions,
+        select_all,
+        show_settings_view,
+        toggle_recent_folder,
+    )
+    from .actions_sessions import add_session
+    from .actions_app import export_settings_dialog, import_settings_dialog
+
+    manager = ShortcutManager(app)
+
+    def in_tree() -> bool:
+        """True if the session tree currently owns focus (or no entry does)."""
+        try:
+            focused = app.focus_get()
+        except Exception:
+            focused = None
+        if focused is None:
+            return True
+        cls = focused.winfo_class() if hasattr(focused, "winfo_class") else ""
+        return cls not in {"Entry", "TEntry", "Text", "TCombobox", "Spinbox", "TSpinbox"}
+
+    def open_command_palette() -> None:
+        from .actions_ui import open_command_palette as _open
+        _open(app)
+
+    def edit_focused() -> None:
+        from .actions_ui import edit_focused_session
+        edit_focused_session(app)
+
+    actions = [
+        ShortcutAction("open_command_palette", "Befehlspalette öffnen", "Ctrl+P", open_command_palette, skip_in_entry=False),
+        ShortcutAction("focus_search", "Suche fokussieren", "Ctrl+F", lambda: focus_search(app), skip_in_entry=False),
+        ShortcutAction("new_session", "Neue Verbindung", "Ctrl+N", lambda: add_session(app), skip_in_entry=False),
+        ShortcutAction("open_settings", "Einstellungen öffnen", "Ctrl+,", lambda: show_settings_view(app), skip_in_entry=False),
+        ShortcutAction("refresh", "Neu laden", "F5", lambda: reload_sessions(app), skip_in_entry=False),
+        ShortcutAction("connect", "Verbinden", "Return", lambda: connect_selected_or_focused(app), skip_in_entry=True),
+        ShortcutAction("edit", "Bearbeiten", "F2", edit_focused, skip_in_entry=False),
+        ShortcutAction("delete", "Löschen", "Delete", lambda: delete_focused_editable_session(app), skip_in_entry=True),
+        ShortcutAction("select_all", "Alle auswählen", "Ctrl+A", lambda: select_all(app), skip_in_entry=True),
+        ShortcutAction("deselect_all", "Alle abwählen", "Ctrl+D", lambda: deselect_all(app), skip_in_entry=True),
+        ShortcutAction("invert_selection", "Auswahl umkehren", "Ctrl+I", lambda: invert_selection(app), skip_in_entry=True),
+        ShortcutAction("toggle_recent_folder", "Ordner 'Zuletzt verwendet' umschalten", "Ctrl+Shift+R", lambda: toggle_recent_folder(app), skip_in_entry=False),
+        ShortcutAction("import_settings", "Einstellungen importieren", "", lambda: import_settings_dialog(app), skip_in_entry=False),
+        ShortcutAction("export_settings", "Einstellungen exportieren", "", lambda: export_settings_dialog(app), skip_in_entry=False),
+    ]
+    for action in actions:
+        manager.register(action)
+    app._shortcut_manager = manager
+    manager.load_bindings(dict(getattr(app.settings, "keyboard_shortcuts", {})))
+
+
+def reapply_shortcut_bindings(app) -> None:
+    """Re-apply bindings after settings changed."""
+    manager = getattr(app, "_shortcut_manager", None)
+    if manager is None:
+        return
+    manager.apply_bindings(dict(getattr(app.settings, "keyboard_shortcuts", {})))
+
+
 def build_main_ui(self) -> None:
     """Erstellt alle UI-Elemente."""
     self.columnconfigure(0, weight=1)
     self.rowconfigure(0, weight=1)
 
-    self.bind_all("<Return>", lambda _e: connect_selected_or_focused_callback(self))
-    self.bind_all("<Control-f>", lambda _e: focus_search_callback(self))
-    self.bind_all("<Control-F>", lambda _e: focus_search_callback(self))
-    self.bind_all("<Control-r>", lambda _e: reload_sessions_callback(self))
-    self.bind_all("<Control-R>", lambda _e: reload_sessions_callback(self))
-    self.bind_all("<Delete>", lambda _e: delete_focused_editable_session_callback(self))
+    install_shortcut_manager(self)
 
     menubar = tk.Menu(self)
     self.config(menu=menubar)
 
+    def _acc(action_id: str) -> str:
+        mgr = getattr(self, "_shortcut_manager", None)
+        if mgr is None:
+            return ""
+        return mgr.current_mapping().get(action_id, "")
+
     file_menu = tk.Menu(menubar, tearoff=False)
-    file_menu.add_command(label="Neue Verbindung", command=lambda: add_session_callback(self))
-    file_menu.add_command(label="Neu laden", command=lambda: reload_sessions_callback(self))
+    file_menu.add_command(label="Neue Verbindung", accelerator=_acc("new_session"), command=lambda: add_session_callback(self))
+    file_menu.add_command(label="Neu laden", accelerator=_acc("refresh"), command=lambda: reload_sessions_callback(self))
+    file_menu.add_command(label="Befehlspalette\u2026", accelerator=_acc("open_command_palette"), command=lambda: open_command_palette_callback(self))
     file_menu.add_separator()
-    file_menu.add_command(label="Einstellungen", command=lambda: show_settings_view_callback(self))
+    file_menu.add_command(label="Einstellungen", accelerator=_acc("open_settings"), command=lambda: show_settings_view_callback(self))
     file_menu.add_command(label="JSONs in VS Code öffnen", command=lambda: open_appdata_jsons_in_vscode_callback(self))
     file_menu.add_separator()
     file_menu.add_command(label="Beenden", command=lambda: close_app_callback(self))
     menubar.add_cascade(label="Datei", menu=file_menu)
 
     selection_menu = tk.Menu(menubar, tearoff=False)
-    selection_menu.add_command(label="Alle auswählen", command=lambda: select_all_callback(self))
-    selection_menu.add_command(label="Alle abwählen", command=lambda: deselect_all_callback(self))
-    selection_menu.add_command(label="Auswahl umkehren", command=lambda: invert_selection_callback(self))
+    selection_menu.add_command(label="Alle auswählen", accelerator=_acc("select_all"), command=lambda: select_all_callback(self))
+    selection_menu.add_command(label="Alle abwählen", accelerator=_acc("deselect_all"), command=lambda: deselect_all_callback(self))
+    selection_menu.add_command(label="Auswahl umkehren", accelerator=_acc("invert_selection"), command=lambda: invert_selection_callback(self))
     menubar.add_cascade(label="Auswahl", menu=selection_menu)
 
     view_menu = tk.Menu(menubar, tearoff=False)
@@ -583,7 +660,7 @@ def build_main_ui(self) -> None:
     menubar.add_cascade(label="Ansicht", menu=view_menu)
 
     actions_menu = tk.Menu(menubar, tearoff=False)
-    actions_menu.add_command(label="Verbinden", command=lambda: connect_selected_sessions_callback(self))
+    actions_menu.add_command(label="Verbinden", accelerator=_acc("connect"), command=lambda: connect_selected_sessions_callback(self))
     actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))

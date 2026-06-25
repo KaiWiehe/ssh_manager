@@ -207,6 +207,7 @@ class SettingsView(ttk.Frame):
             ("toolbar", "Toolbar"),
             ("columns", "Spalten"),
             ("terminal", "Windows Terminal"),
+            ("shortcuts", "Tastenkürzel"),
             ("transfer", "Export / Import"),
             ("reset", "Zurücksetzen"),
         ]
@@ -223,6 +224,7 @@ class SettingsView(ttk.Frame):
         self._section_frames["toolbar"] = self._build_toolbar_section()
         self._section_frames["columns"] = self._build_columns_section()
         self._section_frames["terminal"] = self._build_terminal_section()
+        self._section_frames["shortcuts"] = self._build_shortcuts_section()
         self._section_frames["transfer"] = self._build_transfer_section()
         self._section_frames["reset"] = self._build_reset_section()
         self._bind_mousewheel_recursive(self._content_host)
@@ -500,6 +502,202 @@ class SettingsView(ttk.Frame):
         self._title_mode_combo.grid(row=2, column=1, sticky="ew", pady=6)
         return frame
 
+    def _build_shortcuts_section(self) -> ttk.Frame:
+        from .shortcuts import DEFAULT_ACTION_ORDER, default_shortcuts, normalize_shortcut
+
+        frame = self._build_section_frame(
+            "Tastenkürzel",
+            "Klick auf ein Feld und drücke die gewünschte Taste. Esc bricht ab, Backspace löscht die Bindung.",
+        )
+        host = ttk.Frame(frame, style="SettingsPanel.TFrame")
+        host.grid(row=2, column=0, sticky="nw")
+        host.columnconfigure(0, minsize=260)
+        host.columnconfigure(1, minsize=180)
+        host.columnconfigure(2, weight=1)
+
+        self._shortcut_rows: dict[str, dict] = {}
+        self._shortcut_values: dict[str, str] = {}
+        # Capture-state for the currently active editor.
+        self._shortcut_capture_action: str | None = None
+
+        for idx, (action_id, label, default) in enumerate(DEFAULT_ACTION_ORDER):
+            ttk.Label(host, text=label).grid(row=idx, column=0, sticky="w", pady=4, padx=(0, 12))
+            entry = tk.Entry(host, width=20, justify="center", readonlybackground="#ffffff")
+            entry.grid(row=idx, column=1, sticky="w", pady=4, padx=(0, 12))
+            entry.bind("<Button-1>", lambda _e, a=action_id: self._start_shortcut_capture(a))
+            entry.bind("<FocusOut>", lambda _e, a=action_id: self._cancel_shortcut_capture(a))
+            entry.bind("<Key>", lambda e, a=action_id: self._on_shortcut_keypress(e, a))
+            entry.configure(state="readonly")
+
+            reset_btn = ttk.Button(host, text="Reset", width=8,
+                                    command=lambda a=action_id, d=default: self._reset_shortcut(a, d))
+            reset_btn.grid(row=idx, column=2, sticky="w", pady=4)
+            self._shortcut_rows[action_id] = {"entry": entry, "default": default, "label": label}
+
+        self._add_section_tools(frame, 3, "shortcuts")
+        return frame
+
+    def _shortcut_display(self, action_id: str) -> str:
+        from .shortcuts import normalize_shortcut
+
+        value = self._shortcut_values.get(action_id, "")
+        return normalize_shortcut(value) or "—"
+
+    def _refresh_shortcut_entry(self, action_id: str) -> None:
+        row = self._shortcut_rows.get(action_id)
+        if not row:
+            return
+        entry: tk.Entry = row["entry"]
+        entry.configure(state="normal")
+        entry.delete(0, "end")
+        entry.insert(0, self._shortcut_display(action_id))
+        entry.configure(state="readonly")
+
+    def _refresh_all_shortcut_entries(self) -> None:
+        for action_id in self._shortcut_rows:
+            self._refresh_shortcut_entry(action_id)
+
+    def _start_shortcut_capture(self, action_id: str) -> None:
+        row = self._shortcut_rows.get(action_id)
+        if not row:
+            return
+        # End any previous capture first.
+        if self._shortcut_capture_action and self._shortcut_capture_action != action_id:
+            self._cancel_shortcut_capture(self._shortcut_capture_action)
+        self._shortcut_capture_action = action_id
+        entry: tk.Entry = row["entry"]
+        entry.configure(state="normal")
+        entry.delete(0, "end")
+        entry.insert(0, "Drücke Taste…")
+        entry.configure(state="readonly")
+        entry.focus_set()
+
+    def _cancel_shortcut_capture(self, action_id: str) -> None:
+        if self._shortcut_capture_action != action_id:
+            return
+        self._shortcut_capture_action = None
+        self._refresh_shortcut_entry(action_id)
+
+    def _reset_shortcut(self, action_id: str, default: str) -> None:
+        from .shortcuts import find_conflict
+
+        # Check whether the default would conflict with another active binding.
+        candidate_mapping = dict(self._shortcut_values)
+        candidate_mapping[action_id] = default
+        conflict = find_conflict(action_id, default, {k: v for k, v in candidate_mapping.items() if k != action_id})
+        if conflict:
+            other_label = self._shortcut_rows.get(conflict, {}).get("label", conflict)
+            messagebox.showwarning(
+                "Konflikt",
+                f"Der Default '{default}' ist aktuell von '{other_label}' belegt.",
+                parent=self,
+            )
+            return
+        self._shortcut_values[action_id] = default
+        self._refresh_shortcut_entry(action_id)
+        self._apply_shortcuts_preview()
+
+    def _on_shortcut_keypress(self, event: tk.Event, action_id: str) -> str:
+        if self._shortcut_capture_action != action_id:
+            return "break"
+        keysym = event.keysym
+        if keysym == "Escape":
+            self._cancel_shortcut_capture(action_id)
+            return "break"
+        if keysym in ("BackSpace", "Delete"):
+            self._shortcut_values[action_id] = ""
+            self._shortcut_capture_action = None
+            self._refresh_shortcut_entry(action_id)
+            self._apply_shortcuts_preview()
+            return "break"
+        # Ignore lone modifier presses; wait for the actual key.
+        if keysym in ("Control_L", "Control_R", "Shift_L", "Shift_R", "Alt_L", "Alt_R",
+                     "Meta_L", "Meta_R", "Super_L", "Super_R"):
+            return "break"
+        candidate = self._event_to_shortcut_string(event)
+        if not candidate:
+            return "break"
+        self._try_assign_shortcut(action_id, candidate)
+        return "break"
+
+    def _event_to_shortcut_string(self, event: tk.Event) -> str:
+        from .shortcuts import _MOD_ALIASES  # noqa: F401
+
+        mods: list[str] = []
+        state = int(getattr(event, "state", 0) or 0)
+        # X11 modifier state bits: 0x0004 Control, 0x0001 Shift, 0x0008 Alt(Mod1), 0x40000 Super.
+        if state & 0x0004:
+            mods.append("Ctrl")
+        if state & 0x0001:
+            mods.append("Shift")
+        if state & 0x20000 or state & 0x0008:
+            mods.append("Alt")
+        keysym = event.keysym
+        # Skip pure-modifier sym as key.
+        if keysym in {"Control_L", "Control_R", "Shift_L", "Shift_R", "Alt_L", "Alt_R"}:
+            return ""
+        # Normalise common keysyms to human-readable form.
+        key = keysym
+        replacements = {
+            "Return": "Enter",
+            "Escape": "Esc",
+            "BackSpace": "Backspace",
+            "Prior": "PageUp",
+            "Next": "PageDown",
+            "comma": ",",
+            "period": ".",
+            "semicolon": ";",
+            "slash": "/",
+            "minus": "-",
+            "plus": "+",
+            "space": "Space",
+        }
+        key = replacements.get(key, key)
+        if len(key) == 1 and key.isalpha():
+            key = key.upper()
+            # Tk reports Shift+letter as the lowercase keysym + Shift state.
+            # If Shift is *only* used to produce that letter, drop it (Ctrl+A vs Ctrl+Shift+A both produce 'A').
+            if "Shift" in mods and not mods[0] == "Shift":
+                # Keep Shift only when there is another modifier besides Shift+letter,
+                # i.e. when the user really wants Ctrl+Shift+A.
+                pass
+        return "+".join(mods + [key]) if mods else key
+
+    def _try_assign_shortcut(self, action_id: str, candidate: str) -> None:
+        from .shortcuts import find_conflict, normalize_shortcut
+
+        normalised = normalize_shortcut(candidate)
+        if not normalised:
+            messagebox.showwarning("Tastenkürzel", f"'{candidate}' konnte nicht interpretiert werden.", parent=self)
+            self._cancel_shortcut_capture(action_id)
+            return
+        existing_mapping = {k: v for k, v in self._shortcut_values.items() if k != action_id}
+        conflict = find_conflict(action_id, candidate, existing_mapping)
+        if conflict:
+            other_label = self._shortcut_rows.get(conflict, {}).get("label", conflict)
+            messagebox.showwarning(
+                "Konflikt",
+                f"'{normalised}' ist bereits '{other_label}' zugewiesen. Bitte erst dort entfernen.",
+                parent=self,
+            )
+            self._cancel_shortcut_capture(action_id)
+            return
+        self._shortcut_values[action_id] = candidate
+        self._shortcut_capture_action = None
+        self._refresh_shortcut_entry(action_id)
+        self._apply_shortcuts_preview()
+
+    def _apply_shortcuts_preview(self) -> None:
+        """Push the in-progress mapping to the live ShortcutManager."""
+        manager = getattr(self._app, "_shortcut_manager", None)
+        if manager is not None:
+            manager.apply_bindings(dict(self._shortcut_values))
+
+    def _collect_shortcut_mapping(self) -> dict[str, str]:
+        from .shortcuts import merge_with_defaults
+
+        return merge_with_defaults(dict(getattr(self, "_shortcut_values", {})))
+
     def _build_transfer_section(self) -> ttk.Frame:
         frame = self._build_section_frame("Export / Import", "Speichere deine Einstellungen separat oder lade sie aus einer JSON-Datei wieder ein.")
         ttk.Button(frame, text="Einstellungen exportieren…", command=self._export_settings).grid(row=2, column=0, sticky="w", pady=(0, 8))
@@ -574,6 +772,7 @@ class SettingsView(ttk.Frame):
             "toolbar": "Toolbar",
             "columns": "Spalten",
             "terminal": "Windows Terminal",
+            "shortcuts": "Tastenkürzel",
             "transfer": "Export / Import",
             "reset": "Zurücksetzen",
         }
@@ -613,6 +812,12 @@ class SettingsView(ttk.Frame):
         self._tree_font_family_var.set(settings.appearance.tree_font_family)
         self._tree_font_size_var.set(str(settings.appearance.tree_font_size))
         self._tree_row_height_var.set(str(settings.appearance.tree_row_height))
+        # Shortcuts.
+        from .shortcuts import merge_with_defaults
+
+        self._shortcut_values = dict(merge_with_defaults(getattr(settings, "keyboard_shortcuts", {})))
+        if hasattr(self, "_shortcut_rows"):
+            self._refresh_all_shortcut_entries()
 
     def _set_listbox_selection(self, listbox: tk.Listbox, index: int) -> None:
         listbox.selection_clear(0, "end")
@@ -796,6 +1001,7 @@ class SettingsView(ttk.Frame):
             winscp=WinSCPSettings(open_mode=winscp_open_mode),
             source_visibility=self._collect_source_visibility_settings(),
             appearance=self._collect_appearance_settings(),
+            keyboard_shortcuts=self._collect_shortcut_mapping(),
         )
 
     def _save(self) -> None:
@@ -821,6 +1027,11 @@ class SettingsView(ttk.Frame):
         elif section == "sources":
             self._app.settings.import_settings = persisted.import_settings
             preview_source_visibility(self._app, persisted.source_visibility)
+        elif section == "shortcuts":
+            from .shortcuts import merge_with_defaults
+            self._shortcut_values = dict(merge_with_defaults(getattr(persisted, "keyboard_shortcuts", {})))
+            self._refresh_all_shortcut_entries()
+            self._apply_shortcuts_preview()
         self.load_from_app()
 
     def _reset_section(self, section: str) -> None:
@@ -834,6 +1045,10 @@ class SettingsView(ttk.Frame):
         elif section == "sources":
             self._app.settings.import_settings = defaults.import_settings
             preview_source_visibility(self._app, defaults.source_visibility)
+        elif section == "shortcuts":
+            self._shortcut_values = dict(defaults.keyboard_shortcuts)
+            self._refresh_all_shortcut_entries()
+            self._apply_shortcuts_preview()
         self.load_from_app()
 
     def _reset_settings(self) -> None:

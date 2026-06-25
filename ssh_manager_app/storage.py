@@ -18,6 +18,7 @@ from .constants import (
     _STATE_FILE,
 )
 from .models import AppSettings, AppearanceSettings, ImportSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, WinSCPSettings, default_settings, settings_to_dict
+from .shortcuts import merge_with_defaults as _merge_shortcuts
 
 
 def load_settings() -> AppSettings:
@@ -54,6 +55,9 @@ def load_settings_from_path(path: Path) -> AppSettings:
     import_raw = raw_dict.get("import_settings", {})
     if not isinstance(import_raw, dict):
         import_raw = {}
+    shortcuts_raw = raw_dict.get("keyboard_shortcuts", {})
+    if not isinstance(shortcuts_raw, dict):
+        shortcuts_raw = {}
 
     quick_users = raw_dict.get("quick_users", defaults.quick_users)
     if not isinstance(quick_users, list):
@@ -163,6 +167,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
             tree_font_size=tree_font_size,
             tree_row_height=tree_row_height,
         ),
+        keyboard_shortcuts=_merge_shortcuts(shortcuts_raw),
     )
 
 
