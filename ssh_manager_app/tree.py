@@ -776,16 +776,31 @@ class SessionTree(ttk.Frame):
         self._notify_ui_state_changed()
 
     def _notify_count(self) -> None:
-        count = sum(1 for v in self._checked.values() if v)
+        # Eine Session kann mehrfach im Baum erscheinen (z. B. im Ordner
+        # "↺ Zuletzt verwendet" zusätzlich zu ihrer normalen Position).
+        # Für den Counter und die Verbinden-Logik zählt jede Session aber
+        # nur einmal – sonst öffnen wir nach einem Connect plötzlich
+        # doppelt so viele Terminals wie ausgewählt.
+        count = len({
+            self._item_to_session[iid].key
+            for iid, checked in self._checked.items()
+            if checked and iid in self._item_to_session
+        })
         self._on_selection_changed(count)
 
     def get_selected_sessions(self) -> list[Session]:
-        """Gibt alle ausgewählten (gecheckte) Sessions zurück."""
-        return [
-            self._item_to_session[iid]
-            for iid, checked in self._checked.items()
-            if checked
-        ]
+        """Gibt alle ausgewählten (gecheckte) Sessions zurück – dedupliziert nach session.key."""
+        result: list[Session] = []
+        seen: set[str] = set()
+        for iid, checked in self._checked.items():
+            if not checked:
+                continue
+            session = self._item_to_session.get(iid)
+            if session is None or session.key in seen:
+                continue
+            seen.add(session.key)
+            result.append(session)
+        return result
 
     def _copy_session_values(self, sessions: list[Session], attribute: str) -> None:
         self.clipboard_clear()

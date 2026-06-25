@@ -36,7 +36,7 @@ from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
 from ssh_manager_app.constants import DEFAULT_USER, PALETTE, QUICK_USERS, _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, _build_jump_ssh_command, _build_ssh_command, _shell_single_quote, _ssh_target, _terminal_profile_flag, _terminal_title_flag, build_wt_command, parse_session_key
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
-from ssh_manager_app.tree import _session_notes_text, _session_values_text
+from ssh_manager_app.tree import SessionTree, _session_notes_text, _session_values_text
 from ssh_manager_app.storage import (
     load_app_sessions,
     load_filezilla_config_sessions,
@@ -3097,3 +3097,54 @@ def test_resolve_users_for_sessions_all_mode_warns_when_no_user_can_be_resolved(
         "Für 'srv1' konnte kein Benutzer bestimmt werden.",
         parent=app,
     )
+
+
+def _make_session_tree_stub(checked_items):
+    """Erzeugt eine SessionTree-Instanz ohne Tk-Init, nur für Logik-Tests."""
+    tree = object.__new__(SessionTree)
+    tree._item_to_session = {iid: session for iid, session, _ in checked_items}
+    tree._checked = {iid: state for iid, _, state in checked_items}
+    notified: list[int] = []
+    tree._on_selection_changed = notified.append
+    return tree, notified
+
+
+def test_session_tree_get_selected_sessions_dedupes_duplicate_session_keys():
+    # Regression: Wenn dieselbe Session zweimal im Baum erscheint (z.B.
+    # einmal im Ordner "↺ Zuletzt verwendet" und einmal in ihrem normalen
+    # Ordner) und beide Checkboxen aktiv sind, darf get_selected_sessions
+    # die Session nur einmal zurückgeben – sonst werden beim Verbinden
+    # doppelt so viele Terminals geöffnet wie ausgewählt.
+    session_a = Session("a", "host-a", ["Prod"], "a.example.com")
+    session_b = Session("b", "host-b", ["Prod"], "b.example.com")
+    tree, _ = _make_session_tree_stub([
+        ("iid-a-recent", session_a, True),
+        ("iid-a-normal", session_a, True),
+        ("iid-b-recent", session_b, True),
+        ("iid-b-normal", session_b, True),
+    ])
+
+    selected = tree.get_selected_sessions()
+
+    assert [s.key for s in selected] == ["a", "b"]
+
+
+def test_session_tree_notify_count_dedupes_duplicate_session_keys():
+    # Counter darf die gleiche Session nicht mehrfach zählen, sonst zeigt
+    # der Verbinden-Button nach einem Connect "(6 ausgewählt)" obwohl nur
+    # 3 Sessions ausgewählt sind.
+    session_a = Session("a", "host-a", ["Prod"], "a.example.com")
+    session_b = Session("b", "host-b", ["Prod"], "b.example.com")
+    session_c = Session("c", "host-c", ["Prod"], "c.example.com")
+    tree, notified = _make_session_tree_stub([
+        ("iid-a-recent", session_a, True),
+        ("iid-a-normal", session_a, True),
+        ("iid-b-recent", session_b, True),
+        ("iid-b-normal", session_b, True),
+        ("iid-c-recent", session_c, True),
+        ("iid-c-normal", session_c, True),
+    ])
+
+    tree._notify_count()
+
+    assert notified == [3]
