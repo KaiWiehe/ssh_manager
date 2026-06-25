@@ -157,11 +157,17 @@ class SessionTree(ttk.Frame):
         self._tv.heading("hostname", text="Hostname", anchor="w")
         self._tv.heading("port", text="Port", anchor="w")
         self._tv.heading("notes", text="Notizen", anchor="w")
-        self._tv.column("#0", width=340, stretch=True)
-        self._tv.column("username", width=110, stretch=False)
-        self._tv.column("hostname", width=130, stretch=False)
-        self._tv.column("port", width=60, stretch=False)
-        self._tv.column("notes", width=220, stretch=True)
+        # Default widths; used as proportional weights when redistributing
+        # column widths after visibility changes (see
+        # ``_redistribute_column_widths``). All data columns are configured
+        # with stretch=True so Tk also fills extra space on window resizes;
+        # the explicit redistribution keeps the visual proportions stable
+        # after hiding/showing columns.
+        self._tv.column("#0", width=self._DEFAULT_COLUMN_WIDTHS["#0"], stretch=True)
+        self._tv.column("username", width=self._DEFAULT_COLUMN_WIDTHS["username"], stretch=True)
+        self._tv.column("hostname", width=self._DEFAULT_COLUMN_WIDTHS["hostname"], stretch=True)
+        self._tv.column("port", width=self._DEFAULT_COLUMN_WIDTHS["port"], stretch=True)
+        self._tv.column("notes", width=self._DEFAULT_COLUMN_WIDTHS["notes"], stretch=True)
 
         vsb = ttk.Scrollbar(self, orient="vertical", command=self._tv.yview)
         self._tv.configure(yscrollcommand=vsb.set)
@@ -198,6 +204,9 @@ class SessionTree(ttk.Frame):
         self._configure_color_tags()
         self._apply_column_visibility()
         self._build_header_hide_overlay()
+        # Redistribute column widths whenever the tree itself is resized so
+        # the visible columns always fill the full treeview width.
+        self._tv.bind("<Configure>", self._on_tree_configure, add="+")
 
     def _empty_add_session(self) -> None:
         if self._on_add_session:
@@ -219,6 +228,17 @@ class SessionTree(ttk.Frame):
         for _, hex_color in PALETTE:
             self._tv.tag_configure(color_tag(hex_color), foreground=hex_color)
 
+    # Default (preferred) column widths. Also used as proportional weights
+    # when redistributing widths after a visibility change so the remaining
+    # visible columns fill the entire treeview width.
+    _DEFAULT_COLUMN_WIDTHS = {
+        "#0": 340,
+        "username": 110,
+        "hostname": 130,
+        "port": 60,
+        "notes": 220,
+    }
+
     def _apply_column_visibility(self) -> None:
         visible = {
             "username": self._toolbar_settings.show_username_column,
@@ -234,6 +254,83 @@ class SessionTree(ttk.Frame):
             if visible.get(column) and column not in ordered:
                 ordered.append(column)
         self._tv.configure(displaycolumns=ordered)
+        # After changing displaycolumns Tk does not redistribute the widths
+        # of the (still configured) columns by itself — visible columns keep
+        # their previous widths and leave empty space on the right. Force a
+        # redistribution so the visible columns always cover the full width.
+        self._redistribute_column_widths(ordered)
+
+    def _on_tree_configure(self, _event=None) -> None:
+        # Recompute widths when the treeview itself changes size, so the
+        # visible columns continue to fill the available area.
+        try:
+            display = self._tv.cget("displaycolumns")
+        except Exception:
+            return
+        if display in ("#all", ""):
+            ordered = [
+                c for c in ("username", "hostname", "port", "notes")
+                if getattr(self._toolbar_settings, f"show_{c}_column", True)
+            ]
+        else:
+            try:
+                ordered = list(display)
+            except TypeError:
+                ordered = [display]
+        self._redistribute_column_widths(ordered)
+        # The hide-X overlay position is tied to actual column widths; keep
+        # it in sync after a resize.
+        if self._header_x_visible_for:
+            self._show_header_x_for(self._header_x_visible_for)
+
+    def _redistribute_column_widths(self, visible_data_columns) -> None:
+        """Distribute the available treeview width across the visible columns.
+
+        ``#0`` and every visible data column receive a slice proportional to
+        their default width. This runs after every visibility change so
+        hiding/showing a column never leaves empty space on the right edge
+        of the treeview.
+        """
+        if not hasattr(self, "_tv") or self._tv is None:
+            return
+        try:
+            total = int(self._tv.winfo_width())
+        except Exception:
+            return
+        # Widget not realized yet → retry once the geometry is known.
+        if total <= 1:
+            try:
+                self._tv.after_idle(
+                    lambda: self._redistribute_column_widths(visible_data_columns)
+                )
+            except Exception:
+                pass
+            return
+
+        defaults = self._DEFAULT_COLUMN_WIDTHS
+        visible = ["#0", *[c for c in visible_data_columns if c in defaults]]
+        weight_sum = sum(defaults.get(c, 0) for c in visible)
+        if weight_sum <= 0:
+            return
+
+        # Reserve a tiny safety margin so rounding never causes a horizontal
+        # scrollbar to appear.
+        available = max(total - 2, 0)
+        widths: dict[str, int] = {}
+        assigned = 0
+        for col in visible[:-1]:
+            w = max(int(available * defaults[col] / weight_sum), 1)
+            widths[col] = w
+            assigned += w
+        # Last column absorbs the rounding remainder so the total matches
+        # exactly.
+        widths[visible[-1]] = max(available - assigned, 1)
+
+        for col, w in widths.items():
+            try:
+                self._tv.column(col, width=w)
+            except Exception:
+                pass
 
     def update_toolbar_settings(self, toolbar_settings: ToolbarSettings) -> None:
         self._toolbar_settings = toolbar_settings
