@@ -40,17 +40,51 @@ if TYPE_CHECKING:
 
 
 def set_window_icon(window: tk.Tk) -> None:
+    """Configure the window/taskbar icon with high-resolution assets.
+
+    Strategy (Windows):
+      * ``iconphoto`` with the 256x256 PNG drives the title bar / window
+        corner – Tk picks the right scaled frame and avoids the blurry
+        16x16 fallback that ``iconbitmap`` often produces on HiDPI displays.
+      * ``iconbitmap`` with the multi-frame ``.ico`` is set as a fallback so
+        the launcher/taskbar still has the proper icon resource available.
+      * For the frozen PyInstaller EXE, the taskbar icon is also baked in via
+        ``ssh_manager.spec`` (``icon=...``).
+    """
     from pathlib import Path
     import sys
 
     base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-    icon_path = base_path / "assets" / "ssh-manager.ico"
-    if not icon_path.exists():
-        icon_path = Path(__file__).resolve().parent / "assets" / "ssh-manager.ico"
-    try:
-        window.iconbitmap(default=str(icon_path))
-    except tk.TclError:
-        pass
+    asset_dir = base_path / "assets"
+    fallback_dir = Path(__file__).resolve().parent / "assets"
+
+    def _resolve(name: str) -> Path | None:
+        candidate = asset_dir / name
+        if candidate.exists():
+            return candidate
+        candidate = fallback_dir / name
+        return candidate if candidate.exists() else None
+
+    png_path = _resolve("ssh-manager.png")
+    ico_path = _resolve("ssh-manager.ico")
+
+    # 1) High-res PNG via iconphoto – this is what Windows shows in the
+    #    title bar / window corner for Tk apps.
+    if png_path is not None:
+        try:
+            photo = tk.PhotoImage(file=str(png_path))
+            # Keep a reference on the window so Tcl doesn't garbage-collect it.
+            window._icon_photo = photo  # type: ignore[attr-defined]
+            window.iconphoto(True, photo)
+        except tk.TclError:
+            pass
+
+    # 2) Multi-frame ICO as a fallback / for the EXE taskbar resource.
+    if ico_path is not None:
+        try:
+            window.iconbitmap(default=str(ico_path))
+        except tk.TclError:
+            pass
 
 
 class SSHManagerApp(tk.Tk):

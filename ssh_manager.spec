@@ -8,7 +8,10 @@ a = Analysis(
     ['ssh_manager.py'],
     pathex=[str(ROOT)],
     binaries=[],
-    datas=[(str(ROOT / 'assets' / 'ssh-manager.ico'), 'assets')],
+    datas=[
+        (str(ROOT / 'assets' / 'ssh-manager.ico'), 'assets'),
+        (str(ROOT / 'assets' / 'ssh-manager.png'), 'assets'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
