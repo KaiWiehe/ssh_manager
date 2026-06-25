@@ -14,7 +14,11 @@ import tkinter as tk
 from ssh_manager_app.palette import (
     CommandPaletteDialog,
     CommandPaletteItem,
+    DEFAULT_PALETTE_WIDTH,
+    MIN_PALETTE_WIDTH,
+    _PaletteTooltip,
     _parse_query,
+    clamp_palette_width,
     fuzzy_match,
     rank_items,
 )
@@ -175,7 +179,7 @@ def test_default_mode_mixes_sessions_and_actions():
 # ---------------------------------------------------------------------------
 
 
-def _make_fake_dialog():
+def _make_fake_dialog(*, on_width_changed=None, current_width=DEFAULT_PALETTE_WIDTH):
     """Build a stand-in for ``CommandPaletteDialog`` good enough for the
     teardown-related methods. We treat the unbound methods on the class as
     plain functions and pass our fake as ``self``.
@@ -183,6 +187,11 @@ def _make_fake_dialog():
     fake = MagicMock()
     fake._closing = False
     fake._master = MagicMock()
+    fake._tooltip = None
+    fake._focus_check_id = None
+    fake._resize_drag = None
+    fake._on_width_changed = on_width_changed
+    fake._current_width = current_width
     # We want to observe the call order across these methods.
     fake._mock_order = []
 
@@ -207,12 +216,21 @@ def test_close_releases_grab_restores_focus_then_destroys():
     CommandPaletteDialog._close(fake)
 
     assert fake._closing is True
-    fake.unbind.assert_called_once_with("<FocusOut>")
+    # We now unbind both <FocusOut> and <Unmap>.
+    unbound_events = [c.args[0] for c in fake.unbind.call_args_list]
+    assert "<FocusOut>" in unbound_events
+    assert "<Unmap>" in unbound_events
     fake.grab_release.assert_called_once()
     fake._master.focus_set.assert_called_once()
     fake.destroy.assert_called_once()
-    # Order matters: unbind -> grab_release -> master focus -> destroy.
-    assert fake._mock_order == ["unbind", "grab_release", "master_focus_set", "destroy"]
+    # Order matters: unbind(s) -> grab_release -> master focus -> destroy.
+    assert fake._mock_order == [
+        "unbind",
+        "unbind",
+        "grab_release",
+        "master_focus_set",
+        "destroy",
+    ]
 
 
 def test_close_is_idempotent():
@@ -264,7 +282,13 @@ def test_execute_selected_closes_popup_before_running_callback():
     fake._master.focus_set.assert_called_once()
     fake.grab_release.assert_called_once()
     # _close ran before after_idle was used to schedule the action.
-    assert fake._mock_order == ["unbind", "grab_release", "master_focus_set", "destroy"]
+    assert fake._mock_order == [
+        "unbind",
+        "unbind",
+        "grab_release",
+        "master_focus_set",
+        "destroy",
+    ]
     # The callback was NOT invoked synchronously; it's deferred.
     callback.assert_not_called()
     assert len(scheduled) == 1
@@ -299,3 +323,378 @@ def test_focus_out_no_ops_when_closing_in_progress():
 
     fake.destroy.assert_not_called()
     fake.grab_release.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# OS-level focus-out / app switch handling
+# ---------------------------------------------------------------------------
+
+
+def test_focus_out_schedules_deferred_check():
+    """``<FocusOut>`` must not close synchronously - a Tk-internal popup
+    (combobox dropdown, native dialog) briefly steals focus and we'd close
+    too aggressively. Instead we schedule a deferred ``_check_focus_lost``.
+    """
+    fake = _make_fake_dialog()
+    fake._focus_check_id = None
+    fake.after.return_value = "after#1"
+
+    CommandPaletteDialog._on_focus_out(fake, MagicMock())
+
+    fake.after.assert_called_once()
+    delay = fake.after.call_args.args[0]
+    assert 0 < delay <= 200, "deferred check delay should be short"
+    assert fake._focus_check_id == "after#1"
+    # And we did NOT close synchronously.
+    fake.destroy.assert_not_called()
+
+
+def test_focus_out_skips_when_check_already_scheduled():
+    fake = _make_fake_dialog()
+    fake._focus_check_id = "already-pending"
+
+    CommandPaletteDialog._on_focus_out(fake, MagicMock())
+
+    fake.after.assert_not_called()
+
+
+def test_focus_out_skips_during_resize_drag():
+    """While the user drags an edge handle, focus briefly shifts. Don't close."""
+    fake = _make_fake_dialog()
+    fake._resize_drag = {"side": "right", "start_x_root": 0, "start_width": 720}
+
+    CommandPaletteDialog._on_focus_out(fake, MagicMock())
+
+    fake.after.assert_not_called()
+    fake.destroy.assert_not_called()
+
+
+def test_check_focus_lost_closes_when_no_widget_owns_focus():
+    """``focus_displayof()`` returning ``None`` means no widget in our Tk
+    application owns focus -> user switched to another OS-level window."""
+    fake = _make_fake_dialog()
+    _wire_real_close(fake)
+    fake.focus_displayof.return_value = None
+
+    CommandPaletteDialog._check_focus_lost(fake)
+
+    fake.destroy.assert_called_once()
+
+
+def test_check_focus_lost_keeps_open_for_internal_focus():
+    """When focus moved to the popup itself (or a child), stay open."""
+    fake = _make_fake_dialog()
+    _wire_real_close(fake)
+    # ``str(self)`` on a MagicMock is something like ``"<MagicMock id=...>"``
+    # which is fine for the prefix check as long as focus_displayof returns
+    # the same path.
+    fake.__str__ = lambda self: ".palette"
+    child = MagicMock()
+    child.__str__ = lambda self: ".palette.entry"
+    fake.focus_displayof.return_value = child
+
+    CommandPaletteDialog._check_focus_lost(fake)
+
+    fake.destroy.assert_not_called()
+
+
+def test_check_focus_lost_closes_when_other_toplevel_focused():
+    """If focus jumped to a sibling widget (e.g. main window), close."""
+    fake = _make_fake_dialog()
+    _wire_real_close(fake)
+    fake.__str__ = lambda self: ".palette"
+    other = MagicMock()
+    other.__str__ = lambda self: ".main.tree"
+    fake.focus_displayof.return_value = other
+
+    CommandPaletteDialog._check_focus_lost(fake)
+
+    fake.destroy.assert_called_once()
+
+
+def test_unmap_event_closes_popup():
+    """Unmap on the toplevel (minimize / desktop switch) should close."""
+    fake = _make_fake_dialog()
+    _wire_real_close(fake)
+
+    CommandPaletteDialog._on_unmap(fake, MagicMock())
+
+    fake.destroy.assert_called_once()
+
+
+def test_unmap_event_skipped_when_closing():
+    fake = _make_fake_dialog()
+    fake._closing = True
+
+    CommandPaletteDialog._on_unmap(fake, MagicMock())
+
+    fake.destroy.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Width clamping / persistence
+# ---------------------------------------------------------------------------
+
+
+def test_clamp_palette_width_enforces_min():
+    assert clamp_palette_width(100) == MIN_PALETTE_WIDTH
+    assert clamp_palette_width(MIN_PALETTE_WIDTH) == MIN_PALETTE_WIDTH
+
+
+def test_clamp_palette_width_enforces_max_when_master_known():
+    # 90% of 1000 = 900 -> input of 2000 clamps to 900.
+    assert clamp_palette_width(2000, master_width=1000) == 900
+
+
+def test_clamp_palette_width_no_master_only_lower_bound():
+    assert clamp_palette_width(5000, master_width=None) == 5000
+
+
+def test_clamp_palette_width_handles_garbage():
+    # ``None`` / strings fall back to DEFAULT, then clamp.
+    assert clamp_palette_width("nope") == DEFAULT_PALETTE_WIDTH
+    assert clamp_palette_width(None) == DEFAULT_PALETTE_WIDTH
+
+
+def test_close_persists_width_via_callback():
+    """On close the dialog calls ``on_width_changed`` exactly once with the
+    current width so settings get written without spamming on every resize.
+    """
+    saved = []
+    fake = _make_fake_dialog(on_width_changed=saved.append, current_width=614)
+
+    CommandPaletteDialog._close(fake)
+
+    assert saved == [614]
+
+
+def test_close_swallows_persistence_errors():
+    """Settings persistence must not break the close path."""
+    def explode(_w):
+        raise RuntimeError("disk full")
+    fake = _make_fake_dialog(on_width_changed=explode)
+
+    # Must not raise.
+    CommandPaletteDialog._close(fake)
+    fake.destroy.assert_called_once()
+
+
+def test_close_skips_persistence_when_no_callback():
+    fake = _make_fake_dialog(on_width_changed=None)
+    # Should not throw.
+    CommandPaletteDialog._close(fake)
+    fake.destroy.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Resize drag logic
+# ---------------------------------------------------------------------------
+
+
+def test_begin_resize_records_drag_state():
+    fake = _make_fake_dialog(current_width=700)
+    fake.winfo_width.return_value = 700
+    fake._tooltip = MagicMock()
+    event = MagicMock(x_root=500)
+
+    CommandPaletteDialog._begin_resize(fake, event, "right")
+
+    assert fake._resize_drag == {
+        "side": "right",
+        "start_x_root": 500,
+        "start_width": 700,
+    }
+    # Tooltip is hidden when a resize starts.
+    fake._tooltip.hide.assert_called_once()
+
+
+def test_do_resize_right_side_grows_with_positive_delta():
+    fake = _make_fake_dialog(current_width=700)
+    fake._resize_drag = {"side": "right", "start_x_root": 500, "start_width": 700}
+    fake._master.winfo_width.return_value = 2000
+    fake._master.winfo_rootx.return_value = 100
+    fake._master.winfo_rooty.return_value = 50
+    fake.winfo_height.return_value = 420
+    event = MagicMock(x_root=560)  # +60px
+
+    CommandPaletteDialog._do_resize(fake, event)
+
+    assert fake._current_width == 760
+    fake.geometry.assert_called_once()
+    geom = fake.geometry.call_args.args[0]
+    assert geom.startswith("760x420+")
+
+
+def test_do_resize_left_side_grows_with_negative_delta():
+    fake = _make_fake_dialog(current_width=700)
+    fake._resize_drag = {"side": "left", "start_x_root": 500, "start_width": 700}
+    fake._master.winfo_width.return_value = 2000
+    fake._master.winfo_rootx.return_value = 100
+    fake._master.winfo_rooty.return_value = 50
+    fake.winfo_height.return_value = 420
+    event = MagicMock(x_root=440)  # -60px on x_root, but left side grows.
+
+    CommandPaletteDialog._do_resize(fake, event)
+
+    assert fake._current_width == 760
+
+
+def test_do_resize_clamps_to_min():
+    fake = _make_fake_dialog(current_width=700)
+    fake._resize_drag = {"side": "right", "start_x_root": 500, "start_width": 700}
+    fake._master.winfo_width.return_value = 2000
+    fake._master.winfo_rootx.return_value = 100
+    fake._master.winfo_rooty.return_value = 50
+    fake.winfo_height.return_value = 420
+    event = MagicMock(x_root=0)  # huge negative delta
+
+    CommandPaletteDialog._do_resize(fake, event)
+
+    assert fake._current_width == MIN_PALETTE_WIDTH
+
+
+def test_do_resize_noop_without_active_drag():
+    fake = _make_fake_dialog(current_width=700)
+    fake._resize_drag = None
+    CommandPaletteDialog._do_resize(fake, MagicMock(x_root=999))
+    assert fake._current_width == 700
+    fake.geometry.assert_not_called()
+
+
+def test_end_resize_clears_drag_state():
+    fake = _make_fake_dialog()
+    fake._resize_drag = {"side": "right", "start_x_root": 0, "start_width": 700}
+    CommandPaletteDialog._end_resize(fake, MagicMock())
+    assert fake._resize_drag is None
+
+
+# ---------------------------------------------------------------------------
+# Tooltip helper
+# ---------------------------------------------------------------------------
+
+
+def test_tooltip_schedule_calls_master_after_with_delay():
+    master = MagicMock()
+    master.after.return_value = "after#42"
+    tip = _PaletteTooltip(master)
+
+    tip.schedule(3, "hello\nsubtitle", x=100, y=200)
+
+    master.after.assert_called_once()
+    assert master.after.call_args.args[0] == _PaletteTooltip.DELAY_MS
+    assert tip._after_id == "after#42"
+    assert tip._current_index == 3
+
+
+def test_tooltip_schedule_same_index_when_visible_is_noop():
+    master = MagicMock()
+    master.after.return_value = "after#1"
+    tip = _PaletteTooltip(master)
+    tip._current_index = 3
+    tip._toplevel = MagicMock()  # simulate already visible
+
+    tip.schedule(3, "text", x=0, y=0)
+
+    master.after.assert_not_called()
+
+
+def test_tooltip_schedule_different_index_cancels_previous_timer():
+    master = MagicMock()
+    master.after.side_effect = ["after#1", "after#2"]
+    tip = _PaletteTooltip(master)
+
+    tip.schedule(1, "a", x=0, y=0)
+    tip.schedule(2, "b", x=0, y=0)
+
+    master.after_cancel.assert_called_once_with("after#1")
+    assert tip._current_index == 2
+
+
+def test_tooltip_hide_cancels_pending_timer():
+    master = MagicMock()
+    master.after.return_value = "after#1"
+    tip = _PaletteTooltip(master)
+    tip.schedule(0, "x", x=0, y=0)
+
+    tip.hide()
+
+    master.after_cancel.assert_called_once_with("after#1")
+    assert tip._after_id is None
+    assert tip._current_index is None
+
+
+def test_tooltip_show_skips_when_index_changed():
+    """If schedule() was called again before the timer fired, the stale show
+    must NOT create a Toplevel."""
+    master = MagicMock()
+    tip = _PaletteTooltip(master)
+    tip._current_index = 5  # newer schedule
+    tip._show(index=3, text="stale", x=0, y=0)
+    assert tip._toplevel is None
+
+
+# ---------------------------------------------------------------------------
+# Listbox motion -> tooltip wiring
+# ---------------------------------------------------------------------------
+
+
+def test_on_list_motion_schedules_tooltip_with_label_and_subtitle():
+    fake = _make_fake_dialog()
+    item = CommandPaletteItem(id="x", label="very long connection name", subtitle="user@host")
+    fake._ranked = [(item, [])]
+    fake._tooltip = MagicMock()
+    fake._listbox = MagicMock()
+    fake._listbox.nearest.return_value = 0
+    fake._listbox.bbox.return_value = (0, 10, 200, 20)  # row spans y=10..30
+    event = MagicMock(y=20, x_root=500, y_root=300)
+
+    CommandPaletteDialog._on_list_motion(fake, event)
+
+    fake._tooltip.schedule.assert_called_once()
+    args, kwargs = fake._tooltip.schedule.call_args
+    # schedule(index, text, x_root, y_root) positional.
+    assert args[0] == 0
+    text = args[1]
+    assert "very long connection name" in text
+    assert "user@host" in text
+
+
+def test_on_list_motion_hides_when_outside_row_bbox():
+    fake = _make_fake_dialog()
+    item = CommandPaletteItem(id="x", label="a", subtitle="")
+    fake._ranked = [(item, [])]
+    fake._tooltip = MagicMock()
+    fake._listbox = MagicMock()
+    fake._listbox.nearest.return_value = 0
+    fake._listbox.bbox.return_value = (0, 10, 200, 20)
+    # y below the row bbox
+    event = MagicMock(y=100, x_root=0, y_root=0)
+
+    CommandPaletteDialog._on_list_motion(fake, event)
+
+    fake._tooltip.hide.assert_called_once()
+    fake._tooltip.schedule.assert_not_called()
+
+
+def test_on_list_motion_noop_when_no_items():
+    fake = _make_fake_dialog()
+    fake._ranked = []
+    fake._tooltip = MagicMock()
+    CommandPaletteDialog._on_list_motion(fake, MagicMock(y=0, x_root=0, y_root=0))
+    fake._tooltip.schedule.assert_not_called()
+    fake._tooltip.hide.assert_not_called()
+
+
+def test_render_hides_tooltip():
+    """When the visible list changes, any visible tooltip must disappear."""
+    fake = _make_fake_dialog()
+    fake._sessions = []
+    fake._actions = []
+    fake._listbox = MagicMock()
+    fake._placeholder_label = MagicMock()
+    fake._tooltip = MagicMock()
+
+    CommandPaletteDialog._render(fake, "")
+
+    fake._tooltip.hide.assert_called_once()
+

@@ -193,7 +193,32 @@ def open_command_palette(app) -> None:
     for item in action_items:
         _wrap_action_callback(item)
 
-    dialog = CommandPaletteDialog(app, sessions=session_items, actions=action_items)
+    # Load persisted palette width (sub-dict under toolbar_search_texts).
+    palette_prefs_raw = getattr(app, "_initial_toolbar_search_texts", {}).get("command_palette", {})
+    palette_prefs = palette_prefs_raw if isinstance(palette_prefs_raw, dict) else {}
+    saved_width = palette_prefs.get("width")
+
+    def _persist_palette_width(width: int) -> None:
+        prefs = getattr(app, "_initial_toolbar_search_texts", None)
+        if not isinstance(prefs, dict):
+            return
+        bucket_raw = prefs.get("command_palette")
+        bucket = bucket_raw if isinstance(bucket_raw, dict) else {}
+        bucket["width"] = int(width)
+        prefs["command_palette"] = bucket
+        try:
+            persist_ui_state(app)
+        except Exception:
+            # Settings persistence must never break the palette close path.
+            pass
+
+    dialog = CommandPaletteDialog(
+        app,
+        sessions=session_items,
+        actions=action_items,
+        initial_width=saved_width,
+        on_width_changed=_persist_palette_width,
+    )
     app._command_palette = dialog
 
     def _on_destroy(_e=None):
