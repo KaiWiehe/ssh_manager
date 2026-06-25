@@ -19,6 +19,7 @@ Run from repo root::
 from __future__ import annotations
 
 import re
+import struct
 from io import BytesIO
 from pathlib import Path
 
@@ -48,9 +49,16 @@ RENDER_SIZE = 2048
 CONTENT_ALPHA_THRESHOLD = 8
 
 # Fraction of the final canvas size to leave as transparent margin around
-# the cropped logo (each side).  7% keeps the icon readable at 16 px without
-# making it feel glued to the edge.
+# the cropped logo (each side).  7% keeps the icon readable for taskbar/Alt+Tab.
 SQUARE_MARGIN = 0.07
+
+# Extra margin for tiny title-bar frames.  Windows often uses the 16/20/24 px
+# ICO entries directly in the top-left window corner; if the artwork reaches the
+# frame edge it looks clipped.  These tiny variants intentionally breathe more.
+SMALL_FRAME_MARGIN = 0.18
+
+# Sizes at or below this use the extra-margin small-frame source.
+SMALL_FRAME_SIZE_LIMIT = 24
 
 # Sizes at or below this get a light alpha dilation pass before downscaling so
 # thin black strokes survive in Windows' tiny title-bar/taskbar variants.
@@ -138,15 +146,22 @@ def _sharpen_small_frame(img: Image.Image) -> Image.Image:
     return img.filter(ImageFilter.UnsharpMask(radius=0.6, percent=180, threshold=2))
 
 
-def build_frames(square: Image.Image) -> list[Image.Image]:
-    """Downscale *square* (already square RGBA) to all target sizes."""
+def build_frames(cropped: Image.Image, square: Image.Image) -> list[Image.Image]:
+    """Downscale source artwork to all target sizes.
+
+    Tiny title-bar frames need more breathing room than taskbar/Alt+Tab frames;
+    otherwise Windows shows a clipped-looking icon in the top-left corner.
+    """
     frames: list[Image.Image] = []
-    src_side = square.width
+    small_square = square_canvas(cropped, margin=SMALL_FRAME_MARGIN)
     for size in FRAME_SIZES:
-        frame_src = square
+        frame_src = small_square if size <= SMALL_FRAME_SIZE_LIMIT else square
+        src_side = frame_src.width
         if size <= DILATE_SIZE_LIMIT and src_side > size * 4:
-            radius = max(1, int(round(src_side / size / 10)))
-            frame_src = _dilate_alpha(square, radius=radius)
+            # Keep dilation deliberately gentle for tiny frames; too much alpha
+            # dilation pushes strokes into the border and looks clipped.
+            radius = 1 if size <= SMALL_FRAME_SIZE_LIMIT else max(1, int(round(src_side / size / 12)))
+            frame_src = _dilate_alpha(frame_src, radius=radius)
         frame = frame_src.resize((size, size), RESAMPLE_LANCZOS)
         if size <= DILATE_SIZE_LIMIT:
             frame = _sharpen_small_frame(frame)
@@ -155,17 +170,42 @@ def build_frames(square: Image.Image) -> list[Image.Image]:
 
 
 def _save_ico(frames: list[Image.Image]) -> None:
-    # Pillow's ICO writer is most reliable when given a high-res base plus a
-    # sizes list.  The small frames above are still useful for tests/inspection,
-    # but Pillow may choose to encode from the largest internally depending on
-    # version.  The source is now SVG-rendered and transparent, so that is fine.
-    largest = max(frames, key=lambda f: f.width)
-    largest.save(
-        ICO_OUT,
-        format="ICO",
-        sizes=[(f.width, f.height) for f in frames],
-        bitmap_format="bmp",
-    )
+    """Write an ICO file from the already optimized frames.
+
+    Pillow's ICO writer may rebuild small frames from the largest image and
+    ignore our extra-margin 16/20/24 px variants.  A tiny ICO writer keeps the
+    exact PNG-encoded frames we prepared above.  PNG-compressed ICO frames are
+    supported by Windows Vista+ and PyInstaller preserves them as resources.
+    """
+    encoded_frames: list[tuple[int, int, bytes]] = []
+    for frame in frames:
+        buffer = BytesIO()
+        frame.save(buffer, format="PNG", optimize=True)
+        encoded_frames.append((frame.width, frame.height, buffer.getvalue()))
+
+    count = len(encoded_frames)
+    header = struct.pack("<HHH", 0, 1, count)
+    directory = bytearray()
+    image_data = bytearray()
+    offset = 6 + 16 * count
+    for width, height, data in encoded_frames:
+        directory.extend(
+            struct.pack(
+                "<BBBBHHII",
+                0 if width == 256 else width,
+                0 if height == 256 else height,
+                0,
+                0,
+                1,
+                32,
+                len(data),
+                offset,
+            )
+        )
+        image_data.extend(data)
+        offset += len(data)
+
+    ICO_OUT.write_bytes(header + directory + image_data)
 
 
 def main() -> None:
@@ -180,7 +220,7 @@ def main() -> None:
     png_master.save(PNG_OUT, format="PNG", optimize=True)
     print(f"Wrote {PNG_OUT.relative_to(ROOT)} ({png_master.size})")
 
-    frames = build_frames(square)
+    frames = build_frames(cropped, square)
     _save_ico(frames)
     print(f"Wrote {ICO_OUT.relative_to(ROOT)} with frames: {FRAME_SIZES}")
 
