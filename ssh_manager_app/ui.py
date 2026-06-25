@@ -283,6 +283,12 @@ def preview_toolbar_visibility_callback(app, toolbar_settings) -> None:
     preview_toolbar_visibility(app, toolbar_settings)
 
 
+def hide_column_from_header_callback(app, column_key: str) -> None:
+    from .actions_ui import hide_column_from_header
+
+    hide_column_from_header(app, column_key)
+
+
 def preview_source_visibility_callback(app, source_visibility) -> None:
     from .actions_ui import preview_source_visibility
 
@@ -661,6 +667,7 @@ def build_main_ui(self) -> None:
         on_ui_state_changed=lambda: persist_ui_state_callback(self),
         notes_getter=lambda key: self._notes.get(key, ""),
         on_edit_note=lambda session: edit_session_note_callback(self, session),
+        on_hide_column=lambda column_key: hide_column_from_header_callback(self, column_key),
         toolbar_settings=self.settings.toolbar,
     )
     self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))

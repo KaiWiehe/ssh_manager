@@ -15,6 +15,48 @@ def preview_toolbar_visibility(app, toolbar_settings: ToolbarSettings) -> None:
     app._tree.update_toolbar_settings(toolbar_settings)
 
 
+_COLUMN_LABELS_DE = {
+    "username": "Benutzer",
+    "hostname": "Hostname",
+    "port": "Port",
+    "notes": "Notizen",
+}
+
+
+def hide_column_from_header(app, column_key: str) -> None:
+    """Blendet eine Tabellenspalte aus.
+
+    Wiederverwendung der bestehenden Toolbar-/Spalten-Settings-Mechanik:
+    setzt `show_<col>_column = False` auf den persistierten Settings, speichert
+    sie ueber den ueblichen Settings-Pfad und aktualisiert die Sichtbarkeit.
+    """
+    visibility_attr = f"show_{column_key}_column"
+    persisted = getattr(app, "_persisted_settings", app.settings)
+    toolbar = persisted.toolbar
+    if not hasattr(toolbar, visibility_attr):
+        return
+    if not getattr(toolbar, visibility_attr):
+        return
+    new_order = [c for c in toolbar.column_order if c != column_key]
+    new_toolbar = replace(toolbar, **{visibility_attr: False}, column_order=new_order)
+    new_settings = replace(persisted, toolbar=new_toolbar)
+    app.settings = new_settings
+    app._persisted_settings = new_settings
+    save_settings(new_settings)
+    preview_toolbar_visibility(app, new_toolbar)
+    if getattr(app, "_settings_view", None) is not None:
+        try:
+            app._settings_view.load_from_app()
+        except Exception:
+            pass
+    label = _COLUMN_LABELS_DE.get(column_key, column_key)
+    ToastNotification(
+        app,
+        f"Spalte '{label}' ausgeblendet \u2013 in den Einstellungen wieder aktivierbar.",
+        duration_ms=4000,
+    )
+
+
 
 def preview_source_visibility(app, source_visibility: SourceVisibilitySettings) -> None:
     app.settings.source_visibility = source_visibility

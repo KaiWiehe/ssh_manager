@@ -78,6 +78,7 @@ class SessionTree(ttk.Frame):
         on_add_favorites=None,              # Callable[[list[Session], bool], None] | None
         on_remove_favorite=None,            # Callable[[Session], None] | None
         favorite_keys_getter=None,          # Callable[[], set[str]] | None
+        on_hide_column=None,                # Callable[[str], None] | None
         toolbar_settings: ToolbarSettings | None = None,
     ):
         super().__init__(parent)
@@ -115,6 +116,7 @@ class SessionTree(ttk.Frame):
         self._on_add_favorites = on_add_favorites
         self._on_remove_favorite = on_remove_favorite
         self._favorite_keys_getter = favorite_keys_getter or (lambda: set())
+        self._on_hide_column = on_hide_column
         self._toolbar_settings = toolbar_settings or ToolbarSettings()
         self._tooltip: tk.Toplevel | None = None
         self._tooltip_after_id = None
@@ -190,11 +192,12 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<<TreeviewOpen>>", lambda _e: self._notify_ui_state_changed())
         self._tv.bind("<<TreeviewClose>>", lambda _e: self._notify_ui_state_changed())
         self._tv.bind("<Motion>", self._on_tree_motion)
-        self._tv.bind("<Leave>", lambda _e: self._hide_tooltip())
+        self._tv.bind("<Leave>", self._on_tree_leave)
         self._tv.bind("<ButtonPress>", lambda _e: self._hide_tooltip(), add="+")
 
         self._configure_color_tags()
         self._apply_column_visibility()
+        self._build_header_hide_overlay()
 
     def _empty_add_session(self) -> None:
         if self._on_add_session:
@@ -235,8 +238,264 @@ class SessionTree(ttk.Frame):
     def update_toolbar_settings(self, toolbar_settings: ToolbarSettings) -> None:
         self._toolbar_settings = toolbar_settings
         self._apply_column_visibility()
+        self._hide_all_header_x()
+
+    # ------------------------------------------------------------------
+    # Header "X" overlay: dezenter Schliessen-Button im Spalten-Header.
+    # Sichtbar nur on hover, blendet die Spalte ueber die bestehende
+    # Settings-Mechanik aus (siehe actions_ui.hide_column_from_header).
+    # ------------------------------------------------------------------
+
+    _HIDEABLE_COLUMNS = ("username", "hostname", "port", "notes")
+
+    def _build_header_hide_overlay(self) -> None:
+        self._header_x_labels: dict[str, tk.Label] = {}
+        self._header_x_visible_for: str | None = None
+        self._header_x_hide_after_id: str | None = None
+        # Hintergrundfarbe des Treeview-Headers ermitteln (Fallback grau)
+        try:
+            style = ttk.Style(self)
+            header_bg = style.lookup("Treeview.Heading", "background") or "#f0f0f0"
+        except tk.TclError:
+            header_bg = "#f0f0f0"
+        # dezente Farbe: leicht abgedunkeltes Grau, kein hartes Schwarz
+        idle_fg = "#9aa0a6"
+        hover_fg = "#202124"
+        for column in self._HIDEABLE_COLUMNS:
+            lbl = tk.Label(
+                self,
+                text="\u2715",
+                bg=header_bg,
+                fg=idle_fg,
+                bd=0,
+                padx=2,
+                pady=0,
+                cursor="hand2",
+                font=("Segoe UI", 9),
+            )
+            lbl._idle_fg = idle_fg  # type: ignore[attr-defined]
+            lbl._hover_fg = hover_fg  # type: ignore[attr-defined]
+            lbl.bind("<Enter>", lambda _e, c=column: self._on_header_x_enter(c))
+            lbl.bind("<Leave>", lambda _e, c=column: self._on_header_x_leave(c))
+            lbl.bind("<Button-1>", lambda _e, c=column: self._on_header_x_click(c))
+            self._header_x_labels[column] = lbl
+
+    def _hide_all_header_x(self) -> None:
+        self._cancel_header_x_hide_timer()
+        for lbl in getattr(self, "_header_x_labels", {}).values():
+            try:
+                lbl.place_forget()
+            except tk.TclError:
+                pass
+        self._header_x_visible_for = None
+
+    def _cancel_header_x_hide_timer(self) -> None:
+        after_id = getattr(self, "_header_x_hide_after_id", None)
+        if after_id is not None:
+            try:
+                self.after_cancel(after_id)
+            except tk.TclError:
+                pass
+            self._header_x_hide_after_id = None
+
+    def _schedule_header_x_hide(self, delay_ms: int = 80) -> None:
+        self._cancel_header_x_hide_timer()
+        self._header_x_hide_after_id = self.after(delay_ms, self._hide_all_header_x)
+
+    def _column_visible(self, column: str) -> bool:
+        attr = f"show_{column}_column"
+        return bool(getattr(self._toolbar_settings, attr, False))
+
+    def _column_id_for_index(self, header_index: int) -> str | None:
+        # ttk Treeview liefert ueber identify_column einen 1-basierten Index
+        # (#0 = Tree-Spalte, #1..#n = sichtbare Daten-Spalten in displaycolumns-Reihenfolge)
+        if header_index <= 0:
+            return None
+        try:
+            display = self._tv.cget("displaycolumns")
+        except tk.TclError:
+            return None
+        # display kann Tuple oder "#all" sein
+        if isinstance(display, str):
+            if display in ("#all", ""):
+                ordered = list(self._tv.cget("columns"))
+            else:
+                ordered = [display]
+        else:
+            ordered = list(display)
+            if ordered == ["#all"]:
+                ordered = list(self._tv.cget("columns"))
+        if header_index - 1 >= len(ordered):
+            return None
+        return ordered[header_index - 1]
+
+    def _maybe_show_header_x(self, event_x: int, event_y: int) -> None:
+        if not self._on_hide_column:
+            return
+        try:
+            region = self._tv.identify_region(event_x, event_y)
+        except tk.TclError:
+            return
+        if region != "heading":
+            self._schedule_header_x_hide()
+            return
+        col_token = self._tv.identify_column(event_x)
+        # col_token z.B. "#0", "#1", ...
+        if not col_token or not col_token.startswith("#"):
+            self._schedule_header_x_hide()
+            return
+        try:
+            idx = int(col_token[1:])
+        except ValueError:
+            self._schedule_header_x_hide()
+            return
+        column = self._column_id_for_index(idx)
+        if column not in self._HIDEABLE_COLUMNS or not self._column_visible(column):
+            self._schedule_header_x_hide()
+            return
+        self._cancel_header_x_hide_timer()
+        self._show_header_x_for(column)
+
+    def _show_header_x_for(self, column: str) -> None:
+        if column == self._header_x_visible_for:
+            return
+        # alle anderen verstecken
+        for col, lbl in self._header_x_labels.items():
+            if col != column:
+                try:
+                    lbl.place_forget()
+                except tk.TclError:
+                    pass
+        lbl = self._header_x_labels.get(column)
+        if lbl is None:
+            return
+        try:
+            bbox = self._header_bbox_for_column(column)
+        except tk.TclError:
+            return
+        if bbox is None:
+            return
+        col_x, col_y, col_w, col_h = bbox
+        # Position: rechte Seite des Headers, vertikal mittig
+        try:
+            req_w = lbl.winfo_reqwidth()
+            req_h = lbl.winfo_reqheight()
+        except tk.TclError:
+            req_w, req_h = 14, 14
+        x = col_x + col_w - req_w - 4
+        y = col_y + max(0, (col_h - req_h) // 2)
+        if x < col_x + 2:
+            # Spalte zu schmal: kein X anzeigen
+            try:
+                lbl.place_forget()
+            except tk.TclError:
+                pass
+            self._header_x_visible_for = None
+            return
+        try:
+            lbl.configure(fg=getattr(lbl, "_idle_fg", "#9aa0a6"))
+            lbl.place(in_=self, x=x, y=y)
+            lbl.lift()
+        except tk.TclError:
+            return
+        self._header_x_visible_for = column
+
+    def _header_bbox_for_column(self, column: str) -> tuple[int, int, int, int] | None:
+        """Liefert (x, y, width, height) des Header-Bereichs einer Datenspalte,
+        bezogen auf die Koordinaten des SessionTree-Frames (self)."""
+        # x-Offset des Treeviews innerhalb des Frames
+        try:
+            tv_x = self._tv.winfo_x()
+            tv_y = self._tv.winfo_y()
+        except tk.TclError:
+            return None
+        # Header-Hoehe via ttk Style ermitteln; Fallback ~22
+        try:
+            style = ttk.Style(self)
+            row_h = int(style.lookup("Treeview.Heading", "rowheight") or 0)
+        except (tk.TclError, ValueError):
+            row_h = 0
+        if row_h <= 0:
+            # Versuch: erste Datenzeile bbox -> y_top deren bbox = Header-Hoehe
+            try:
+                children = self._tv.get_children("")
+                if children:
+                    first_bbox = self._tv.bbox(children[0])
+                    if first_bbox:
+                        row_h = first_bbox[1]
+            except tk.TclError:
+                pass
+        if row_h <= 0:
+            row_h = 22
+        # x-Offset der Spalte: tree-spalte #0 plus alle vorhergehenden sichtbaren Datenspalten
+        try:
+            # Breite #0
+            x0 = int(self._tv.column("#0", "width"))
+        except tk.TclError:
+            return None
+        # displaycolumns Reihenfolge
+        try:
+            display = self._tv.cget("displaycolumns")
+        except tk.TclError:
+            return None
+        if isinstance(display, str):
+            ordered: list[str] = list(self._tv.cget("columns")) if display in ("#all", "") else [display]
+        else:
+            ordered = list(display)
+            if ordered == ["#all"]:
+                ordered = list(self._tv.cget("columns"))
+        if column not in ordered:
+            return None
+        x_offset = x0
+        for col in ordered:
+            try:
+                w = int(self._tv.column(col, "width"))
+            except tk.TclError:
+                return None
+            if col == column:
+                return (tv_x + x_offset, tv_y, w, row_h)
+            x_offset += w
+        return None
+
+    def _on_header_x_enter(self, column: str) -> None:
+        self._cancel_header_x_hide_timer()
+        lbl = self._header_x_labels.get(column)
+        if lbl is not None:
+            try:
+                lbl.configure(fg=getattr(lbl, "_hover_fg", "#202124"))
+            except tk.TclError:
+                pass
+
+    def _on_header_x_leave(self, column: str) -> None:
+        lbl = self._header_x_labels.get(column)
+        if lbl is not None:
+            try:
+                lbl.configure(fg=getattr(lbl, "_idle_fg", "#9aa0a6"))
+            except tk.TclError:
+                pass
+        self._schedule_header_x_hide()
+
+    def _on_header_x_click(self, column: str) -> None:
+        if not self._on_hide_column:
+            return
+        # erst verstecken, dann Action ausloesen (Settings-Update zieht
+        # update_toolbar_settings nach sich, das wuerde sowieso aufraeumen).
+        self._hide_all_header_x()
+        try:
+            self._on_hide_column(column)
+        except Exception:
+            # nicht silent verschlucken im Tk-Mainloop: messagebox
+            messagebox.showerror("Spalte ausblenden", "Spalte konnte nicht ausgeblendet werden.")
+
+    def _on_tree_leave(self, _event: tk.Event) -> None:
+        self._hide_tooltip()
+        # X nicht sofort verstecken: wenn der Mauszeiger das X-Label betritt,
+        # erhaelt der Treeview ein <Leave>, aber das X soll bleiben.
+        self._schedule_header_x_hide()
 
     def _on_tree_motion(self, event: tk.Event) -> None:
+        # Header-Hide-X aktualisieren (unabhaengig vom Notes-Tooltip)
+        self._maybe_show_header_x(event.x, event.y)
         item_id = self._tv.identify_row(event.y)
         column_id = self._tv.identify_column(event.x)
         if not item_id or item_id not in self._item_to_session or column_id not in {"#0", "#3"}:
