@@ -40,19 +40,30 @@ if TYPE_CHECKING:
 
 
 def set_window_icon(window: tk.Tk) -> None:
-    """Configure the window/taskbar icon with high-resolution assets.
+    """Configure the Windows title-bar/taskbar icon robustly.
 
-    Strategy (Windows):
-      * ``iconphoto`` with the 256x256 PNG drives the title bar / window
-        corner – Tk picks the right scaled frame and avoids the blurry
-        16x16 fallback that ``iconbitmap`` often produces on HiDPI displays.
-      * ``iconbitmap`` with the multi-frame ``.ico`` is set as a fallback so
-        the launcher/taskbar still has the proper icon resource available.
-      * For the frozen PyInstaller EXE, the taskbar icon is also baked in via
-        ``ssh_manager.spec`` (``icon=...``).
+    PyInstaller embeds the EXE resource icon from ``ssh_manager.spec``.  Tk still
+    needs the runtime window icon set explicitly, otherwise Windows 11 can show a
+    generic/blank icon for the actual window even though the assets themselves
+    are valid.  ``iconbitmap`` and ``iconphoto`` can override each other on
+    Windows depending on timing, so we apply them in the safe order and repeat
+    once after the window has been realized.
     """
     from pathlib import Path
     import sys
+
+    def _set_windows_app_id() -> None:
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+
+            app_id = "KaiWiehe.SSHManager.App"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+        except Exception:
+            # Best-effort only.  Without this, the window icon still works; the
+            # taskbar may just group/cache more aggressively on Windows.
+            pass
 
     base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     asset_dir = base_path / "assets"
@@ -68,23 +79,36 @@ def set_window_icon(window: tk.Tk) -> None:
     png_path = _resolve("ssh-manager.png")
     ico_path = _resolve("ssh-manager.ico")
 
-    # 1) High-res PNG via iconphoto – this is what Windows shows in the
-    #    title bar / window corner for Tk apps.
+    _set_windows_app_id()
+
+    photo: tk.PhotoImage | None = None
     if png_path is not None:
         try:
             photo = tk.PhotoImage(file=str(png_path))
             # Keep a reference on the window so Tcl doesn't garbage-collect it.
             window._icon_photo = photo  # type: ignore[attr-defined]
-            window.iconphoto(True, photo)
         except tk.TclError:
-            pass
+            photo = None
 
-    # 2) Multi-frame ICO as a fallback / for the EXE taskbar resource.
-    if ico_path is not None:
-        try:
-            window.iconbitmap(default=str(ico_path))
-        except tk.TclError:
-            pass
+    def _apply() -> None:
+        # On Windows, set the ICO first (native titlebar/taskbar fallback), then
+        # iconphoto last so the high-resolution PNG wins for the Tk window.
+        if ico_path is not None:
+            try:
+                window.iconbitmap(default=str(ico_path))
+            except tk.TclError:
+                pass
+        if photo is not None:
+            try:
+                window.iconphoto(True, photo)
+            except tk.TclError:
+                pass
+
+    _apply()
+    try:
+        window.after_idle(_apply)
+    except tk.TclError:
+        pass
 
 
 class SSHManagerApp(tk.Tk):
