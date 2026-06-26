@@ -135,12 +135,14 @@ class SessionTree(ttk.Frame):
         self._item_to_status: dict[str, str | None] = {}
         # session.key → hex-Farbe
         self._session_colors: dict[str, str] = dict(initial_session_colors or {})
+        self._open_folders: set[str] = set(initial_open_folders or set())
         self._pre_search_open_folders: set[str] | None = None
         self._active_filter_query = ""
         self._empty_state: ttk.Frame | None = None
+        self._suppress_open_state_events = 0
 
         self._build()
-        self.populate(sessions, open_folders=initial_open_folders or set())
+        self.populate(sessions, open_folders=self._open_folders)
 
     def _build(self) -> None:
         """Erstellt Treeview + Scrollbar."""
@@ -207,8 +209,8 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<ButtonRelease-1>", self._on_left_click)
         self._tv.bind("<Double-Button-1>", self._on_double_click)
         self._tv.bind("<ButtonRelease-3>", self._on_right_click)
-        self._tv.bind("<<TreeviewOpen>>", lambda _e: self._notify_ui_state_changed())
-        self._tv.bind("<<TreeviewClose>>", lambda _e: self._notify_ui_state_changed())
+        self._tv.bind("<<TreeviewOpen>>", lambda e: self._on_tree_folder_open_changed(e, True))
+        self._tv.bind("<<TreeviewClose>>", lambda e: self._on_tree_folder_open_changed(e, False))
         self._tv.bind("<Motion>", self._on_tree_motion)
         self._tv.bind("<Leave>", self._on_tree_leave)
         self._tv.bind("<ButtonPress>", lambda _e: self._hide_tooltip(), add="+")
@@ -643,18 +645,47 @@ class SessionTree(ttk.Frame):
         self._last_tooltip_item = None
 
     def get_open_folders(self) -> set[str]:
-        """Gibt folder_keys aller aktuell geöffneten Ordner zurück."""
-        return {
-            fkey
-            for item_id, fkey in self._item_to_folder_key.items()
-            if self._tv.item(item_id, "open")
-        }
+        """Gibt folder_keys der vom Benutzer geöffneten Ordner zurück."""
+        return set(getattr(self, "_open_folders", set()))
+
+    def _set_cached_folder_open(self, folder_key: str, state: bool) -> None:
+        if not folder_key:
+            return
+        if state:
+            self._open_folders.add(folder_key)
+        else:
+            self._open_folders.discard(folder_key)
+
+    def _on_tree_folder_open_changed(self, event: tk.Event, state: bool) -> None:
+        if getattr(self, "_suppress_open_state_events", 0):
+            return
+        # During search the tree uses a temporary "all matching folders open"
+        # view. Do not let those transient open/close events replace the real
+        # user folder state that gets restored when the search is cleared.
+        if getattr(self, "_active_filter_query", "").strip():
+            return
+        item_id = ""
+        widget = getattr(event, "widget", None)
+        try:
+            item_id = widget.focus() if widget is not None else self._tv.focus()
+        except tk.TclError:
+            item_id = ""
+        folder_key = self._item_to_folder_key.get(item_id)
+        if not folder_key:
+            return
+        self._set_cached_folder_open(folder_key, state)
+        self._notify_ui_state_changed()
 
     def open_folder_key(self, folder_key: str) -> None:
         """Öffnet einen sichtbaren Ordner anhand seines folder_key."""
         for item_id, fkey in self._item_to_folder_key.items():
             if fkey == folder_key:
-                self._tv.item(item_id, open=True)
+                self._suppress_open_state_events += 1
+                try:
+                    self._tv.item(item_id, open=True)
+                finally:
+                    self._suppress_open_state_events -= 1
+                self._set_cached_folder_open(folder_key, True)
                 self._notify_ui_state_changed()
                 break
 
@@ -663,6 +694,8 @@ class SessionTree(ttk.Frame):
         return dict(self._session_colors)
 
     def _notify_ui_state_changed(self) -> None:
+        if getattr(self, "_suppress_open_state_events", 0):
+            return
         if self._on_ui_state_changed:
             self._on_ui_state_changed()
 
@@ -680,57 +713,71 @@ class SessionTree(ttk.Frame):
                 break
         self._notify_ui_state_changed()
 
-    def populate(self, sessions: list[Session], open_folders: set[str] | None = None) -> None:
+    def populate(
+        self,
+        sessions: list[Session],
+        open_folders: set[str] | None = None,
+        *,
+        update_open_state: bool = True,
+    ) -> None:
         """Füllt den Baum mit Sessions. Löscht vorherige Inhalte."""
         # Zustand merken (welche Ordner waren offen?) – falls nicht extern übergeben
         if open_folders is None:
             open_folders = self.get_open_folders()
 
-        # Alles löschen
-        self._tv.delete(*self._tv.get_children())
-        self._item_to_session.clear()
-        self._checked.clear()
-        self._item_to_folder_key.clear()
-        self._item_to_status.clear()
+        open_folders = set(open_folders)
+        if update_open_state:
+            self._open_folders = set(open_folders)
 
-        # Ordner-Nodes: folder_key → item_id
-        folder_items: dict[str, str] = {}
+        self._suppress_open_state_events += 1
+        try:
+            # Alles löschen
+            self._tv.delete(*self._tv.get_children())
+            self._item_to_session.clear()
+            self._checked.clear()
+            self._item_to_folder_key.clear()
+            self._item_to_status.clear()
 
-        for session in sessions:
-            # Ordner-Hierarchie aufbauen
-            parent_id = ""
-            for depth, folder_name in enumerate(session.folder_path):
-                folder_key = "/".join(session.folder_path[: depth + 1])
-                if folder_key not in folder_items:
-                    was_open = folder_key in open_folders
-                    folder_label = f"  ⚙ {folder_name}" if folder_key == _SSH_CONFIG_DEFAULT_FOLDER else f"  {folder_name}"
-                    folder_id = self._tv.insert(
-                        parent_id, "end",
-                        text=folder_label,
-                        open=was_open,
-                        tags=(self.TAG_FOLDER,),
-                    )
-                    self._tv.tag_bind(folder_id, "<<TreeviewOpen>>", lambda e: None)
-                    folder_items[folder_key] = folder_id
-                    self._item_to_folder_key[folder_id] = folder_key
-                parent_id = folder_items[folder_key]
+            # Ordner-Nodes: folder_key → item_id
+            folder_items: dict[str, str] = {}
 
-            # Session-Zeile
-            port_str = str(session.port) if session.port != 22 else ""
-            note_text = self._notes_getter(session.key)
-            note_short = (note_text[:57] + "...") if len(note_text) > 60 else note_text
-            _ctag = color_tag(self._session_colors[session.key]) if session.key in self._session_colors else None
-            _tags = (self.TAG_SESSION,) + ((_ctag,) if _ctag else ())
-            label = self._session_label(session, None)
-            item_id = self._tv.insert(
-                parent_id, "end",
-                image=self._img_unchecked,
-                text=label,
-                values=(session.username, session.hostname, port_str, note_short),
-                tags=_tags,
-            )
-            self._item_to_session[item_id] = session
-            self._checked[item_id] = False
+            for session in sessions:
+                # Ordner-Hierarchie aufbauen
+                parent_id = ""
+                for depth, folder_name in enumerate(session.folder_path):
+                    folder_key = "/".join(session.folder_path[: depth + 1])
+                    if folder_key not in folder_items:
+                        was_open = folder_key in open_folders
+                        folder_label = f"  ⚙ {folder_name}" if folder_key == _SSH_CONFIG_DEFAULT_FOLDER else f"  {folder_name}"
+                        folder_id = self._tv.insert(
+                            parent_id, "end",
+                            text=folder_label,
+                            open=was_open,
+                            tags=(self.TAG_FOLDER,),
+                        )
+                        self._tv.tag_bind(folder_id, "<<TreeviewOpen>>", lambda e: None)
+                        folder_items[folder_key] = folder_id
+                        self._item_to_folder_key[folder_id] = folder_key
+                    parent_id = folder_items[folder_key]
+
+                # Session-Zeile
+                port_str = str(session.port) if session.port != 22 else ""
+                note_text = self._notes_getter(session.key)
+                note_short = (note_text[:57] + "...") if len(note_text) > 60 else note_text
+                _ctag = color_tag(self._session_colors[session.key]) if session.key in self._session_colors else None
+                _tags = (self.TAG_SESSION,) + ((_ctag,) if _ctag else ())
+                label = self._session_label(session, None)
+                item_id = self._tv.insert(
+                    parent_id, "end",
+                    image=self._img_unchecked,
+                    text=label,
+                    values=(session.username, session.hostname, port_str, note_short),
+                    tags=_tags,
+                )
+                self._item_to_session[item_id] = session
+                self._checked[item_id] = False
+        finally:
+            self._suppress_open_state_events -= 1
 
         self._update_empty_state(sessions)
 
@@ -873,10 +920,24 @@ class SessionTree(ttk.Frame):
 
     def _set_folder_open_recursive(self, folder_item_id: str, state: bool) -> None:
         """Klappt einen Ordner rekursiv auf oder zu."""
-        self._tv.item(folder_item_id, open=state)
-        for child_id in self._tv.get_children(folder_item_id):
-            if self.TAG_FOLDER in self._tv.item(child_id, "tags"):
-                self._set_folder_open_recursive(child_id, state)
+        changed: list[str] = []
+
+        def apply(item_id: str) -> None:
+            folder_key = self._item_to_folder_key.get(item_id)
+            if folder_key:
+                changed.append(folder_key)
+            self._tv.item(item_id, open=state)
+            for child_id in self._tv.get_children(item_id):
+                if self.TAG_FOLDER in self._tv.item(child_id, "tags"):
+                    apply(child_id)
+
+        self._suppress_open_state_events += 1
+        try:
+            apply(folder_item_id)
+        finally:
+            self._suppress_open_state_events -= 1
+        for folder_key in changed:
+            self._set_cached_folder_open(folder_key, state)
         self._notify_ui_state_changed()
 
     def _show_folder_menu(self, item_id: str, event: tk.Event) -> None:
@@ -1345,7 +1406,7 @@ class SessionTree(ttk.Frame):
             open_folders = self._pre_search_open_folders
             self._pre_search_open_folders = None
 
-        self.populate(filtered, open_folders=open_folders)
+        self.populate(filtered, open_folders=open_folders, update_open_state=not bool(q))
 
         # Checkbox-Zustände wiederherstellen
         for item_id, session in self._item_to_session.items():
@@ -1357,14 +1418,30 @@ class SessionTree(ttk.Frame):
 
     def expand_all(self) -> None:
         """Klappt alle Ordner auf."""
-        for item_id in self._item_to_folder_key:
-            self._tv.item(item_id, open=True)
+        self._open_folders = set(self._item_to_folder_key.values())
+        self._suppress_open_state_events += 1
+        try:
+            for item_id in self._item_to_folder_key:
+                try:
+                    self._tv.item(item_id, open=True)
+                except tk.TclError:
+                    pass
+        finally:
+            self._suppress_open_state_events -= 1
         self._notify_ui_state_changed()
 
     def collapse_all(self) -> None:
         """Klappt alle Ordner zu."""
-        for item_id in self._item_to_folder_key:
-            self._tv.item(item_id, open=False)
+        self._open_folders.clear()
+        self._suppress_open_state_events += 1
+        try:
+            for item_id in self._item_to_folder_key:
+                try:
+                    self._tv.item(item_id, open=False)
+                except tk.TclError:
+                    pass
+        finally:
+            self._suppress_open_state_events -= 1
         self._notify_ui_state_changed()
 
     def set_checkbox_images(self, img_unchecked: tk.PhotoImage, img_checked: tk.PhotoImage) -> None:

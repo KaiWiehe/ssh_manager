@@ -76,3 +76,84 @@ def test_set_session_color_clearing_removes_color_and_skips_color_tag():
     # Only the base session tag, no color tag appended.
     assert tags == (SessionTree.TAG_SESSION,)
     fake._notify_ui_state_changed.assert_called_once()
+
+
+def _make_open_state_tree() -> SessionTree:
+    tree = object.__new__(SessionTree)
+    tree._open_folders = set()
+    tree._item_to_folder_key = {"folder-iid": "Prod/API"}
+    tree._active_filter_query = ""
+    tree._suppress_open_state_events = 0
+    tree._on_ui_state_changed = MagicMock()
+    tree._tv = MagicMock()
+    return tree
+
+
+def test_tree_open_event_updates_cached_folder_state():
+    tree = _make_open_state_tree()
+    event = MagicMock()
+    event.widget.focus.return_value = "folder-iid"
+
+    SessionTree._on_tree_folder_open_changed(tree, event, True)
+
+    assert tree.get_open_folders() == {"Prod/API"}
+    tree._on_ui_state_changed.assert_called_once()
+
+
+def test_tree_close_event_updates_cached_folder_state():
+    tree = _make_open_state_tree()
+    tree._open_folders = {"Prod/API"}
+    event = MagicMock()
+    event.widget.focus.return_value = "folder-iid"
+
+    SessionTree._on_tree_folder_open_changed(tree, event, False)
+
+    assert tree.get_open_folders() == set()
+    tree._on_ui_state_changed.assert_called_once()
+
+
+def test_tree_open_events_are_ignored_during_search():
+    tree = _make_open_state_tree()
+    tree._active_filter_query = "prod"
+    event = MagicMock()
+    event.widget.focus.return_value = "folder-iid"
+
+    SessionTree._on_tree_folder_open_changed(tree, event, True)
+
+    assert tree.get_open_folders() == set()
+    tree._on_ui_state_changed.assert_not_called()
+
+
+def test_tree_open_events_are_ignored_during_programmatic_rebuild():
+    tree = _make_open_state_tree()
+    tree._suppress_open_state_events = 1
+    event = MagicMock()
+    event.widget.focus.return_value = "folder-iid"
+
+    SessionTree._on_tree_folder_open_changed(tree, event, True)
+
+    assert tree.get_open_folders() == set()
+    tree._on_ui_state_changed.assert_not_called()
+
+
+def test_filter_uses_temporary_open_state_for_active_search():
+    session = Session("s1", "db-prod", ["Prod", "DB"], "db.example.com")
+    tree = object.__new__(SessionTree)
+    tree._sessions = [session]
+    tree._active_filter_query = ""
+    tree._pre_search_open_folders = None
+    tree._open_folders = {"Prod"}
+    tree._checked = {}
+    tree._item_to_session = {}
+    tree.populate = MagicMock()
+    tree._notify_count = MagicMock()
+
+    SessionTree.filter(tree, "db")
+
+    assert tree._pre_search_open_folders == {"Prod"}
+    tree.populate.assert_called_once_with(
+        [session],
+        open_folders={"Prod", "Prod/DB"},
+        update_open_state=False,
+    )
+    assert tree.get_open_folders() == {"Prod"}
