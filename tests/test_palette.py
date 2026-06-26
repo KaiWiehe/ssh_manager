@@ -416,8 +416,10 @@ def test_unmap_event_closes_popup():
     """Unmap on the toplevel (minimize / desktop switch) should close."""
     fake = _make_fake_dialog()
     _wire_real_close(fake)
+    event = MagicMock()
+    event.widget = fake
 
-    CommandPaletteDialog._on_unmap(fake, MagicMock())
+    CommandPaletteDialog._on_unmap(fake, event)
 
     fake.destroy.assert_called_once()
 
@@ -427,6 +429,21 @@ def test_unmap_event_skipped_when_closing():
     fake._closing = True
 
     CommandPaletteDialog._on_unmap(fake, MagicMock())
+
+    fake.destroy.assert_not_called()
+
+
+def test_unmap_event_from_child_widget_does_not_close_popup():
+    """Typing the first query hides the placeholder label via grid_remove(),
+    which emits an Unmap event for that child widget. The palette must stay
+    open and only close when the Toplevel itself is unmapped.
+    """
+    fake = _make_fake_dialog()
+    _wire_real_close(fake)
+    event = MagicMock()
+    event.widget = MagicMock()
+
+    CommandPaletteDialog._on_unmap(fake, event)
 
     fake.destroy.assert_not_called()
 

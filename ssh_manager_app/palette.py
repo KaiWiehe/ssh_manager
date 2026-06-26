@@ -465,7 +465,11 @@ class CommandPaletteDialog(tk.Toplevel):
     def _on_unmap(self, _event=None):
         if self._closing:
             return
-        # Only react to the Toplevel itself being unmapped, not child widgets.
+        # The Toplevel bind tag can also see child-widget Unmap events. Typing
+        # the first query hides the placeholder label via grid_remove(); that
+        # must not close the whole palette.
+        if _event is not None and getattr(_event, "widget", self) is not self:
+            return
         self._close()
 
     def _close(self) -> None:
