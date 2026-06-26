@@ -68,6 +68,7 @@ def open_command_palette(app) -> None:
         toggle_recent_folder,
     )
     from .actions_sessions import add_session, delete_session, edit_session, edit_session_details
+    from .actions_dns import open_dns_lookup_dialog
 
     if getattr(app, "_command_palette", None) is not None:
         try:
@@ -148,6 +149,8 @@ def open_command_palette(app) -> None:
                            kind="action", callback=lambda: focus_search(app)),
         CommandPaletteItem("act:refresh", "Sessions neu laden", _accel("refresh"),
                            kind="action", callback=lambda: reload_sessions(app)),
+        CommandPaletteItem("act:dns_lookup", "DNS/IP auflösen…", "",
+                           kind="action", callback=lambda: open_dns_lookup_dialog(app)),
         CommandPaletteItem("act:select_all", "Alle auswählen", _accel("select_all"),
                            kind="action", callback=lambda: select_all(app)),
         CommandPaletteItem("act:deselect_all", "Alle abwählen", _accel("deselect_all"),

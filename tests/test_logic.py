@@ -2347,6 +2347,8 @@ def test_ssh_manager_app_stays_thin_bootstrap_shell():
 
 def test_dialog_exports_use_split_modules():
     from ssh_manager_app.dialogs import (
+        DnsLookupDialog,
+        DnsLookupResultsDialog,
         JumpHostDialog,
         MoveFolderDialog,
         RemoteCommandConfirmDialog,
@@ -2360,6 +2362,8 @@ def test_dialog_exports_use_split_modules():
         ToastNotification,
         UserDialog,
     )
+    from ssh_manager_app.dialogs_dns import DnsLookupDialog as DnsLookupDialogImpl
+    from ssh_manager_app.dialogs_dns import DnsLookupResultsDialog as DnsLookupResultsDialogImpl
     from ssh_manager_app.dialogs_move_folder import MoveFolderDialog as MoveFolderDialogImpl
     from ssh_manager_app.dialogs_remote import (
         JumpHostDialog as JumpHostDialogImpl,
@@ -2375,6 +2379,8 @@ def test_dialog_exports_use_split_modules():
     from ssh_manager_app.dialogs_toast import ToastNotification as ToastNotificationImpl
     from ssh_manager_app.dialogs_base import UserDialog as UserDialogImpl
 
+    assert DnsLookupDialog is DnsLookupDialogImpl
+    assert DnsLookupResultsDialog is DnsLookupResultsDialogImpl
     assert JumpHostDialog is JumpHostDialogImpl
     assert MoveFolderDialog is MoveFolderDialogImpl
     assert RemoteCommandConfirmDialog is RemoteCommandConfirmDialogImpl

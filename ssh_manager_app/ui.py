@@ -234,6 +234,18 @@ def run_remote_command_callback(app, sessions) -> None:
     run_remote_command(app, sessions)
 
 
+def open_dns_lookup_dialog_callback(app) -> None:
+    from .actions_dns import open_dns_lookup_dialog
+
+    open_dns_lookup_dialog(app)
+
+
+def resolve_dns_for_sessions_callback(app, sessions) -> None:
+    from .actions_dns import resolve_dns_for_sessions
+
+    resolve_dns_for_sessions(app, sessions)
+
+
 def open_via_jumphost_callback(app, session) -> None:
     from .actions_remote import open_via_jumphost
 
@@ -671,6 +683,9 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))
+    actions_menu.add_separator()
+    actions_menu.add_command(label="DNS/IP auflösen…", command=lambda: open_dns_lookup_dialog_callback(self))
+    actions_menu.add_command(label="DNS/IP für Auswahl auflösen…", command=lambda: resolve_dns_for_sessions_callback(self, self._tree.get_selected_sessions()))
     menubar.add_cascade(label="Aktionen", menu=actions_menu)
 
     settings_menu = tk.Menu(menubar, tearoff=False)
@@ -746,6 +761,7 @@ def build_main_ui(self) -> None:
         on_open_tunnel=lambda session=None: open_tunnel_callback(self, session),
         on_open_in_winscp=lambda sessions: open_in_winscp_callback(self, sessions),
         on_run_remote_command=lambda sessions: run_remote_command_callback(self, sessions),
+        on_resolve_dns=lambda sessions: resolve_dns_for_sessions_callback(self, sessions),
         on_open_via_jumphost=lambda session: open_via_jumphost_callback(self, session),
         on_copy_ssh_command=lambda session: copy_ssh_command_callback(self, session),
         on_ui_state_changed=lambda: persist_ui_state_callback(self),

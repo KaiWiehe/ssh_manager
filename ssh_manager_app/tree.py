@@ -69,6 +69,7 @@ class SessionTree(ttk.Frame):
         on_open_tunnel=None,                # Callable[[Session], None] | None
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
+        on_resolve_dns=None,                # Callable[[list[Session]], None] | None
         on_open_via_jumphost=None,          # Callable[[Session], None] | None
         on_copy_ssh_command=None,           # Callable[[Session], None] | None
         on_ui_state_changed=None,           # Callable[[], None] | None
@@ -107,6 +108,7 @@ class SessionTree(ttk.Frame):
         self._on_open_tunnel = on_open_tunnel
         self._on_open_in_winscp = on_open_in_winscp
         self._on_run_remote_command = on_run_remote_command
+        self._on_resolve_dns = on_resolve_dns
         self._on_open_via_jumphost = on_open_via_jumphost
         self._on_copy_ssh_command = on_copy_ssh_command
         self._on_ui_state_changed = on_ui_state_changed
@@ -1025,6 +1027,12 @@ class SessionTree(ttk.Frame):
                 label=f"Hosts prüfen ({len(folder_sessions)})",
                 command=lambda fid=item_id: self.check_folder_hosts(fid),
             )
+            dns_sessions = [s for s in folder_sessions if s.hostname]
+            if dns_sessions and self._on_resolve_dns:
+                menu.add_command(
+                    label=f"DNS/IP für Ordner auflösen… ({len(dns_sessions)})",
+                    command=lambda ss=list(dns_sessions): self._on_resolve_dns(ss),
+                )
             favorite_keys = self._favorite_keys_getter()
             not_favorite = [s for s in folder_sessions if s.key not in favorite_keys]
             if not_favorite and self._on_add_favorites:
@@ -1248,6 +1256,17 @@ class SessionTree(ttk.Frame):
                 menu.add_command(
                     label=f"Befehl auf Auswahl ausführen… ({len(selected_runnable)})",
                     command=lambda ss=selected_runnable: self._on_run_remote_command(ss),
+                )
+        if self._on_resolve_dns and session.hostname:
+            menu.add_command(
+                label="DNS/IP auflösen…",
+                command=lambda s=session: self._on_resolve_dns([s]),
+            )
+            selected_dns = [s for s in selected if s.hostname]
+            if len(selected_dns) >= 2:
+                menu.add_command(
+                    label=f"DNS/IP für Auswahl auflösen… ({len(selected_dns)})",
+                    command=lambda ss=selected_dns: self._on_resolve_dns(ss),
                 )
         if session.source in ("ssh_config", "ssh_alias"):
             if self._on_inspect_ssh_config:
