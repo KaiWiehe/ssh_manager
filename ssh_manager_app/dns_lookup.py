@@ -81,7 +81,7 @@ def _dedupe(values: list[str]) -> list[str]:
 
 
 def _run_command(args: list[str], timeout: int) -> subprocess.CompletedProcess:
-    return subprocess.run(args, capture_output=True, text=True, timeout=timeout, shell=False)
+    return subprocess.run(args, capture_output=True, text=True, errors="replace", timeout=timeout, shell=False)
 
 
 def _resolve_with_powershell(query: str, mode: str, timeout: int) -> list[str]:

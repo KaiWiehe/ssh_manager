@@ -5,11 +5,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ssh_manager_app.dns_lookup import (
+    DnsLookupResult,
     detect_lookup_mode,
     parse_nslookup_output,
     parse_resolve_dns_name_json,
     resolve_dns_value,
 )
+from ssh_manager_app.dialogs_dns import DnsLookupResultsDialog
 from ssh_manager_app.models import Session
 from ssh_manager_app.tree import SessionTree
 
@@ -110,6 +112,43 @@ def test_powershell_resolver_parses_json_from_subprocess():
 
     assert result == ["dns.google"]
     assert run.call_args.args[0][0] == "powershell"
+
+
+def test_run_command_replaces_undecodable_output_bytes():
+    from ssh_manager_app import dns_lookup
+
+    with patch("ssh_manager_app.dns_lookup.subprocess.run", return_value=CompletedProcess(args=[], returncode=0)) as run:
+        dns_lookup._run_command(["nslookup", "example.com"], 3)
+
+    assert run.call_args.kwargs["text"] is True
+    assert run.call_args.kwargs["errors"] == "replace"
+
+
+def test_dns_results_dialog_left_aligns_columns_and_headers():
+    dialog = SimpleNamespace(
+        _results=[DnsLookupResult("example.com", "forward", ["10.0.0.1"], "Resolve-DnsName", "ok")],
+        columnconfigure=MagicMock(),
+        rowconfigure=MagicMock(),
+        _status_label=lambda result: "OK",
+        _copy_all=MagicMock(),
+        _copy_values=MagicMock(),
+        destroy=MagicMock(),
+    )
+    parent = MagicMock()
+    frame = MagicMock()
+    button_frame = MagicMock()
+    tree = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_dns.ttk.Frame", side_effect=[frame, button_frame]), \
+         patch("ssh_manager_app.dialogs_dns.ttk.Treeview", return_value=tree), \
+         patch("ssh_manager_app.dialogs_dns.ttk.Scrollbar", side_effect=[MagicMock(), MagicMock()]), \
+         patch("ssh_manager_app.dialogs_dns.ttk.Button", return_value=MagicMock()):
+        DnsLookupResultsDialog._build(dialog, parent)
+
+    for call in tree.heading.call_args_list:
+        assert call.kwargs["anchor"] == "w"
+    for call in tree.column.call_args_list:
+        assert call.kwargs["anchor"] == "w"
 
 
 class _FakeMenu:
