@@ -366,6 +366,10 @@ class ShortcutManager:
 
     def _make_handler(self, action: ShortcutAction):
         def handler(event):
+            # Modal dialogs/palettes can host text entries of their own. Don't
+            # let global app shortcuts interfere while a grab is active.
+            if _is_modal_dialog_active(self._root):
+                return None
             if action.skip_in_entry and _focus_is_text_entry(event):
                 return None
             if action.enabled_when is not None and not action.enabled_when():
@@ -391,6 +395,21 @@ def _focus_is_text_entry(event) -> bool:
         return False
     cls = focused.winfo_class() if hasattr(focused, "winfo_class") else ""
     return cls in {"Entry", "TEntry", "Text", "TCombobox", "Spinbox", "TSpinbox"}
+
+
+def _is_modal_dialog_active(root) -> bool:
+    try:
+        grab = root.grab_current()
+    except Exception:
+        grab = None
+    if grab is None:
+        return False
+    try:
+        grab_root = grab.winfo_toplevel()
+        root_top = root.winfo_toplevel()
+    except Exception:
+        return True
+    return grab_root is not root_top
 
 
 # ---------------------------------------------------------------------------

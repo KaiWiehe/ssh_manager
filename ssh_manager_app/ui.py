@@ -589,7 +589,8 @@ def install_shortcut_manager(app) -> None:
         edit_focused_session(app)
 
     actions = [
-        ShortcutAction("open_command_palette", "Befehlspalette öffnen", "Ctrl+P", open_command_palette, skip_in_entry=False),
+        # Let text widgets keep their normal Ctrl+P / typing behavior.
+        ShortcutAction("open_command_palette", "Befehlspalette öffnen", "Ctrl+P", open_command_palette, skip_in_entry=True),
         ShortcutAction("focus_search", "Suche fokussieren", "Ctrl+F", lambda: focus_search(app), skip_in_entry=False),
         ShortcutAction("new_session", "Neue Verbindung", "Ctrl+N", lambda: add_session(app), skip_in_entry=False),
         ShortcutAction("open_settings", "Einstellungen öffnen", "Ctrl+,", lambda: show_settings_view(app), skip_in_entry=False),
