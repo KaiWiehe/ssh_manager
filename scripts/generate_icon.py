@@ -5,12 +5,9 @@ Produces:
   * assets/ssh-manager.ico   – multi-frame ICO (16/20/24/32/40/48/64/128/256)
   * assets/ssh-manager.png   – 256x256 high-res PNG used by Tk's iconphoto()
 
-The authoritative source is ``assets/SSH-Logo.svg``.  The SVG contains a
-white export/background rectangle plus actual white logo details.  Removing
-"all white" from a rendered PNG breaks the artwork, while keeping the export
-rectangle makes Windows show a nearly blank white tile at small sizes.  This
-script therefore removes only that SVG background rectangle before rendering,
-so the real white details are preserved and the icon background is transparent.
+The authoritative source is ``assets/SSH-Logo.svg``.  The current logo is a
+minimal black terminal prompt on a transparent background.  It intentionally
+stays bold and simple so the Windows title-bar icon remains readable at 16 px.
 
 Run from repo root::
 
@@ -23,7 +20,7 @@ import struct
 from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 try:
     RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
@@ -55,7 +52,7 @@ SQUARE_MARGIN = 0.07
 # Extra margin for tiny title-bar frames.  Windows often uses the 16/20/24 px
 # ICO entries directly in the top-left window corner; if the artwork reaches the
 # frame edge it looks clipped.  These tiny variants intentionally breathe more.
-SMALL_FRAME_MARGIN = 0.18
+SMALL_FRAME_MARGIN = 0.12
 
 # Sizes at or below this use the extra-margin small-frame source.
 SMALL_FRAME_SIZE_LIMIT = 24
@@ -66,21 +63,44 @@ DILATE_SIZE_LIMIT = 32
 
 
 def _strip_svg_export_background(svg_text: str) -> str:
-    """Remove the exported full-canvas white rectangle, not logo details.
+    """Remove a legacy exported full-canvas white rectangle, if present.
 
-    The SVG contains a first ``<rect ... fill:white;stroke:white .../>`` that is
-    only an export/background card.  Later white ``<path>`` elements are real
-    artwork (window interior / letters) and must stay intact.
+    Older logo sources contained a first ``<rect ... fill:white;stroke:white
+    .../>`` that was only an export/background card. The current prompt logo has
+    no background, so absence of that rectangle is fine.
     """
     pattern = re.compile(r"\s*<rect\b[^>]*style=\"[^\"]*fill:white;stroke:white[^\"]*\"\s*/>", re.I)
-    stripped, count = pattern.subn("", svg_text, count=1)
-    if count != 1:
-        raise RuntimeError("Could not find the SVG export background rectangle")
+    stripped, _count = pattern.subn("", svg_text, count=1)
     return stripped
+
+
+def _render_simple_prompt_logo() -> Image.Image:
+    """Render the repo's simple prompt SVG with Pillow when CairoSVG is absent."""
+    scale = RENDER_SIZE / 256
+    img = Image.new("RGBA", (RENDER_SIZE, RENDER_SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    def p(x: float, y: float) -> tuple[int, int]:
+        return (round(x * scale), round(y * scale))
+
+    stroke = round(34 * scale)
+    radius = stroke // 2
+    black = (0, 0, 0, 255)
+    chevron = [p(56, 50), p(124, 128), p(56, 206)]
+    underscore = [p(139, 192), p(214, 192)]
+    draw.line(chevron, fill=black, width=stroke, joint="curve")
+    draw.line(underscore, fill=black, width=stroke)
+    for x, y in chevron + underscore:
+        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=black)
+    return img
 
 
 def _render_svg_source() -> Image.Image:
     """Render SVG source to a large RGBA Pillow image."""
+    svg_text = SVG_SOURCE.read_text(encoding="utf-8")
+    if 'data-generator="simple-prompt"' in svg_text:
+        return _render_simple_prompt_logo()
+
     try:
         import cairosvg  # type: ignore[import-not-found]
     except Exception as exc:  # pragma: no cover - environment dependent
@@ -89,7 +109,6 @@ def _render_svg_source() -> Image.Image:
             "Install it in the build/dev environment with `pip install cairosvg`."
         ) from exc
 
-    svg_text = SVG_SOURCE.read_text(encoding="utf-8")
     svg_text = _strip_svg_export_background(svg_text)
     png_bytes = cairosvg.svg2png(
         bytestring=svg_text.encode("utf-8"),

@@ -1,10 +1,9 @@
 """Regression tests for the generated Windows icon assets.
 
-The app icons are generated from ``assets/SSH-Logo.svg``.  The SVG contains a
-white export/background rectangle plus real white logo details.  The generator
-must remove only the background rectangle and keep enough contrast in every ICO
-frame so Windows does not show a blank white tile or a tiny invisible mark in the
-title bar/taskbar.
+The app icons are generated from ``assets/SSH-Logo.svg``.  The logo is a bold
+black prompt mark on a transparent background; every ICO frame must retain
+enough contrast so Windows does not show a blank tile or a tiny invisible mark
+in the title bar/taskbar.
 """
 from __future__ import annotations
 
