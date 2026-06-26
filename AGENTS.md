@@ -17,6 +17,9 @@ python -m pytest tests/test_logic.py::test_build_wt_command_single_session
 # Syntax prüfen
 python -m py_compile ssh_manager.py ssh_manager_app/*.py
 
+# Syntax prüfen unter PowerShell (Wildcard wird sonst nicht expandiert)
+$files = @('ssh_manager.py') + (Get-ChildItem -Path ssh_manager_app -Filter *.py | ForEach-Object { $_.FullName }); python -m py_compile @files
+
 # Portable Windows-EXE bauen (auf Windows)
 powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 ```
@@ -120,6 +123,10 @@ notes.json / settings  ──┘
 
 **Packaging**
 - `assets/ssh-manager.ico` – App-/EXE-Icon
+- `assets/ssh-manager.png` – 256px Runtime-Icon für `iconphoto()`
+- `assets/SSH-Logo.svg` – maßgebliche Icon-Quelle, aktuell ein simples schwarzes `>_`-Prompt-Logo
+- `assets/SSH-Logo.png` – PNG-Fallback der Icon-Quelle
+- `scripts/generate_icon.py` – generiert PNG/ICO-Frames; für das simple Prompt-Logo gibt es einen Pillow-Renderpfad ohne CairoSVG
 - `ssh_manager.spec` – PyInstaller-Spec für portable Einzel-EXE
 - `scripts/build_windows.ps1` – Windows-Build-Script
 - `packaging/ssh_manager_version_info.txt` – Windows-Version-Metadaten
@@ -208,6 +215,8 @@ Bei lokalen Skripten zusätzlich den Upload-Schritt sichtbar machen. Änderungen
 
 Wichtige Refactor-Regel: Die Persistenz-Funktionen liegen inzwischen in `ssh_manager_app/storage.py`. Neue Datei- oder JSON-Logik möglichst dort ergänzen, nicht wieder direkt in `ssh_manager.py` verteilen.
 
+Wichtig für den Baumzustand: `SessionTree` hält den vom Benutzer gesetzten Ordnerzustand separat in `_open_folders`. `get_open_folders()` soll diesen stabilen Cache zurückgeben, nicht den gerade sichtbaren Treeview-Zustand während Suche/Rebuild. Programmgesteuerte Rebuilds (`populate`, `refresh`, Suche, Zuletzt verwendet/Favoriten) dürfen keine Treeview-Open/Close-Events persistieren; dafür gibt es `_suppress_open_state_events` und `populate(..., update_open_state=False)` für temporäre Suchansichten.
+
 ### Einstellungen / konfigurierbares Verhalten
 
 Früher kamen viele Defaults direkt aus Konstanten. Inzwischen ist das meiste in `settings.json` konfigurierbar und wird in `AppSettings` geladen:
@@ -265,15 +274,25 @@ Weiterhin als Konstanten relevant:
 
 - `SettingsView` wirkt live auf Toolbar, Quellen, Spalten und Appearance. Bei Änderungen an `ToolbarSettings` immer prüfen, ob `SessionTree.update_toolbar_settings()` weiter korrekt verdrahtet ist.
 - `displaycolumns` darf **nicht** `"tree"` enthalten. Die Baumspalte bleibt automatisch links, `displaycolumns` enthält nur echte Datenspalten. Ausgeblendete Spalten dürfen nicht in der sichtbaren Reihenfolge auftauchen.
+- `SessionTree.populate()` wird auch durch virtuelle Ordner wie `↺ Zuletzt verwendet` ausgelöst. Beim Doppelklick/Quick-Connect darf das Hinzufügen zu Recent keine bestehenden Ordner einklappen oder als geschlossen speichern.
+- Während aktiver Suche werden Trefferordner temporär aufgeklappt. Klicks oder Rebuilds in dieser Suchansicht dürfen `_open_folders` nicht überschreiben; beim Leeren der Suche muss der vorherige Benutzerzustand zurückkommen.
 - Notizen dürfen **nie** in WinSCP, FileZilla oder `~/.ssh/config` zurückgeschrieben werden. Nur `notes.json` verwenden.
 - FileZilla wird nur gelesen, nie geschrieben. Quelle ist `%APPDATA%\FileZilla\sitemanager.xml`.
 - Suchverlauf wird live gespeichert. Änderungen an der Suche betreffen auch `ui_state.json`.
 - Tooltip für Notizen hängt am `Treeview`-Hover und ist empfindlich. Bei Änderungen an Motion-/Leave-Events vorsichtig sein.
-- Leerer Startscreen/Empty State sitzt als Overlay im `SessionTree` und ruft `on_add_session` auf.
+- Leerer Startscreen/Empty State sitzt als Overlay im `SessionTree` und ruft `on_add_session` auf. Er ist bewusst schlicht und zentriert (`EmptyStateContent.TFrame`, `EmptyStateIcon.TLabel`); keine breite Card wieder einführen.
 - Session-Favoriten und Zuletzt verwendet sind virtuelle Ordner aus `actions_ui.build_visible_sessions(app)`. Sie dürfen die Original-Quellen nicht verändern.
+- Command Palette (`palette.py`): `FocusOut`/`Unmap`-Handling ist empfindlich. Child-Widget-`Unmap`-Events (z.B. Placeholder wird beim Tippen versteckt) dürfen die Palette nicht schließen; nur Unmap des Palette-Toplevels selbst.
+- App-Icon: Wenn das Logo geändert wird, immer `assets/SSH-Logo.svg`, `assets/SSH-Logo.png`, `assets/ssh-manager.png` und `assets/ssh-manager.ico` konsistent halten und `scripts/generate_icon.py` ausführen. Kleine 16/20/24px-Frames separat beurteilen, weil das Titelleisten-Icon sonst schnell unlesbar wird.
 - Remote-Runner-Favoriten sind davon getrennt und leben als `remote_command_favorites` im UI-State.
 - User-Overrides für importierte Quellen werden in `ui_state.json` unter `session_user_overrides` gespeichert, nicht in WinSCP/FileZilla/SSH Config.
 - Portable EXE-Build bleibt additive Packaging-Schicht. Python-Start darf dadurch nicht kaputtgehen.
+
+### Arbeitsweise / Abschluss
+
+- Nach abgeschlossenen Änderungen in diesem Repo automatisch gezielt stagen, sinnvoll committen und `main` nach `origin` pushen, sofern der User nicht ausdrücklich etwas anderes sagt.
+- Vor dem Commit mindestens Syntax-Check und relevante Tests laufen lassen. Wenn `tests/test_icon_assets.py` wegen fehlendem `PIL` in der System-Python nicht importiert, das im Abschluss nennen oder mit einer Python-Umgebung prüfen, die Pillow enthält.
+- Fallow nur ausführen, wenn ein `package.json` vorhanden ist; aktuell ist das Projekt Python-only.
 
 ### Refactor-Learnings (sehr wichtig)
 
