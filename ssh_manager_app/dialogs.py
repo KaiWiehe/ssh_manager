@@ -4,7 +4,7 @@ Prefer importing from the split dialog modules directly.
 """
 
 from .dialogs_base import UserDialog
-from .dialogs_dns import DnsLookupDialog, DnsLookupResultsDialog
+from .dialogs_dns import DnsLookupDialog, DnsLookupProgressDialog, DnsLookupResultsDialog
 from .dialogs_move_folder import MoveFolderDialog
 from .dialogs_remote import (
     JumpHostDialog,
@@ -21,6 +21,7 @@ from .dialogs_toast import ToastNotification
 __all__ = [
     "JumpHostDialog",
     "DnsLookupDialog",
+    "DnsLookupProgressDialog",
     "DnsLookupResultsDialog",
     "MoveFolderDialog",
     "RemoteCommandConfirmDialog",

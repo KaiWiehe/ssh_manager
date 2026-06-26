@@ -3,8 +3,7 @@ from __future__ import annotations
 import threading
 from tkinter import messagebox
 
-from .dialogs_dns import DnsLookupDialog, DnsLookupResultsDialog
-from .dialogs_toast import ToastNotification
+from .dialogs_dns import DnsLookupDialog, DnsLookupProgressDialog, DnsLookupResultsDialog
 from .dns_lookup import DnsLookupResult, resolve_dns_value
 from .models import Session
 
@@ -34,22 +33,28 @@ def resolve_dns_for_sessions(app, sessions: list[Session]) -> None:
 
 
 def _resolve_values_async(app, values: list[tuple[str, str]]) -> None:
-    ToastNotification(app, "DNS/IP-Auflösung läuft...")
+    progress = DnsLookupProgressDialog(app, len(values))
 
     def worker() -> None:
         results: list[DnsLookupResult] = []
         for value, mode in values:
             results.append(resolve_dns_value(value, mode=mode))
 
-        def show_results() -> None:
-            try:
-                DnsLookupResultsDialog(app, results)
-            except Exception as exc:
-                messagebox.showerror("DNS/IP-Auflösung", f"Ergebnisse konnten nicht angezeigt werden:\n{exc}", parent=app)
-
         try:
-            app.after(0, show_results)
+            app.after(0, lambda: _show_dns_lookup_results(app, progress, results))
         except Exception:
             return
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def _show_dns_lookup_results(app, progress: DnsLookupProgressDialog, results: list[DnsLookupResult]) -> None:
+    try:
+        progress.close()
+        DnsLookupResultsDialog(app, results)
+    except Exception as exc:
+        try:
+            progress.close()
+        except Exception:
+            pass
+        messagebox.showerror("DNS/IP-Auflösung", f"Ergebnisse konnten nicht angezeigt werden:\n{exc}", parent=app)

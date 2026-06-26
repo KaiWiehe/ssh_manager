@@ -11,7 +11,7 @@ from ssh_manager_app.dns_lookup import (
     parse_resolve_dns_name_json,
     resolve_dns_value,
 )
-from ssh_manager_app.dialogs_dns import DnsLookupResultsDialog
+from ssh_manager_app.dialogs_dns import DnsLookupProgressDialog, DnsLookupResultsDialog
 from ssh_manager_app.models import Session
 from ssh_manager_app.tree import SessionTree
 
@@ -149,6 +149,38 @@ def test_dns_results_dialog_left_aligns_columns_and_headers():
         assert call.kwargs["anchor"] == "w"
     for call in tree.column.call_args_list:
         assert call.kwargs["anchor"] == "w"
+
+
+def test_dns_progress_dialog_builds_running_indicator():
+    dialog = SimpleNamespace(_progress=None)
+    frame = MagicMock()
+    label = MagicMock()
+    progress = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_dns.ttk.Frame", return_value=frame), \
+         patch("ssh_manager_app.dialogs_dns.ttk.Label", return_value=label) as label_cls, \
+         patch("ssh_manager_app.dialogs_dns.ttk.Progressbar", return_value=progress) as progress_cls:
+        DnsLookupProgressDialog._build(dialog, 3)
+
+    label_cls.assert_called_once()
+    assert "3 Einträge" in label_cls.call_args.kwargs["text"]
+    progress_cls.assert_called_once_with(frame, mode="indeterminate", length=320)
+    progress.start.assert_called_once_with(12)
+    assert dialog._progress is progress
+
+
+def test_show_dns_lookup_results_closes_progress_before_showing_results():
+    from ssh_manager_app.actions_dns import _show_dns_lookup_results
+
+    app = MagicMock()
+    progress = MagicMock()
+    results = [DnsLookupResult("example.com", "forward", ["10.0.0.1"], "Python socket", "ok")]
+
+    with patch("ssh_manager_app.actions_dns.DnsLookupResultsDialog") as results_dialog:
+        _show_dns_lookup_results(app, progress, results)
+
+    progress.close.assert_called_once_with()
+    results_dialog.assert_called_once_with(app, results)
 
 
 class _FakeMenu:

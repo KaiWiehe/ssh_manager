@@ -74,6 +74,54 @@ class DnsLookupDialog(tk.Toplevel):
         self.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
 
 
+class DnsLookupProgressDialog(tk.Toplevel):
+    """Small modal progress indicator while DNS lookups run in the background."""
+
+    def __init__(self, parent: tk.Tk, target_count: int):
+        super().__init__(parent)
+        self.title("DNS/IP auflösen")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+        self._progress: ttk.Progressbar | None = None
+        self._build(target_count)
+        self._center_on_parent(parent)
+
+    def _build(self, target_count: int) -> None:
+        frame = ttk.Frame(self, padding=18)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+
+        count_text = "1 Eintrag" if target_count == 1 else f"{target_count} Einträge"
+        ttk.Label(frame, text=f"DNS/IP-Auflösung läuft… ({count_text})").grid(row=0, column=0, sticky="w", pady=(0, 10))
+        self._progress = ttk.Progressbar(frame, mode="indeterminate", length=320)
+        self._progress.grid(row=1, column=0, sticky="ew")
+        self._progress.start(12)
+
+    def close(self) -> None:
+        try:
+            if self._progress is not None:
+                self._progress.stop()
+        except tk.TclError:
+            pass
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        self.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+
+
 class DnsLookupResultsDialog(tk.Toplevel):
     """Shows DNS/IP lookup results in a compact table."""
 
