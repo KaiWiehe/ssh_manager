@@ -178,17 +178,29 @@ class SessionTree(ttk.Frame):
         self._empty_state = ttk.Frame(self, style="EmptyState.TFrame", padding=28)
         self._empty_state.columnconfigure(0, weight=1)
         self._empty_state.rowconfigure(0, weight=1)
-        card = ttk.Frame(self._empty_state, style="EmptyStateCard.TFrame", padding=(34, 28))
-        card.grid(row=0, column=0)
-        ttk.Label(card, text="Keine Verbindungen vorhanden", style="EmptyStateTitle.TLabel").grid(row=0, column=0, sticky="ew")
+        content = ttk.Frame(self._empty_state, style="EmptyStateContent.TFrame", padding=(12, 8))
+        content.grid(row=0, column=0)
+        content.columnconfigure(0, weight=1)
+
+        ttk.Label(content, text=">_", style="EmptyStateIcon.TLabel").grid(row=0, column=0, pady=(0, 18))
         ttk.Label(
-            card,
+            content,
+            text="Keine Verbindungen vorhanden",
+            style="EmptyStateTitle.TLabel",
+        ).grid(row=1, column=0, sticky="ew")
+        ttk.Label(
+            content,
             text="Lege deine erste SSH-Verbindung an oder importiere später bestehende Quellen.",
             style="EmptyStateHint.TLabel",
-            wraplength=460,
+            wraplength=390,
             justify="center",
-        ).grid(row=1, column=0, sticky="ew", pady=(8, 18))
-        ttk.Button(card, text="+ Verbindung hinzufügen", style="Accent.TButton", command=self._empty_add_session).grid(row=2, column=0)
+        ).grid(row=2, column=0, sticky="ew", pady=(8, 22))
+        ttk.Button(
+            content,
+            text="+ Verbindung hinzufügen",
+            style="Accent.TButton",
+            command=self._empty_add_session,
+        ).grid(row=3, column=0)
 
         # Events
         self._tv.bind("<ButtonPress-1>", self._on_left_press)
