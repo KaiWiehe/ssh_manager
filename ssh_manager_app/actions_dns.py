@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import threading
 from dataclasses import replace
 from tkinter import messagebox
@@ -15,7 +16,7 @@ def open_dns_lookup_dialog(app) -> None:
     if dialog.result is None:
         return
     query, mode = dialog.result
-    _resolve_values_async(app, [(query, mode, "")])
+    _resolve_values_async(app, [(query, mode, "")], match_sessions=_all_sessions(app))
 
 
 def resolve_dns_for_sessions(app, sessions: list[Session]) -> None:
@@ -34,7 +35,12 @@ def resolve_dns_for_sessions(app, sessions: list[Session]) -> None:
     _resolve_values_async(app, values)
 
 
-def _resolve_values_async(app, values: list[tuple[str, str, str]]) -> None:
+def _resolve_values_async(
+    app,
+    values: list[tuple[str, str, str]],
+    *,
+    match_sessions: list[Session] | None = None,
+) -> None:
     progress = DnsLookupProgressDialog(app, len(values))
 
     def worker() -> None:
@@ -48,7 +54,10 @@ def _resolve_values_async(app, values: list[tuple[str, str, str]]) -> None:
             if result is None:
                 result = resolve_dns_value(value, mode=mode)
                 cache[cache_key] = result
-            results.append(replace(result, connection_name=connection_name))
+            matched_name = connection_name
+            if not matched_name and match_sessions:
+                matched_name = _matching_connection_names(result, match_sessions)
+            results.append(replace(result, connection_name=matched_name))
 
         if progress.cancelled:
             return
@@ -58,6 +67,59 @@ def _resolve_values_async(app, values: list[tuple[str, str, str]]) -> None:
             return
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def _all_sessions(app) -> list[Session]:
+    sessions: list[Session] = []
+    seen: set[str] = set()
+    source_names = ("_winscp_sessions", "_app_sessions", "_ssh_config_sessions", "_filezilla_sessions")
+    sources_found = False
+    for source_name in source_names:
+        source_sessions = getattr(app, source_name, None)
+        if source_sessions is None:
+            continue
+        sources_found = True
+        for session in source_sessions:
+            if session.key in seen:
+                continue
+            seen.add(session.key)
+            sessions.append(session)
+    if not sources_found:
+        for session in getattr(app, "_sessions", []):
+            if session.key in seen:
+                continue
+            seen.add(session.key)
+            sessions.append(session)
+    return sessions
+
+
+def _matching_connection_names(result: DnsLookupResult, sessions: list[Session]) -> str:
+    if result.mode != "forward" or result.status != "ok":
+        return ""
+
+    targets = {_normalize_host(result.query)}
+    targets.update(_normalize_host(value) for value in result.results)
+    names: list[str] = []
+    seen_names: set[str] = set()
+    seen_sessions: set[str] = set()
+    for session in sessions:
+        if session.key in seen_sessions or _normalize_host(session.hostname) not in targets:
+            continue
+        seen_sessions.add(session.key)
+        name = (session.display_name or session.hostname).strip()
+        if not name or name.lower() in seen_names:
+            continue
+        seen_names.add(name.lower())
+        names.append(name)
+    return ", ".join(names)
+
+
+def _normalize_host(value: str) -> str:
+    cleaned = (value or "").strip().rstrip(".")
+    try:
+        return str(ipaddress.ip_address(cleaned))
+    except ValueError:
+        return cleaned.lower()
 
 
 def _show_dns_lookup_results(app, progress: DnsLookupProgressDialog, results: list[DnsLookupResult]) -> None:

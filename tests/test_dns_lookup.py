@@ -190,6 +190,24 @@ def test_dns_results_dialog_adds_connection_name_before_hostname_for_sessions():
     assert tree.insert.call_args.kwargs["values"][0] == "server.example.com"
 
 
+def test_dns_results_dialog_is_non_modal():
+    result = DnsLookupResult("example.com", "forward", ["10.0.0.1"], "Python socket", "ok")
+
+    with patch("ssh_manager_app.dialogs_dns.tk.Toplevel.__init__", return_value=None), \
+         patch.object(DnsLookupResultsDialog, "title"), \
+         patch.object(DnsLookupResultsDialog, "resizable"), \
+         patch.object(DnsLookupResultsDialog, "geometry"), \
+         patch.object(DnsLookupResultsDialog, "transient"), \
+         patch.object(DnsLookupResultsDialog, "protocol"), \
+         patch.object(DnsLookupResultsDialog, "grab_set") as grab_set, \
+         patch.object(DnsLookupResultsDialog, "_build"), \
+         patch.object(DnsLookupResultsDialog, "_center_on_parent"), \
+         patch.object(DnsLookupResultsDialog, "bind"):
+        DnsLookupResultsDialog(MagicMock(), [result])
+
+    grab_set.assert_not_called()
+
+
 def test_dns_results_copy_includes_connection_name_only_for_session_results():
     result = DnsLookupResult(
         "server.example.com",
@@ -320,6 +338,80 @@ def test_async_dns_lookup_resolves_shared_hostname_once_and_labels_each_result()
     resolver.assert_called_once_with("shared.example.com", mode="auto")
     shown_results = results_dialog.call_args.args[1]
     assert [result.connection_name for result in shown_results] == ["Server A", "Server B"]
+
+
+def test_manual_forward_lookup_matches_connections_by_dns_name_and_result_ip():
+    from ssh_manager_app.actions_dns import _matching_connection_names
+
+    result = DnsLookupResult(
+        "service.example.com",
+        "forward",
+        ["10.0.0.25"],
+        "Python socket",
+        "ok",
+    )
+    sessions = [
+        Session("dns", "DNS-Verbindung", [], "service.example.com."),
+        Session("ip", "IP-Verbindung", [], "10.0.0.25"),
+        Session("other", "Andere Verbindung", [], "10.0.0.99"),
+    ]
+
+    assert _matching_connection_names(result, sessions) == "DNS-Verbindung, IP-Verbindung"
+
+
+def test_manual_lookup_searches_real_sources_without_virtual_session_duplicates():
+    from ssh_manager_app.actions_dns import _all_sessions
+
+    session = Session("prod", "Produktivserver", [], "10.0.0.25")
+    app = SimpleNamespace(
+        _winscp_sessions=[session],
+        _app_sessions=[],
+        _ssh_config_sessions=[],
+        _filezilla_sessions=[],
+        _sessions=[session, session],
+    )
+
+    assert _all_sessions(app) == [session]
+
+
+def test_manual_lookup_omits_connection_name_when_no_forward_match_exists():
+    from ssh_manager_app.actions_dns import _matching_connection_names
+
+    forward_result = DnsLookupResult("service.example.com", "forward", ["10.0.0.25"], "Python socket", "ok")
+    reverse_result = DnsLookupResult("10.0.0.25", "reverse", ["service.example.com"], "Python socket", "ok")
+    sessions = [Session("other", "Andere Verbindung", [], "10.0.0.99")]
+
+    assert _matching_connection_names(forward_result, sessions) == ""
+    assert _matching_connection_names(reverse_result, sessions) == ""
+
+
+def test_async_manual_lookup_adds_matched_connection_name_to_result():
+    from ssh_manager_app.actions_dns import _resolve_values_async
+
+    app = MagicMock()
+    app.after.side_effect = lambda _delay, callback: callback()
+    progress = MagicMock()
+    progress.cancelled = False
+    resolved = DnsLookupResult("service.example.com", "forward", ["10.0.0.25"], "Python socket", "ok")
+    sessions = [Session("ip", "Produktivserver", [], "10.0.0.25")]
+
+    def run_thread_immediately(*, target, daemon):
+        thread = MagicMock()
+        thread.start.side_effect = target
+        return thread
+
+    with patch("ssh_manager_app.actions_dns.DnsLookupProgressDialog", return_value=progress), \
+         patch("ssh_manager_app.actions_dns.resolve_dns_value", return_value=resolved), \
+         patch("ssh_manager_app.actions_dns.DnsLookupResultsDialog") as results_dialog, \
+         patch("ssh_manager_app.actions_dns.threading.Thread", side_effect=run_thread_immediately):
+        _resolve_values_async(
+            app,
+            [("service.example.com", "auto", "")],
+            match_sessions=sessions,
+        )
+
+    shown_result = results_dialog.call_args.args[1][0]
+    assert shown_result.connection_name == "Produktivserver"
 
 
 def test_all_titled_dialog_classes_handle_the_window_close_button():

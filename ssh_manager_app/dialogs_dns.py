@@ -148,7 +148,6 @@ class DnsLookupResultsDialog(tk.Toplevel):
         self._show_connection_names = any(result.connection_name for result in self._results)
         self.geometry("960x420" if self._show_connection_names else "780x420")
         self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build(parent)
         self._center_on_parent(parent)
