@@ -144,8 +144,9 @@ class DnsLookupResultsDialog(tk.Toplevel):
         super().__init__(parent)
         self.title("DNS/IP Ergebnisse")
         self.resizable(True, True)
-        self.geometry("780x420")
         self._results = list(results)
+        self._show_connection_names = any(result.connection_name for result in self._results)
+        self.geometry("960x420" if self._show_connection_names else "780x420")
         self.transient(parent)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self.destroy)
@@ -162,14 +163,23 @@ class DnsLookupResultsDialog(tk.Toplevel):
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
 
-        columns = ("direction", "result", "resolver", "status")
+        if self._show_connection_names:
+            columns = ("query", "direction", "result", "resolver", "status")
+            first_heading = "Verbindung"
+        else:
+            columns = ("direction", "result", "resolver", "status")
+            first_heading = "Eingabe"
         self._tree = ttk.Treeview(frame, columns=columns, show="tree headings", selectmode="extended")
-        self._tree.heading("#0", text="Eingabe", anchor="w")
+        self._tree.heading("#0", text=first_heading, anchor="w")
+        if self._show_connection_names:
+            self._tree.heading("query", text="Hostname", anchor="w")
         self._tree.heading("direction", text="Richtung", anchor="w")
         self._tree.heading("result", text="Ergebnis", anchor="w")
         self._tree.heading("resolver", text="Resolver", anchor="w")
         self._tree.heading("status", text="Status", anchor="w")
         self._tree.column("#0", width=180, minwidth=130, anchor="w")
+        if self._show_connection_names:
+            self._tree.column("query", width=180, minwidth=130, anchor="w")
         self._tree.column("direction", width=80, minwidth=75, anchor="w")
         self._tree.column("result", width=300, minwidth=160, anchor="w")
         self._tree.column("resolver", width=120, minwidth=90, anchor="w")
@@ -185,11 +195,17 @@ class DnsLookupResultsDialog(tk.Toplevel):
         for result in self._results:
             direction = "IP -> DNS" if result.mode == "reverse" else "DNS -> IP"
             result_text = ", ".join(result.results) if result.results else (result.error or "Keine Treffer")
+            if self._show_connection_names:
+                row_text = result.connection_name
+                values = (result.query, direction, result_text, result.resolver, self._status_label(result))
+            else:
+                row_text = result.query
+                values = (direction, result_text, result.resolver, self._status_label(result))
             self._tree.insert(
                 "",
                 "end",
-                text=result.query,
-                values=(direction, result_text, result.resolver, self._status_label(result)),
+                text=row_text,
+                values=values,
             )
 
         btn_frame = ttk.Frame(self, padding=(10, 4, 10, 10))
@@ -206,11 +222,17 @@ class DnsLookupResultsDialog(tk.Toplevel):
         return "Fehler"
 
     def _copy_all(self, parent: tk.Tk) -> None:
-        lines = ["Eingabe\tRichtung\tErgebnis\tResolver\tStatus"]
+        if self._show_connection_names:
+            lines = ["Verbindung\tHostname\tRichtung\tErgebnis\tResolver\tStatus"]
+        else:
+            lines = ["Eingabe\tRichtung\tErgebnis\tResolver\tStatus"]
         for result in self._results:
             direction = "IP -> DNS" if result.mode == "reverse" else "DNS -> IP"
             values = ", ".join(result.results) if result.results else (result.error or "Keine Treffer")
-            lines.append(f"{result.query}\t{direction}\t{values}\t{result.resolver}\t{self._status_label(result)}")
+            row = f"{result.query}\t{direction}\t{values}\t{result.resolver}\t{self._status_label(result)}"
+            if self._show_connection_names:
+                row = f"{result.connection_name}\t{row}"
+            lines.append(row)
         self._copy(parent, "\n".join(lines))
 
     def _copy_values(self, parent: tk.Tk) -> None:

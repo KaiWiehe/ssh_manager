@@ -130,6 +130,7 @@ def test_run_command_replaces_undecodable_output_bytes():
 def test_dns_results_dialog_left_aligns_columns_and_headers():
     dialog = SimpleNamespace(
         _results=[DnsLookupResult("example.com", "forward", ["10.0.0.1"], "Resolve-DnsName", "ok")],
+        _show_connection_names=False,
         columnconfigure=MagicMock(),
         rowconfigure=MagicMock(),
         _status_label=lambda result: "OK",
@@ -152,6 +153,65 @@ def test_dns_results_dialog_left_aligns_columns_and_headers():
         assert call.kwargs["anchor"] == "w"
     for call in tree.column.call_args_list:
         assert call.kwargs["anchor"] == "w"
+
+
+def test_dns_results_dialog_adds_connection_name_before_hostname_for_sessions():
+    result = DnsLookupResult(
+        "server.example.com",
+        "forward",
+        ["10.0.0.1"],
+        "Resolve-DnsName",
+        "ok",
+        connection_name="Produktivserver",
+    )
+    dialog = SimpleNamespace(
+        _results=[result],
+        _show_connection_names=True,
+        columnconfigure=MagicMock(),
+        rowconfigure=MagicMock(),
+        _status_label=lambda lookup: "OK",
+        _copy_all=MagicMock(),
+        _copy_values=MagicMock(),
+        destroy=MagicMock(),
+    )
+    tree = MagicMock()
+
+    with patch("ssh_manager_app.dialogs_dns.ttk.Frame", side_effect=[MagicMock(), MagicMock()]), \
+         patch("ssh_manager_app.dialogs_dns.ttk.Treeview", return_value=tree) as tree_cls, \
+         patch("ssh_manager_app.dialogs_dns.ttk.Scrollbar", side_effect=[MagicMock(), MagicMock()]), \
+         patch("ssh_manager_app.dialogs_dns.ttk.Button", return_value=MagicMock()):
+        DnsLookupResultsDialog._build(dialog, MagicMock())
+
+    assert tree_cls.call_args.kwargs["columns"][0] == "query"
+    assert tree.heading.call_args_list[0].kwargs["text"] == "Verbindung"
+    assert tree.heading.call_args_list[1].args[0] == "query"
+    assert tree.heading.call_args_list[1].kwargs["text"] == "Hostname"
+    assert tree.insert.call_args.kwargs["text"] == "Produktivserver"
+    assert tree.insert.call_args.kwargs["values"][0] == "server.example.com"
+
+
+def test_dns_results_copy_includes_connection_name_only_for_session_results():
+    result = DnsLookupResult(
+        "server.example.com",
+        "forward",
+        ["10.0.0.1"],
+        "Resolve-DnsName",
+        "ok",
+        connection_name="Produktivserver",
+    )
+    dialog = SimpleNamespace(
+        _results=[result],
+        _show_connection_names=True,
+        _status_label=lambda lookup: "OK",
+        _copy=MagicMock(),
+    )
+    parent = MagicMock()
+
+    DnsLookupResultsDialog._copy_all(dialog, parent)
+
+    copied = dialog._copy.call_args.args[1]
+    assert copied.startswith("Verbindung\tHostname\t")
+    assert "Produktivserver\tserver.example.com\t" in copied
 
 
 def test_dns_progress_dialog_builds_running_indicator():
@@ -208,6 +268,58 @@ def test_show_dns_lookup_results_does_nothing_after_progress_was_cancelled():
 
     progress.close.assert_not_called()
     results_dialog.assert_not_called()
+
+
+def test_session_dns_lookup_keeps_connection_names_for_shared_hostname():
+    from ssh_manager_app.actions_dns import resolve_dns_for_sessions
+
+    app = MagicMock()
+    sessions = [
+        Session("a", "Server A", [], "shared.example.com"),
+        Session("b", "Server B", [], "shared.example.com"),
+    ]
+
+    with patch("ssh_manager_app.actions_dns._resolve_values_async") as resolve_async:
+        resolve_dns_for_sessions(app, sessions)
+
+    resolve_async.assert_called_once_with(
+        app,
+        [
+            ("shared.example.com", "auto", "Server A"),
+            ("shared.example.com", "auto", "Server B"),
+        ],
+    )
+
+
+def test_async_dns_lookup_resolves_shared_hostname_once_and_labels_each_result():
+    from ssh_manager_app.actions_dns import _resolve_values_async
+
+    app = MagicMock()
+    app.after.side_effect = lambda _delay, callback: callback()
+    progress = MagicMock()
+    progress.cancelled = False
+    resolved = DnsLookupResult("shared.example.com", "forward", ["10.0.0.1"], "Python socket", "ok")
+
+    def run_thread_immediately(*, target, daemon):
+        thread = MagicMock()
+        thread.start.side_effect = target
+        return thread
+
+    with patch("ssh_manager_app.actions_dns.DnsLookupProgressDialog", return_value=progress), \
+         patch("ssh_manager_app.actions_dns.resolve_dns_value", return_value=resolved) as resolver, \
+         patch("ssh_manager_app.actions_dns.DnsLookupResultsDialog") as results_dialog, \
+         patch("ssh_manager_app.actions_dns.threading.Thread", side_effect=run_thread_immediately):
+        _resolve_values_async(
+            app,
+            [
+                ("shared.example.com", "auto", "Server A"),
+                ("shared.example.com", "auto", "Server B"),
+            ],
+        )
+
+    resolver.assert_called_once_with("shared.example.com", mode="auto")
+    shown_results = results_dialog.call_args.args[1]
+    assert [result.connection_name for result in shown_results] == ["Server A", "Server B"]
 
 
 def test_all_titled_dialog_classes_handle_the_window_close_button():

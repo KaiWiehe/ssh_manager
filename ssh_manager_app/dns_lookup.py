@@ -20,6 +20,7 @@ class DnsLookupResult:
     resolver: str
     status: str
     error: str = ""
+    connection_name: str = ""
 
 
 def detect_lookup_mode(value: str) -> str:
