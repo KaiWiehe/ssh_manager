@@ -38,8 +38,12 @@ def _resolve_values_async(app, values: list[tuple[str, str]]) -> None:
     def worker() -> None:
         results: list[DnsLookupResult] = []
         for value, mode in values:
+            if progress.cancelled:
+                return
             results.append(resolve_dns_value(value, mode=mode))
 
+        if progress.cancelled:
+            return
         try:
             app.after(0, lambda: _show_dns_lookup_results(app, progress, results))
         except Exception:
@@ -49,6 +53,8 @@ def _resolve_values_async(app, values: list[tuple[str, str]]) -> None:
 
 
 def _show_dns_lookup_results(app, progress: DnsLookupProgressDialog, results: list[DnsLookupResult]) -> None:
+    if progress.cancelled:
+        return
     try:
         progress.close()
         DnsLookupResultsDialog(app, results)

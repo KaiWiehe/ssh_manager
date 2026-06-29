@@ -311,6 +311,7 @@ def test_ssh_copy_id_dialog_init_uses_default_quick_users():
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.resizable"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.transient"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.grab_set"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.protocol"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.bind"), \
          patch.object(SshCopyIdDialog, "_build"), \
          patch.object(SshCopyIdDialog, "_center_on_parent"):
@@ -332,6 +333,7 @@ def test_ssh_remove_key_dialog_init_copies_explicit_quick_users():
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.resizable"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.transient"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.grab_set"), \
+         patch("ssh_manager_app.dialogs_remote.tk.Toplevel.protocol"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.bind"), \
          patch.object(SshRemoveKeyDialog, "_build"), \
          patch.object(SshRemoveKeyDialog, "_center_on_parent"):

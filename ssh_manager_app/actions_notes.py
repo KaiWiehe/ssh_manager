@@ -42,6 +42,8 @@ def edit_session_note(app, session) -> None:
     def on_cancel() -> None:
         dialog.destroy()
 
+    dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+
     btn_frame = ttk.Frame(frame)
     btn_frame.grid(row=2, column=0, pady=(12, 0))
     ttk.Button(btn_frame, text="OK", command=on_ok, width=10).pack(side="left", padx=4)

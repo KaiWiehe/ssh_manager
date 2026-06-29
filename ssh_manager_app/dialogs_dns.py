@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -25,6 +26,7 @@ class DnsLookupDialog(tk.Toplevel):
         self.result: tuple[str, str] | None = None
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build()
         self._center_on_parent(parent)
         self.bind("<Return>", lambda _e: self._on_ok())
@@ -81,12 +83,14 @@ class DnsLookupProgressDialog(tk.Toplevel):
         super().__init__(parent)
         self.title("DNS/IP auflösen")
         self.resizable(False, False)
+        self._cancel_event = threading.Event()
         self.transient(parent)
         self.grab_set()
-        self.protocol("WM_DELETE_WINDOW", lambda: None)
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._progress: ttk.Progressbar | None = None
         self._build(target_count)
         self._center_on_parent(parent)
+        self.bind("<Escape>", lambda _e: self._on_cancel())
 
     def _build(self, target_count: int) -> None:
         frame = ttk.Frame(self, padding=18)
@@ -99,6 +103,14 @@ class DnsLookupProgressDialog(tk.Toplevel):
         self._progress.grid(row=1, column=0, sticky="ew")
         self._progress.start(12)
 
+    @property
+    def cancelled(self) -> bool:
+        return self._cancel_event.is_set()
+
+    def _on_cancel(self) -> None:
+        self._cancel_event.set()
+        self.close()
+
     def close(self) -> None:
         try:
             if self._progress is not None:
@@ -109,7 +121,10 @@ class DnsLookupProgressDialog(tk.Toplevel):
             self.grab_release()
         except tk.TclError:
             pass
-        self.destroy()
+        try:
+            self.destroy()
+        except tk.TclError:
+            pass
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
         self.update_idletasks()
@@ -133,6 +148,7 @@ class DnsLookupResultsDialog(tk.Toplevel):
         self._results = list(results)
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build(parent)
         self._center_on_parent(parent)
         self.bind("<Escape>", lambda _e: self.destroy())

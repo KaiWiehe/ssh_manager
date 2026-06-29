@@ -56,6 +56,7 @@ class SessionEditDialog(tk.Toplevel):
 
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._build(folder_preset)
         self._center_on_parent(parent)

@@ -55,6 +55,7 @@ class UserDialog(tk.Toplevel):
         # Modal machen
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._build()
         self._center_on_parent(parent)

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ast
+import threading
+from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -169,11 +172,21 @@ def test_dns_progress_dialog_builds_running_indicator():
     assert dialog._progress is progress
 
 
+def test_dns_progress_dialog_close_button_marks_lookup_cancelled():
+    dialog = SimpleNamespace(_cancel_event=threading.Event(), close=MagicMock())
+
+    DnsLookupProgressDialog._on_cancel(dialog)
+
+    assert dialog._cancel_event.is_set()
+    dialog.close.assert_called_once_with()
+
+
 def test_show_dns_lookup_results_closes_progress_before_showing_results():
     from ssh_manager_app.actions_dns import _show_dns_lookup_results
 
     app = MagicMock()
     progress = MagicMock()
+    progress.cancelled = False
     results = [DnsLookupResult("example.com", "forward", ["10.0.0.1"], "Python socket", "ok")]
 
     with patch("ssh_manager_app.actions_dns.DnsLookupResultsDialog") as results_dialog:
@@ -181,6 +194,57 @@ def test_show_dns_lookup_results_closes_progress_before_showing_results():
 
     progress.close.assert_called_once_with()
     results_dialog.assert_called_once_with(app, results)
+
+
+def test_show_dns_lookup_results_does_nothing_after_progress_was_cancelled():
+    from ssh_manager_app.actions_dns import _show_dns_lookup_results
+
+    app = MagicMock()
+    progress = MagicMock()
+    progress.cancelled = True
+
+    with patch("ssh_manager_app.actions_dns.DnsLookupResultsDialog") as results_dialog:
+        _show_dns_lookup_results(app, progress, [])
+
+    progress.close.assert_not_called()
+    results_dialog.assert_not_called()
+
+
+def test_all_titled_dialog_classes_handle_the_window_close_button():
+    dialog_classes = {
+        "dialogs_base.py": {"UserDialog"},
+        "dialogs_dns.py": {"DnsLookupDialog", "DnsLookupProgressDialog", "DnsLookupResultsDialog"},
+        "dialogs_move_folder.py": {"MoveFolderDialog"},
+        "dialogs_remote.py": {
+            "JumpHostDialog",
+            "SshCopyIdDialog",
+            "SshRemoveKeyDialog",
+            "RemoteFavoriteEditDialog",
+            "RemoteCommandDialog",
+            "RemoteCommandConfirmDialog",
+            "SshTunnelDialog",
+            "SessionEditDialog",
+        },
+        "dialogs_session_edit.py": {"SessionEditDialog"},
+        "dialogs_settings_misc.py": {"SshConfigInspectDialog"},
+    }
+    package_dir = Path(__file__).parents[1] / "ssh_manager_app"
+
+    for filename, expected_classes in dialog_classes.items():
+        tree = ast.parse((package_dir / filename).read_text(encoding="utf-8"))
+        classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
+        for class_name in expected_classes:
+            calls = [
+                node
+                for node in ast.walk(classes[class_name])
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "protocol"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == "WM_DELETE_WINDOW"
+            ]
+            assert calls, f"{filename}:{class_name} behandelt das Fenster-X nicht"
 
 
 class _FakeMenu:

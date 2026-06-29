@@ -24,6 +24,7 @@ class SshConfigInspectDialog(tk.Toplevel):
         self.geometry("600x450")
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build(alias)
         self._center_on_parent(parent)
 

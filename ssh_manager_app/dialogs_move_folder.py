@@ -18,6 +18,7 @@ class MoveFolderDialog(tk.Toplevel):
         self.result: Optional[str] = None
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(existing_folders, current_folder)
         self._center_on_parent(parent)
         self.bind("<Return>", lambda _: self._on_ok())

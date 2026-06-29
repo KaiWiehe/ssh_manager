@@ -32,6 +32,7 @@ class JumpHostDialog(tk.Toplevel):
 
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
@@ -236,6 +237,7 @@ class SshCopyIdDialog(tk.Toplevel):
 
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._build()
         self._center_on_parent(parent)
@@ -344,6 +346,7 @@ class SshRemoveKeyDialog(tk.Toplevel):
 
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._build()
         self._center_on_parent(parent)
@@ -438,6 +441,7 @@ class RemoteFavoriteEditDialog(tk.Toplevel):
         self._item = dict(item)
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build()
         self._center_on_parent(parent)
         self.bind("<Escape>", lambda _: self._on_cancel())
@@ -529,6 +533,7 @@ class RemoteCommandDialog(tk.Toplevel):
         self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(target_count)
         self._center_on_parent(parent)
         self.bind("<Escape>", lambda _: self._on_cancel())
@@ -881,6 +886,7 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
 
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(command, session_users, close_on_success)
         self._center_on_parent(parent)
         self.bind("<Escape>", lambda _: self._on_cancel())
@@ -1007,6 +1013,7 @@ class SshTunnelDialog(tk.Toplevel):
 
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build()
         self._center_on_parent(parent)
         self.bind("<Return>", lambda _: self._on_ok())
@@ -1190,6 +1197,7 @@ class SessionEditDialog(tk.Toplevel):
 
         self.transient(parent)
         self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._build(folder_preset)
         self._center_on_parent(parent)

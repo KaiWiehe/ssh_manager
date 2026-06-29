@@ -261,6 +261,8 @@ def set_sessions_username(app, sessions: list[Session]) -> None:
     def on_cancel() -> None:
         dialog.destroy()
 
+    dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+
     btn_frame = ttk.Frame(frame)
     btn_frame.grid(row=5, column=0, columnspan=quick_count)
     ttk.Button(btn_frame, text="OK", command=on_ok, width=10).pack(side="left", padx=4)
@@ -339,6 +341,8 @@ def edit_session_details(app, session: Session) -> None:
 
     def on_cancel() -> None:
         dialog.destroy()
+
+    dialog.protocol("WM_DELETE_WINDOW", on_cancel)
 
     btn_frame = ttk.Frame(frame)
     btn_frame.grid(row=6, column=0, columnspan=2, pady=(12, 0))
