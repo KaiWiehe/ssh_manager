@@ -114,6 +114,15 @@ def test_custom_dns_server_is_used_without_system_socket_fallback():
     socket_resolver.assert_not_called()
 
 
+def test_custom_dns_server_remains_visible_when_no_records_are_found():
+    with patch("ssh_manager_app.dns_lookup._resolve_with_powershell", return_value=[]), \
+         patch("ssh_manager_app.dns_lookup._resolve_with_nslookup", return_value=[]):
+        result = resolve_dns_value("missing.example", dns_server="8.8.8.8")
+
+    assert result.status == "not_found"
+    assert result.resolver == "8.8.8.8"
+
+
 def test_nslookup_appends_selected_dns_server_to_commands():
     from ssh_manager_app import dns_lookup
 
@@ -189,6 +198,7 @@ def test_dns_results_dialog_left_aligns_columns_and_headers():
         columnconfigure=MagicMock(),
         rowconfigure=MagicMock(),
         _status_label=lambda result: "OK",
+        _result_label=lambda result: ", ".join(result.results),
         _copy_all=MagicMock(),
         _copy_values=MagicMock(),
         destroy=MagicMock(),
@@ -225,6 +235,7 @@ def test_dns_results_dialog_adds_connection_name_before_hostname_for_sessions():
         columnconfigure=MagicMock(),
         rowconfigure=MagicMock(),
         _status_label=lambda lookup: "OK",
+        _result_label=lambda lookup: ", ".join(lookup.results),
         _copy_all=MagicMock(),
         _copy_values=MagicMock(),
         destroy=MagicMock(),
@@ -276,6 +287,7 @@ def test_dns_results_copy_includes_connection_name_only_for_session_results():
         _results=[result],
         _show_connection_names=True,
         _status_label=lambda lookup: "OK",
+        _result_label=lambda lookup: ", ".join(lookup.results),
         _copy=MagicMock(),
     )
     parent = MagicMock()
@@ -285,6 +297,22 @@ def test_dns_results_copy_includes_connection_name_only_for_session_results():
     copied = dialog._copy.call_args.args[1]
     assert copied.startswith("Verbindung\tHostname\t")
     assert "Produktivserver\tserver.example.com\t" in copied
+
+
+def test_dns_result_label_hides_multiline_clixml_errors():
+    result = DnsLookupResult(
+        "10.0.0.99",
+        "reverse",
+        [],
+        "8.8.8.8",
+        "not_found",
+        error="Resolve-DnsName: #< CLIXML\n<Objs>very long technical output</Objs>",
+    )
+
+    label = DnsLookupResultsDialog._result_label(None, result)
+
+    assert label == "Keine Treffer"
+    assert "\n" not in label
 
 
 def test_dns_progress_dialog_builds_running_indicator():

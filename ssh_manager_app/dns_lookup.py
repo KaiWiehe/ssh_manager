@@ -75,7 +75,8 @@ def resolve_dns_value(
         errors.append(f"{display_name}: keine Treffer")
 
     error = "; ".join(errors[-2:]) if errors else "Keine Treffer"
-    return DnsLookupResult(query=query, mode=lookup_mode, results=[], resolver="-", status="not_found", error=error)
+    resolver = server or "System-DNS"
+    return DnsLookupResult(query=query, mode=lookup_mode, results=[], resolver=resolver, status="not_found", error=error)
 
 
 def normalize_dns_server(value: str | None) -> str | None:

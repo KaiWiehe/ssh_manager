@@ -239,7 +239,7 @@ class DnsLookupResultsDialog(tk.Toplevel):
         self.resizable(True, True)
         self._results = list(results)
         self._show_connection_names = any(result.connection_name for result in self._results)
-        self.geometry("960x420" if self._show_connection_names else "780x420")
+        self.geometry("1080x420" if self._show_connection_names else "900x420")
         self.transient(parent)
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build(parent)
@@ -273,8 +273,8 @@ class DnsLookupResultsDialog(tk.Toplevel):
         if self._show_connection_names:
             self._tree.column("query", width=180, minwidth=130, anchor="w")
         self._tree.column("direction", width=80, minwidth=75, anchor="w")
-        self._tree.column("result", width=300, minwidth=160, anchor="w")
-        self._tree.column("resolver", width=120, minwidth=90, anchor="w")
+        self._tree.column("result", width=260, minwidth=160, anchor="w")
+        self._tree.column("resolver", width=190, minwidth=130, anchor="w")
         self._tree.column("status", width=100, minwidth=80, anchor="w")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
@@ -286,7 +286,7 @@ class DnsLookupResultsDialog(tk.Toplevel):
 
         for result in self._results:
             direction = "IP -> DNS" if result.mode == "reverse" else "DNS -> IP"
-            result_text = ", ".join(result.results) if result.results else (result.error or "Keine Treffer")
+            result_text = self._result_label(result)
             if self._show_connection_names:
                 row_text = result.connection_name
                 values = (result.query, direction, result_text, result.resolver, self._status_label(result))
@@ -313,6 +313,18 @@ class DnsLookupResultsDialog(tk.Toplevel):
             return "Keine Treffer"
         return "Fehler"
 
+    def _result_label(self, result: DnsLookupResult) -> str:
+        if result.results:
+            return ", ".join(result.results)
+        if result.status == "not_found":
+            return "Keine Treffer"
+        error = " ".join((result.error or "").split())
+        if not error:
+            return "DNS-Abfrage fehlgeschlagen"
+        if "#< CLIXML" in error or len(error) > 80:
+            return "DNS-Abfrage fehlgeschlagen"
+        return error
+
     def _copy_all(self, parent: tk.Tk) -> None:
         if self._show_connection_names:
             lines = ["Verbindung\tHostname\tRichtung\tErgebnis\tResolver\tStatus"]
@@ -320,7 +332,7 @@ class DnsLookupResultsDialog(tk.Toplevel):
             lines = ["Eingabe\tRichtung\tErgebnis\tResolver\tStatus"]
         for result in self._results:
             direction = "IP -> DNS" if result.mode == "reverse" else "DNS -> IP"
-            values = ", ".join(result.results) if result.results else (result.error or "Keine Treffer")
+            values = self._result_label(result)
             row = f"{result.query}\t{direction}\t{values}\t{result.resolver}\t{self._status_label(result)}"
             if self._show_connection_names:
                 row = f"{result.connection_name}\t{row}"
