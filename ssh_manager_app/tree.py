@@ -70,6 +70,7 @@ class SessionTree(ttk.Frame):
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
         on_resolve_dns=None,                # Callable[[list[Session]], None] | None
+        on_resolve_dns_with_server=None,    # Callable[[list[Session]], None] | None
         on_open_via_jumphost=None,          # Callable[[Session], None] | None
         on_copy_ssh_command=None,           # Callable[[Session], None] | None
         on_ui_state_changed=None,           # Callable[[], None] | None
@@ -109,6 +110,7 @@ class SessionTree(ttk.Frame):
         self._on_open_in_winscp = on_open_in_winscp
         self._on_run_remote_command = on_run_remote_command
         self._on_resolve_dns = on_resolve_dns
+        self._on_resolve_dns_with_server = on_resolve_dns_with_server
         self._on_open_via_jumphost = on_open_via_jumphost
         self._on_copy_ssh_command = on_copy_ssh_command
         self._on_ui_state_changed = on_ui_state_changed
@@ -1268,6 +1270,11 @@ class SessionTree(ttk.Frame):
                     label=f"DNS/IP für Auswahl auflösen… ({len(selected_dns)})",
                     command=lambda ss=selected_dns: self._on_resolve_dns(ss),
                 )
+                if self._on_resolve_dns_with_server:
+                    menu.add_command(
+                        label=f"DNS/IP für Auswahl auflösen… (DNS-Auswahl) ({len(selected_dns)})",
+                        command=lambda ss=selected_dns: self._on_resolve_dns_with_server(ss),
+                    )
         if session.source in ("ssh_config", "ssh_alias"):
             if self._on_inspect_ssh_config:
                 menu.add_command(

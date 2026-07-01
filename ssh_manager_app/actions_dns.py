@@ -5,7 +5,7 @@ import threading
 from dataclasses import replace
 from tkinter import messagebox
 
-from .dialogs_dns import DnsLookupDialog, DnsLookupProgressDialog, DnsLookupResultsDialog
+from .dialogs_dns import DnsLookupDialog, DnsLookupProgressDialog, DnsLookupResultsDialog, DnsServerDialog
 from .dns_lookup import DnsLookupResult, resolve_dns_value
 from .models import Session
 
@@ -15,11 +15,36 @@ def open_dns_lookup_dialog(app) -> None:
     app.wait_window(dialog)
     if dialog.result is None:
         return
-    query, mode = dialog.result
-    _resolve_values_async(app, [(query, mode, "")], match_sessions=_all_sessions(app))
+    query, mode, dns_server = dialog.result
+    _resolve_values_async(
+        app,
+        [(query, mode, "")],
+        dns_server=dns_server,
+        match_sessions=_all_sessions(app),
+    )
 
 
 def resolve_dns_for_sessions(app, sessions: list[Session]) -> None:
+    values = _session_lookup_values(sessions)
+    if not values:
+        messagebox.showwarning("Keine Hosts", "Für die Auswahl sind keine Hostnamen oder IP-Adressen hinterlegt.", parent=app)
+        return
+    _resolve_values_async(app, values)
+
+
+def resolve_dns_for_sessions_with_server_selection(app, sessions: list[Session]) -> None:
+    values = _session_lookup_values(sessions)
+    if not values:
+        messagebox.showwarning("Keine Hosts", "Für die Auswahl sind keine Hostnamen oder IP-Adressen hinterlegt.", parent=app)
+        return
+    dialog = DnsServerDialog(app, len(values))
+    app.wait_window(dialog)
+    if dialog.result is None:
+        return
+    _resolve_values_async(app, values, dns_server=dialog.result or None)
+
+
+def _session_lookup_values(sessions: list[Session]) -> list[tuple[str, str, str]]:
     values: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for session in sessions:
@@ -29,30 +54,31 @@ def resolve_dns_for_sessions(app, sessions: list[Session]) -> None:
             continue
         seen.add(session_key)
         values.append((hostname, "auto", session.display_name or hostname))
-    if not values:
-        messagebox.showwarning("Keine Hosts", "Für die Auswahl sind keine Hostnamen oder IP-Adressen hinterlegt.", parent=app)
-        return
-    _resolve_values_async(app, values)
+    return values
 
 
 def _resolve_values_async(
     app,
     values: list[tuple[str, str, str]],
     *,
+    dns_server: str | None = None,
     match_sessions: list[Session] | None = None,
 ) -> None:
     progress = DnsLookupProgressDialog(app, len(values))
 
     def worker() -> None:
         results: list[DnsLookupResult] = []
-        cache: dict[tuple[str, str], DnsLookupResult] = {}
+        cache: dict[tuple[str, str, str | None], DnsLookupResult] = {}
         for value, mode, connection_name in values:
             if progress.cancelled:
                 return
-            cache_key = (value.lower(), mode)
+            cache_key = (value.lower(), mode, dns_server)
             result = cache.get(cache_key)
             if result is None:
-                result = resolve_dns_value(value, mode=mode)
+                if dns_server:
+                    result = resolve_dns_value(value, mode=mode, dns_server=dns_server)
+                else:
+                    result = resolve_dns_value(value, mode=mode)
                 cache[cache_key] = result
             matched_name = connection_name
             if not matched_name and match_sessions:

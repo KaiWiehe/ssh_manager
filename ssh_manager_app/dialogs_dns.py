@@ -4,7 +4,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from .dns_lookup import DnsLookupResult
+from .dns_lookup import DnsLookupResult, normalize_dns_server
 
 
 MODE_LABELS = {
@@ -15,6 +15,22 @@ MODE_LABELS = {
 
 MODE_BY_LABEL = {label: key for key, label in MODE_LABELS.items()}
 
+SYSTEM_DNS_LABEL = "Aktueller DNS (System)"
+DNS_SERVER_OPTIONS = {
+    SYSTEM_DNS_LABEL: None,
+    "Google (8.8.8.8)": "8.8.8.8",
+    "Cloudflare (1.1.1.1)": "1.1.1.1",
+    "Quad9 (9.9.9.9)": "9.9.9.9",
+    "OpenDNS (208.67.222.222)": "208.67.222.222",
+}
+
+
+def resolve_dns_server_selection(value: str) -> str | None:
+    cleaned = value.strip()
+    if cleaned in DNS_SERVER_OPTIONS:
+        return DNS_SERVER_OPTIONS[cleaned]
+    return normalize_dns_server(cleaned)
+
 
 class DnsLookupDialog(tk.Toplevel):
     """Dialog for one manual DNS/IP lookup query."""
@@ -23,7 +39,7 @@ class DnsLookupDialog(tk.Toplevel):
         super().__init__(parent)
         self.title("DNS/IP auflösen")
         self.resizable(False, False)
-        self.result: tuple[str, str] | None = None
+        self.result: tuple[str, str, str | None] | None = None
         self.transient(parent)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
@@ -43,13 +59,23 @@ class DnsLookupDialog(tk.Toplevel):
         entry.grid(row=0, column=1, sticky="ew", pady=(0, 8))
         entry.focus_set()
 
-        ttk.Label(frame, text="Richtung:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=(0, 14))
+        ttk.Label(frame, text="Richtung:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
         self._mode_var = tk.StringVar(value=MODE_LABELS["auto"])
         combo = ttk.Combobox(frame, textvariable=self._mode_var, values=list(MODE_LABELS.values()), state="readonly", width=18)
-        combo.grid(row=1, column=1, sticky="w", pady=(0, 14))
+        combo.grid(row=1, column=1, sticky="w", pady=(0, 8))
+
+        ttk.Label(frame, text="DNS-Server:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=(0, 14))
+        self._dns_server_var = tk.StringVar(value=SYSTEM_DNS_LABEL)
+        server_combo = ttk.Combobox(
+            frame,
+            textvariable=self._dns_server_var,
+            values=list(DNS_SERVER_OPTIONS),
+            width=30,
+        )
+        server_combo.grid(row=2, column=1, sticky="ew", pady=(0, 14))
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=2, column=0, columnspan=2)
+        btn_frame.grid(row=3, column=0, columnspan=2)
         ttk.Button(btn_frame, text="Auflösen", command=self._on_ok, width=12).pack(side="left", padx=4)
         ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=4)
 
@@ -58,7 +84,74 @@ class DnsLookupDialog(tk.Toplevel):
         if not query:
             messagebox.showwarning("Leere Eingabe", "Bitte eine IP-Adresse oder einen DNS-Namen eingeben.", parent=self)
             return
-        self.result = (query, MODE_BY_LABEL.get(self._mode_var.get(), "auto"))
+        try:
+            dns_server = resolve_dns_server_selection(self._dns_server_var.get())
+        except ValueError as exc:
+            messagebox.showwarning("Ungültiger DNS-Server", str(exc), parent=self)
+            return
+        self.result = (query, MODE_BY_LABEL.get(self._mode_var.get(), "auto"), dns_server)
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Tk) -> None:
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_x()
+        py = parent.winfo_y()
+        w = self.winfo_reqwidth()
+        h = self.winfo_reqheight()
+        self.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+
+
+class DnsServerDialog(tk.Toplevel):
+    """Selects the resolver used for DNS lookups on a session selection."""
+
+    def __init__(self, parent: tk.Tk, target_count: int):
+        super().__init__(parent)
+        self.title("DNS-Server auswählen")
+        self.resizable(False, False)
+        self.result: str | None = None
+        self.transient(parent)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self._build(target_count)
+        self._center_on_parent(parent)
+        self.bind("<Return>", lambda _e: self._on_ok())
+        self.bind("<Escape>", lambda _e: self._on_cancel())
+
+    def _build(self, target_count: int) -> None:
+        frame = ttk.Frame(self, padding=16)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+
+        count_text = "eine Verbindung" if target_count == 1 else f"{target_count} Verbindungen"
+        ttk.Label(frame, text=f"DNS-Server für {count_text}:").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self._dns_server_var = tk.StringVar(value=SYSTEM_DNS_LABEL)
+        combo = ttk.Combobox(
+            frame,
+            textvariable=self._dns_server_var,
+            values=list(DNS_SERVER_OPTIONS),
+            width=34,
+        )
+        combo.grid(row=1, column=0, sticky="ew", pady=(0, 14))
+        combo.focus_set()
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=2, column=0)
+        ttk.Button(btn_frame, text="Auflösen", command=self._on_ok, width=12).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        try:
+            dns_server = resolve_dns_server_selection(self._dns_server_var.get())
+        except ValueError as exc:
+            messagebox.showwarning("Ungültiger DNS-Server", str(exc), parent=self)
+            return
+        self.result = dns_server or ""
         self.destroy()
 
     def _on_cancel(self) -> None:

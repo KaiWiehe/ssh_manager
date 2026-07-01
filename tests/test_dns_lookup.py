@@ -1,20 +1,28 @@
 from __future__ import annotations
 
 import ast
+import base64
 import threading
 from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ssh_manager_app.dns_lookup import (
     DnsLookupResult,
     detect_lookup_mode,
+    normalize_dns_server,
     parse_nslookup_output,
     parse_resolve_dns_name_json,
     resolve_dns_value,
 )
-from ssh_manager_app.dialogs_dns import DnsLookupProgressDialog, DnsLookupResultsDialog
+from ssh_manager_app.dialogs_dns import (
+    DnsLookupProgressDialog,
+    DnsLookupResultsDialog,
+    resolve_dns_server_selection,
+)
 from ssh_manager_app.models import Session
 from ssh_manager_app.tree import SessionTree
 
@@ -94,6 +102,41 @@ def test_resolve_dns_value_uses_socket_after_empty_external_results():
     assert result.results == ["10.0.0.1"]
 
 
+def test_custom_dns_server_is_used_without_system_socket_fallback():
+    with patch("ssh_manager_app.dns_lookup._resolve_with_powershell", return_value=[]), \
+         patch("ssh_manager_app.dns_lookup._resolve_with_nslookup", return_value=["93.184.216.34"]) as nslookup, \
+         patch("ssh_manager_app.dns_lookup._resolve_with_socket") as socket_resolver:
+        result = resolve_dns_value("example.com", dns_server="8.8.8.8")
+
+    assert result.status == "ok"
+    assert result.resolver == "nslookup (8.8.8.8)"
+    nslookup.assert_called_once_with("example.com", "forward", 8, "8.8.8.8")
+    socket_resolver.assert_not_called()
+
+
+def test_nslookup_appends_selected_dns_server_to_commands():
+    from ssh_manager_app import dns_lookup
+
+    completed = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    with patch("ssh_manager_app.dns_lookup._run_command", return_value=completed) as run:
+        dns_lookup._resolve_with_nslookup("example.com", "forward", 2, "1.1.1.1")
+
+    assert run.call_args_list[0].args[0] == ["nslookup", "-type=A", "example.com", "1.1.1.1"]
+    assert run.call_args_list[1].args[0] == ["nslookup", "-type=AAAA", "example.com", "1.1.1.1"]
+
+
+def test_dns_server_selection_supports_system_presets_and_custom_ip():
+    assert resolve_dns_server_selection("Aktueller DNS (System)") is None
+    assert resolve_dns_server_selection("Google (8.8.8.8)") == "8.8.8.8"
+    assert resolve_dns_server_selection("  2001:4860:4860::8888  ") == "2001:4860:4860::8888"
+    assert normalize_dns_server("1.1.1.1") == "1.1.1.1"
+
+
+def test_dns_server_selection_rejects_invalid_custom_value():
+    with pytest.raises(ValueError, match="DNS-Server"):
+        resolve_dns_server_selection("not a server")
+
+
 def test_resolve_dns_value_reports_empty_input():
     result = resolve_dns_value("  ")
 
@@ -115,6 +158,18 @@ def test_powershell_resolver_parses_json_from_subprocess():
 
     assert result == ["dns.google"]
     assert run.call_args.args[0][0] == "powershell"
+
+
+def test_powershell_resolver_uses_selected_dns_server():
+    from ssh_manager_app import dns_lookup
+
+    completed = CompletedProcess(args=[], returncode=0, stdout="[]", stderr="")
+    with patch("ssh_manager_app.dns_lookup._run_command", return_value=completed) as run:
+        dns_lookup._resolve_with_powershell("example.com", "forward", 2, "9.9.9.9")
+
+    encoded = run.call_args.args[0][-1]
+    command = base64.b64decode(encoded).decode("utf-16le")
+    assert "-Server '9.9.9.9'" in command
 
 
 def test_run_command_replaces_undecodable_output_bytes():
@@ -309,6 +364,57 @@ def test_session_dns_lookup_keeps_connection_names_for_shared_hostname():
     )
 
 
+def test_manual_dns_lookup_passes_selected_server_to_resolver():
+    from ssh_manager_app.actions_dns import open_dns_lookup_dialog
+
+    app = SimpleNamespace(
+        wait_window=MagicMock(),
+        _winscp_sessions=[],
+        _app_sessions=[],
+        _ssh_config_sessions=[],
+        _filezilla_sessions=[],
+    )
+    dialog = MagicMock()
+    dialog.result = ("example.com", "forward", "8.8.8.8")
+
+    with patch("ssh_manager_app.actions_dns.DnsLookupDialog", return_value=dialog), \
+         patch("ssh_manager_app.actions_dns._resolve_values_async") as resolve_async:
+        open_dns_lookup_dialog(app)
+
+    resolve_async.assert_called_once_with(
+        app,
+        [("example.com", "forward", "")],
+        dns_server="8.8.8.8",
+        match_sessions=[],
+    )
+
+
+def test_selection_dns_server_action_keeps_existing_lookup_separate():
+    from ssh_manager_app.actions_dns import resolve_dns_for_sessions_with_server_selection
+
+    app = SimpleNamespace(wait_window=MagicMock())
+    sessions = [
+        Session("a", "Server A", [], "server-a.example.com"),
+        Session("b", "Server B", [], "server-b.example.com"),
+    ]
+    dialog = MagicMock()
+    dialog.result = "1.1.1.1"
+
+    with patch("ssh_manager_app.actions_dns.DnsServerDialog", return_value=dialog) as dialog_cls, \
+         patch("ssh_manager_app.actions_dns._resolve_values_async") as resolve_async:
+        resolve_dns_for_sessions_with_server_selection(app, sessions)
+
+    dialog_cls.assert_called_once_with(app, 2)
+    resolve_async.assert_called_once_with(
+        app,
+        [
+            ("server-a.example.com", "auto", "Server A"),
+            ("server-b.example.com", "auto", "Server B"),
+        ],
+        dns_server="1.1.1.1",
+    )
+
+
 def test_async_dns_lookup_resolves_shared_hostname_once_and_labels_each_result():
     from ssh_manager_app.actions_dns import _resolve_values_async
 
@@ -417,7 +523,7 @@ def test_async_manual_lookup_adds_matched_connection_name_to_result():
 def test_all_titled_dialog_classes_handle_the_window_close_button():
     dialog_classes = {
         "dialogs_base.py": {"UserDialog"},
-        "dialogs_dns.py": {"DnsLookupDialog", "DnsLookupProgressDialog", "DnsLookupResultsDialog"},
+        "dialogs_dns.py": {"DnsLookupDialog", "DnsServerDialog", "DnsLookupProgressDialog", "DnsLookupResultsDialog"},
         "dialogs_move_folder.py": {"MoveFolderDialog"},
         "dialogs_remote.py": {
             "JumpHostDialog",
@@ -495,6 +601,7 @@ def _set_tree_menu_defaults(tree: SessionTree) -> None:
         "_on_open_tunnel",
         "_on_open_in_winscp",
         "_on_run_remote_command",
+        "_on_resolve_dns_with_server",
         "_on_open_via_jumphost",
         "_on_copy_ssh_command",
         "_on_ui_state_changed",
@@ -519,6 +626,7 @@ def test_session_context_menu_calls_dns_callback_for_single_and_selection():
     tree._checked = {"i1": True, "i2": True}
     tree.get_selected_sessions = MagicMock(return_value=[session_a, session_b])
     tree._on_resolve_dns = MagicMock()
+    tree._on_resolve_dns_with_server = MagicMock()
 
     _FakeMenu.instances = []
     with patch("ssh_manager_app.tree.tk.Menu", side_effect=lambda *a, **k: _FakeMenu()):
@@ -529,12 +637,15 @@ def test_session_context_menu_calls_dns_callback_for_single_and_selection():
     assert [item["label"] for item in dns_commands] == [
         "DNS/IP auflösen…",
         "DNS/IP für Auswahl auflösen… (2)",
+        "DNS/IP für Auswahl auflösen… (DNS-Auswahl) (2)",
     ]
 
     dns_commands[0]["command"]()
     tree._on_resolve_dns.assert_called_with([session_a])
     dns_commands[1]["command"]()
     tree._on_resolve_dns.assert_called_with([session_a, session_b])
+    dns_commands[2]["command"]()
+    tree._on_resolve_dns_with_server.assert_called_once_with([session_a, session_b])
 
 
 def test_folder_context_menu_calls_dns_callback_for_folder_sessions():
@@ -566,3 +677,4 @@ def test_main_actions_menu_contains_dns_entries():
 
     assert "DNS/IP auflösen…" in labels
     assert "DNS/IP für Auswahl auflösen…" in labels
+    assert "DNS/IP für Auswahl auflösen… (DNS-Auswahl)" in labels

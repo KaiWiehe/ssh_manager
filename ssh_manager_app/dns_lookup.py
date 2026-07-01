@@ -44,29 +44,48 @@ def normalize_lookup_mode(value: str, mode: str = "auto") -> str:
     return requested
 
 
-def resolve_dns_value(value: str, mode: str = "auto", timeout: int = DNS_LOOKUP_TIMEOUT_SECONDS) -> DnsLookupResult:
+def resolve_dns_value(
+    value: str,
+    mode: str = "auto",
+    timeout: int = DNS_LOOKUP_TIMEOUT_SECONDS,
+    dns_server: str | None = None,
+) -> DnsLookupResult:
     query = value.strip()
     if not query:
         return DnsLookupResult(query=value, mode="auto", results=[], resolver="-", status="error", error="Leere Eingabe")
     lookup_mode = normalize_lookup_mode(query, mode)
+    server = normalize_dns_server(dns_server)
 
     errors: list[str] = []
-    for resolver_name, resolver in (
+    resolvers = [
         ("Resolve-DnsName", _resolve_with_powershell),
         ("nslookup", _resolve_with_nslookup),
-        ("Python socket", _resolve_with_socket),
-    ):
+    ]
+    if server is None:
+        resolvers.append(("Python socket", _resolve_with_socket))
+    for resolver_name, resolver in resolvers:
+        display_name = f"{resolver_name} ({server})" if server else resolver_name
         try:
-            results = resolver(query, lookup_mode, timeout)
+            results = resolver(query, lookup_mode, timeout, server)
         except Exception as exc:
-            errors.append(f"{resolver_name}: {exc}")
+            errors.append(f"{display_name}: {exc}")
             continue
         if results:
-            return DnsLookupResult(query=query, mode=lookup_mode, results=_dedupe(results), resolver=resolver_name, status="ok")
-        errors.append(f"{resolver_name}: keine Treffer")
+            return DnsLookupResult(query=query, mode=lookup_mode, results=_dedupe(results), resolver=display_name, status="ok")
+        errors.append(f"{display_name}: keine Treffer")
 
     error = "; ".join(errors[-2:]) if errors else "Keine Treffer"
     return DnsLookupResult(query=query, mode=lookup_mode, results=[], resolver="-", status="not_found", error=error)
+
+
+def normalize_dns_server(value: str | None) -> str | None:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return None
+    try:
+        return str(ipaddress.ip_address(cleaned))
+    except ValueError as exc:
+        raise ValueError("DNS-Server muss eine gültige IPv4- oder IPv6-Adresse sein") from exc
 
 
 def _dedupe(values: list[str]) -> list[str]:
@@ -85,20 +104,21 @@ def _run_command(args: list[str], timeout: int) -> subprocess.CompletedProcess:
     return subprocess.run(args, capture_output=True, text=True, errors="replace", timeout=timeout, shell=False)
 
 
-def _resolve_with_powershell(query: str, mode: str, timeout: int) -> list[str]:
+def _resolve_with_powershell(query: str, mode: str, timeout: int, dns_server: str | None = None) -> list[str]:
     name_assignment = f"$name={_powershell_single_quote(query)};\n"
+    server_option = f" -Server {_powershell_single_quote(dns_server)}" if dns_server else ""
     if mode == "reverse":
         command = (
             name_assignment +
-            "Resolve-DnsName -Name $name -Type PTR -ErrorAction Stop | "
+            f"Resolve-DnsName -Name $name -Type PTR{server_option} -ErrorAction Stop | "
             "Select-Object NameHost,IPAddress,Name,Type | ConvertTo-Json -Compress"
         )
     else:
         command = (
             name_assignment +
             "$items=@(); "
-            "$items += Resolve-DnsName -Name $name -Type A -ErrorAction SilentlyContinue; "
-            "$items += Resolve-DnsName -Name $name -Type AAAA -ErrorAction SilentlyContinue; "
+            f"$items += Resolve-DnsName -Name $name -Type A{server_option} -ErrorAction SilentlyContinue; "
+            f"$items += Resolve-DnsName -Name $name -Type AAAA{server_option} -ErrorAction SilentlyContinue; "
             "$items | Select-Object NameHost,IPAddress,Name,Type | ConvertTo-Json -Compress"
         )
     encoded_command = base64.b64encode(command.encode("utf-16le")).decode("ascii")
@@ -136,11 +156,13 @@ def parse_resolve_dns_name_json(output: str, mode: str) -> list[str]:
     return _dedupe(values)
 
 
-def _resolve_with_nslookup(query: str, mode: str, timeout: int) -> list[str]:
+def _resolve_with_nslookup(query: str, mode: str, timeout: int, dns_server: str | None = None) -> list[str]:
     if mode == "reverse":
         commands = [["nslookup", "-type=PTR", query]]
     else:
         commands = [["nslookup", "-type=A", query], ["nslookup", "-type=AAAA", query]]
+    if dns_server:
+        commands = [command + [dns_server] for command in commands]
 
     outputs: list[str] = []
     errors: list[str] = []
@@ -188,7 +210,7 @@ def parse_nslookup_output(output: str, mode: str) -> list[str]:
     return _dedupe(values)
 
 
-def _resolve_with_socket(query: str, mode: str, timeout: int) -> list[str]:
+def _resolve_with_socket(query: str, mode: str, timeout: int, _dns_server: str | None = None) -> list[str]:
     previous_timeout = socket.getdefaulttimeout()
     socket.setdefaulttimeout(timeout)
     try:

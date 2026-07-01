@@ -2352,6 +2352,7 @@ def test_dialog_exports_use_split_modules():
         DnsLookupDialog,
         DnsLookupProgressDialog,
         DnsLookupResultsDialog,
+        DnsServerDialog,
         JumpHostDialog,
         MoveFolderDialog,
         RemoteCommandConfirmDialog,
@@ -2368,6 +2369,7 @@ def test_dialog_exports_use_split_modules():
     from ssh_manager_app.dialogs_dns import DnsLookupDialog as DnsLookupDialogImpl
     from ssh_manager_app.dialogs_dns import DnsLookupProgressDialog as DnsLookupProgressDialogImpl
     from ssh_manager_app.dialogs_dns import DnsLookupResultsDialog as DnsLookupResultsDialogImpl
+    from ssh_manager_app.dialogs_dns import DnsServerDialog as DnsServerDialogImpl
     from ssh_manager_app.dialogs_move_folder import MoveFolderDialog as MoveFolderDialogImpl
     from ssh_manager_app.dialogs_remote import (
         JumpHostDialog as JumpHostDialogImpl,
@@ -2386,6 +2388,7 @@ def test_dialog_exports_use_split_modules():
     assert DnsLookupDialog is DnsLookupDialogImpl
     assert DnsLookupProgressDialog is DnsLookupProgressDialogImpl
     assert DnsLookupResultsDialog is DnsLookupResultsDialogImpl
+    assert DnsServerDialog is DnsServerDialogImpl
     assert JumpHostDialog is JumpHostDialogImpl
     assert MoveFolderDialog is MoveFolderDialogImpl
     assert RemoteCommandConfirmDialog is RemoteCommandConfirmDialogImpl
