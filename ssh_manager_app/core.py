@@ -26,10 +26,14 @@ def parse_session_key(key: str) -> tuple[list[str], str]:
       "Others/10.120.137.10%20-%20DB" → (["Others"], "10.120.137.10 - DB")
       "tool-admin@10.120.67.31"       → ([], "tool-admin@10.120.67.31")
     """
-    parts = key.split("/")
-    folder_path = [unquote(p) for p in parts[:-1]]
-    name = unquote(parts[-1])
-    return folder_path, name
+    parts = [unquote(part) for part in key.split("/")]
+
+    # WinSCP tolerates a UTF-8 BOM at the beginning of a stored session path
+    # and does not show it in its tree. Strip it here as well, otherwise two
+    # visually identical root folders are treated as separate paths.
+    parts[0] = parts[0].lstrip("\ufeff")
+
+    return parts[:-1], parts[-1]
 
 
 def _build_ssh_command(session: Session, user: str | None = None) -> str:

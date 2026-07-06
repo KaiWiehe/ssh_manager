@@ -891,6 +891,14 @@ def test_parse_session_key_url_encoded_folder():
     assert name == "web-01"
 
 
+def test_parse_session_key_strips_encoded_bom_from_root_folder():
+    folder, name = parse_session_key(
+        "%EF%BB%BFSteffenServer/Prod/ESN-SVM202%20|%2010.88.70.168"
+    )
+    assert folder == ["SteffenServer", "Prod"]
+    assert name == "ESN-SVM202 | 10.88.70.168"
+
+
 def test_build_wt_command_empty_sessions():
     assert build_wt_command([], "tool-admin") == ""
 
