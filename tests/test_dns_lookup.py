@@ -664,6 +664,7 @@ def test_session_context_menu_calls_dns_callback_for_single_and_selection():
     dns_commands = [item for item in root_menu.commands if str(item.get("label", "")).startswith("DNS/IP")]
     assert [item["label"] for item in dns_commands] == [
         "DNS/IP auflösen…",
+        "DNS/IP auflösen… (DNS-Auswahl)",
         "DNS/IP für Auswahl auflösen… (2)",
         "DNS/IP für Auswahl auflösen… (DNS-Auswahl) (2)",
     ]
@@ -671,9 +672,36 @@ def test_session_context_menu_calls_dns_callback_for_single_and_selection():
     dns_commands[0]["command"]()
     tree._on_resolve_dns.assert_called_with([session_a])
     dns_commands[1]["command"]()
-    tree._on_resolve_dns.assert_called_with([session_a, session_b])
+    tree._on_resolve_dns_with_server.assert_called_with([session_a])
     dns_commands[2]["command"]()
-    tree._on_resolve_dns_with_server.assert_called_once_with([session_a, session_b])
+    tree._on_resolve_dns.assert_called_with([session_a, session_b])
+    dns_commands[3]["command"]()
+    tree._on_resolve_dns_with_server.assert_called_with([session_a, session_b])
+
+
+def test_session_context_menu_offers_dns_server_selection_for_single_session():
+    session = Session("a", "srv-a", [], "10.0.0.1")
+    tree = object.__new__(SessionTree)
+    _set_tree_menu_defaults(tree)
+    tree._item_to_session = {"i1": session}
+    tree._checked = {"i1": True}
+    tree.get_selected_sessions = MagicMock(return_value=[session])
+    tree._on_resolve_dns = MagicMock()
+    tree._on_resolve_dns_with_server = MagicMock()
+
+    _FakeMenu.instances = []
+    with patch("ssh_manager_app.tree.tk.Menu", side_effect=lambda *a, **k: _FakeMenu()):
+        SessionTree._show_session_menu(tree, "i1", SimpleNamespace(x_root=1, y_root=2))
+
+    root_menu = _FakeMenu.instances[0]
+    dns_commands = [item for item in root_menu.commands if str(item.get("label", "")).startswith("DNS/IP")]
+    assert [item["label"] for item in dns_commands] == [
+        "DNS/IP auflösen…",
+        "DNS/IP auflösen… (DNS-Auswahl)",
+    ]
+
+    dns_commands[1]["command"]()
+    tree._on_resolve_dns_with_server.assert_called_once_with([session])
 
 
 def test_folder_context_menu_calls_dns_callback_for_folder_sessions():

@@ -1264,6 +1264,11 @@ class SessionTree(ttk.Frame):
                 label="DNS/IP auflösen…",
                 command=lambda s=session: self._on_resolve_dns([s]),
             )
+            if self._on_resolve_dns_with_server:
+                menu.add_command(
+                    label="DNS/IP auflösen… (DNS-Auswahl)",
+                    command=lambda s=session: self._on_resolve_dns_with_server([s]),
+                )
             selected_dns = [s for s in selected if s.hostname]
             if len(selected_dns) >= 2:
                 menu.add_command(
