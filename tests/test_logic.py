@@ -2796,6 +2796,7 @@ def test_xlsx_export_contains_bold_folder_heading_and_selected_columns(tmp_path)
     assert "Hostname / IP-Adresse" in sheet
     assert 'mergeCell ref="A1:B1"' in sheet
     assert '<b/>' in styles
+    assert '<color rgb="FFFFFFFF"/>' in styles
 
 
 def test_export_visible_sessions_uses_selected_fields_and_chosen_csv_path():
