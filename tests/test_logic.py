@@ -2797,6 +2797,8 @@ def test_xlsx_export_contains_bold_folder_heading_and_selected_columns(tmp_path)
     assert 'mergeCell ref="A1:B1"' in sheet
     assert '<b/>' in styles
     assert '<color rgb="FFFFFFFF"/>' in styles
+    assert 'fontId="1" fillId="0"' in styles
+    assert 'fontId="2" fillId="2"' in styles
 
 
 def test_export_visible_sessions_uses_selected_fields_and_chosen_csv_path():
