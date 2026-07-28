@@ -785,6 +785,28 @@ class SessionTree(ttk.Frame):
 
         self._update_empty_state(sessions)
 
+    def get_visible_sessions_markdown(self) -> str:
+        """Gibt die aktuell im Baum angezeigten Sessions als Markdown zurück."""
+        lines: list[str] = []
+
+        def _append_children(parent_id: str, folder_depth: int) -> None:
+            for item_id in self._tv.get_children(parent_id):
+                folder_key = self._item_to_folder_key.get(item_id)
+                if folder_key is not None:
+                    folder_name = folder_key.rsplit("/", 1)[-1]
+                    if lines and lines[-1] != "":
+                        lines.append("")
+                    lines.extend((f"{'#' * (folder_depth + 1)} {folder_name}", ""))
+                    _append_children(item_id, folder_depth + 1)
+                    continue
+
+                session = self._item_to_session.get(item_id)
+                if session is not None:
+                    lines.append(f"- {session.display_name}, {session.hostname}")
+
+        _append_children("", 0)
+        return "\n".join(lines).strip()
+
     def _on_left_press(self, event: tk.Event) -> None:
         """Merkt, auf welcher Zeile der Linksklick begonnen hat.
 

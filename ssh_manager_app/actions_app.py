@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import tkinter as tk
+from tkinter import messagebox
 
 from .actions_ui import apply_search_history_entry, clear_search_history, persist_ui_state
+from .dialogs_toast import ToastNotification
 
 
 def show_search_history_menu(app) -> None:
@@ -50,6 +52,21 @@ def import_settings_dialog(app) -> None:
 def close_app(app) -> None:
     persist_ui_state(app)
     app.destroy()
+
+
+def copy_visible_sessions_as_markdown(app) -> None:
+    """Kopiert die aktuell angezeigte Baumansicht als Markdown."""
+    text = app._tree.get_visible_sessions_markdown()
+    if not text:
+        messagebox.showinfo(
+            "Keine Verbindungen",
+            "Es sind keine Verbindungen zum Exportieren sichtbar.",
+            parent=app,
+        )
+        return
+    app.clipboard_clear()
+    app.clipboard_append(text)
+    ToastNotification(app, "Markdown-Export kopiert")
 
 
 def open_command_palette(app) -> None:

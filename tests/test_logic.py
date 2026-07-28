@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import winreg
 from ssh_manager_app.actions_app import (
     close_app,
+    copy_visible_sessions_as_markdown,
     export_settings_dialog,
     get_all_folder_names,
     get_ssh_aliases,
@@ -2702,6 +2703,51 @@ def test_close_app_persists_state_before_destroy():
 
     persist_mock.assert_called_once_with(app)
     app.destroy.assert_called_once_with()
+
+
+def test_visible_sessions_markdown_preserves_displayed_folder_hierarchy():
+    class FakeTreeview:
+        children = {
+            "": ("db", "migration"),
+            "db": ("db-session",),
+            "migration": ("legacy",),
+            "legacy": ("legacy-session",),
+        }
+
+        def get_children(self, item_id):
+            return self.children[item_id]
+
+    tree = SessionTree.__new__(SessionTree)
+    tree._tv = FakeTreeview()
+    tree._item_to_folder_key = {
+        "db": "DB",
+        "migration": "666 Ablösung",
+        "legacy": "666 Ablösung/Altbestand",
+    }
+    tree._item_to_session = {
+        "db-session": Session("db1", "Postgres", ["DB"], "10.0.0.10"),
+        "legacy-session": Session("old1", "Legacy", ["666 Ablösung", "Altbestand"], "10.0.0.20"),
+    }
+
+    assert tree.get_visible_sessions_markdown() == (
+        "# DB\n\n"
+        "- Postgres, 10.0.0.10\n\n"
+        "# 666 Ablösung\n\n"
+        "## Altbestand\n\n"
+        "- Legacy, 10.0.0.20"
+    )
+
+
+def test_copy_visible_sessions_as_markdown_copies_tree_export():
+    app = MagicMock()
+    app._tree.get_visible_sessions_markdown.return_value = "# DB\n\n- Postgres, 10.0.0.10"
+
+    with patch("ssh_manager_app.actions_app.ToastNotification") as toast:
+        copy_visible_sessions_as_markdown(app)
+
+    app.clipboard_clear.assert_called_once_with()
+    app.clipboard_append.assert_called_once_with("# DB\n\n- Postgres, 10.0.0.10")
+    toast.assert_called_once_with(app, "Markdown-Export kopiert")
 
 
 def test_show_search_history_menu_builds_entries_and_popup_for_history():

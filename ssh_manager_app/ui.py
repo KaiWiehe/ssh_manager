@@ -266,6 +266,12 @@ def copy_ssh_command_callback(app, sessions) -> None:
     copy_ssh_commands(app, sessions)
 
 
+def copy_visible_sessions_as_markdown_callback(app) -> None:
+    from .actions_app import copy_visible_sessions_as_markdown
+
+    copy_visible_sessions_as_markdown(app)
+
+
 def add_session_callback(app, folder_preset="") -> None:
     from .actions_sessions import add_session
 
@@ -695,6 +701,11 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(
         label="DNS/IP für Auswahl auflösen… (DNS-Auswahl)",
         command=lambda: resolve_dns_for_sessions_with_server_callback(self, self._tree.get_selected_sessions()),
+    )
+    actions_menu.add_separator()
+    actions_menu.add_command(
+        label="Angezeigte Verbindungen als Markdown kopieren",
+        command=lambda: copy_visible_sessions_as_markdown_callback(self),
     )
     menubar.add_cascade(label="Aktionen", menu=actions_menu)
 
