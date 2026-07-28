@@ -272,6 +272,12 @@ def copy_visible_sessions_as_markdown_callback(app) -> None:
     copy_visible_sessions_as_markdown(app)
 
 
+def export_visible_sessions_callback(app, export_format: str) -> None:
+    from .actions_app import export_visible_sessions
+
+    export_visible_sessions(app, export_format)
+
+
 def add_session_callback(app, folder_preset="") -> None:
     from .actions_sessions import add_session
 
@@ -706,6 +712,14 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(
         label="Angezeigte Verbindungen als Markdown kopieren",
         command=lambda: copy_visible_sessions_as_markdown_callback(self),
+    )
+    actions_menu.add_command(
+        label="Angezeigte Verbindungen als CSV exportieren…",
+        command=lambda: export_visible_sessions_callback(self, "csv"),
+    )
+    actions_menu.add_command(
+        label="Angezeigte Verbindungen als Excel exportieren…",
+        command=lambda: export_visible_sessions_callback(self, "xlsx"),
     )
     menubar.add_cascade(label="Aktionen", menu=actions_menu)
 

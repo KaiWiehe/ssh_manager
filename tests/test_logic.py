@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+from zipfile import ZipFile
 
 import pytest
 from pathlib import Path
@@ -17,6 +18,7 @@ import winreg
 from ssh_manager_app.actions_app import (
     close_app,
     copy_visible_sessions_as_markdown,
+    export_visible_sessions,
     export_settings_dialog,
     get_all_folder_names,
     get_ssh_aliases,
@@ -38,6 +40,7 @@ from ssh_manager_app.constants import DEFAULT_USER, PALETTE, QUICK_USERS, _APP_P
 from ssh_manager_app.core import RegistryReader, _build_jump_ssh_command, _build_ssh_command, _shell_single_quote, _ssh_target, _terminal_profile_flag, _terminal_title_flag, build_wt_command, parse_session_key
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
 from ssh_manager_app.tree import SessionTree, _session_notes_text, _session_values_text
+from ssh_manager_app.exports import write_csv_export, write_xlsx_export
 from ssh_manager_app.storage import (
     load_app_sessions,
     load_filezilla_config_sessions,
@@ -2748,6 +2751,68 @@ def test_copy_visible_sessions_as_markdown_copies_tree_export():
     app.clipboard_clear.assert_called_once_with()
     app.clipboard_append.assert_called_once_with("# DB\n\n- Postgres, 10.0.0.10")
     toast.assert_called_once_with(app, "Markdown-Export kopiert")
+
+
+def test_visible_sessions_by_folder_keeps_direct_sessions_in_display_order():
+    class FakeTreeview:
+        children = {"": ("root-session", "folder"), "folder": ("folder-session",)}
+
+        def get_children(self, item_id):
+            return self.children[item_id]
+
+    root_session = Session("root", "Root", [], "10.0.0.1")
+    folder_session = Session("folder", "Folder", ["DB"], "10.0.0.2")
+    tree = SessionTree.__new__(SessionTree)
+    tree._tv = FakeTreeview()
+    tree._item_to_folder_key = {"folder": "DB"}
+    tree._item_to_session = {"root-session": root_session, "folder-session": folder_session}
+
+    assert tree.get_visible_sessions_by_folder() == [("", [root_session]), ("DB", [folder_session])]
+
+
+def test_csv_export_writes_a_separate_table_section_per_folder(tmp_path):
+    path = tmp_path / "connections.csv"
+    session = Session("s1", "Postgres", ["666-Ablösung"], "10.0.0.10", username="admin", port=2222)
+
+    write_csv_export(path, [("666-Ablösung", [session])], ["display_name", "hostname", "notes"], lambda _key: "Produktiv")
+
+    assert path.read_text(encoding="utf-8-sig") == (
+        "666-Ablösung\n"
+        "Name;Hostname / IP-Adresse;Notiz\n"
+        "Postgres;10.0.0.10;Produktiv\n"
+    )
+
+
+def test_xlsx_export_contains_bold_folder_heading_and_selected_columns(tmp_path):
+    path = tmp_path / "connections.xlsx"
+    session = Session("s1", "Postgres", ["666-Ablösung"], "10.0.0.10")
+
+    write_xlsx_export(path, [("666-Ablösung", [session])], ["display_name", "hostname"], lambda _key: "")
+
+    with ZipFile(path) as workbook:
+        sheet = workbook.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        styles = workbook.read("xl/styles.xml").decode("utf-8")
+    assert "666-Ablösung" in sheet
+    assert "Hostname / IP-Adresse" in sheet
+    assert 'mergeCell ref="A1:B1"' in sheet
+    assert '<b/>' in styles
+
+
+def test_export_visible_sessions_uses_selected_fields_and_chosen_csv_path():
+    app = MagicMock()
+    app._tree.get_visible_sessions_by_folder.return_value = [("DB", [Session("s1", "Postgres", ["DB"], "10.0.0.10")])]
+    app._notes = {}
+    dialog = MagicMock(result=["display_name", "hostname"])
+
+    with patch("ssh_manager_app.actions_app.ExportColumnsDialog", return_value=dialog), \
+         patch("ssh_manager_app.actions_app.filedialog.asksaveasfilename", return_value="C:/tmp/connections.csv"), \
+         patch("ssh_manager_app.actions_app.write_csv_export") as write_export, \
+         patch("ssh_manager_app.actions_app.ToastNotification") as toast:
+        export_visible_sessions(app, "csv")
+
+    write_export.assert_called_once()
+    assert write_export.call_args.args[:3] == ("C:/tmp/connections.csv", app._tree.get_visible_sessions_by_folder.return_value, ["display_name", "hostname"])
+    toast.assert_called_once_with(app, "CSV-Export erstellt")
 
 
 def test_show_search_history_menu_builds_entries_and_popup_for_history():

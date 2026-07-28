@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 
 from .actions_ui import apply_search_history_entry, clear_search_history, persist_ui_state
 from .dialogs_toast import ToastNotification
+from .dialogs_export import ExportColumnsDialog
+from .exports import write_csv_export, write_xlsx_export
 
 
 def show_search_history_menu(app) -> None:
@@ -67,6 +69,41 @@ def copy_visible_sessions_as_markdown(app) -> None:
     app.clipboard_clear()
     app.clipboard_append(text)
     ToastNotification(app, "Markdown-Export kopiert")
+
+
+def export_visible_sessions(app, export_format: str) -> None:
+    """Exportiert die sichtbare Baumansicht nach CSV oder XLSX."""
+    export_options = {
+        "csv": ("CSV", ".csv", "ssh-manager-verbindungen.csv", [("CSV-Dateien", "*.csv"), ("Alle Dateien", "*.*")]),
+        "xlsx": ("Excel", ".xlsx", "ssh-manager-verbindungen.xlsx", [("Excel-Dateien", "*.xlsx"), ("Alle Dateien", "*.*")]),
+    }
+    label, extension, filename, filetypes = export_options[export_format]
+    dialog = ExportColumnsDialog(app, label)
+    app.wait_window(dialog)
+    fields = dialog.result
+    if not fields:
+        return
+
+    groups = app._tree.get_visible_sessions_by_folder()
+    if not groups:
+        messagebox.showinfo("Keine Verbindungen", "Es sind keine Verbindungen zum Exportieren sichtbar.", parent=app)
+        return
+    path = filedialog.asksaveasfilename(
+        parent=app,
+        title=f"{label}-Export speichern",
+        defaultextension=extension,
+        filetypes=filetypes,
+        initialfile=filename,
+    )
+    if not path:
+        return
+    try:
+        writer = write_csv_export if export_format == "csv" else write_xlsx_export
+        writer(path, groups, fields, lambda key: app._notes.get(key, ""))
+    except OSError as exc:
+        messagebox.showerror("Export fehlgeschlagen", f"Datei konnte nicht gespeichert werden:\n{exc}", parent=app)
+        return
+    ToastNotification(app, f"{label}-Export erstellt")
 
 
 def open_command_palette(app) -> None:

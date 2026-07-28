@@ -807,6 +807,25 @@ class SessionTree(ttk.Frame):
         _append_children("", 0)
         return "\n".join(lines).strip()
 
+    def get_visible_sessions_by_folder(self) -> list[tuple[str, list[Session]]]:
+        """Gruppiert die aktuell angezeigten Sessions in der sichtbaren Baumreihenfolge."""
+        groups: list[tuple[str, list[Session]]] = []
+
+        def _collect(parent_id: str) -> None:
+            direct_sessions = [
+                self._item_to_session[item_id]
+                for item_id in self._tv.get_children(parent_id)
+                if item_id in self._item_to_session
+            ]
+            if direct_sessions:
+                groups.append((self._item_to_folder_key.get(parent_id, ""), direct_sessions))
+            for item_id in self._tv.get_children(parent_id):
+                if item_id in self._item_to_folder_key:
+                    _collect(item_id)
+
+        _collect("")
+        return groups
+
     def _on_left_press(self, event: tk.Event) -> None:
         """Merkt, auf welcher Zeile der Linksklick begonnen hat.
 
