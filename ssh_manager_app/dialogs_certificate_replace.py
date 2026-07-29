@@ -115,27 +115,34 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
         summary = ttk.LabelFrame(frame, text="Neue Zertifikate – frühestes Ablaufdatum", padding=6); summary.pack(fill="x", pady=(7, 0))
         for name, expiry in source_summary:
             ttk.Label(summary, text=f"• {name}: läuft frühestens ab {expiry}", wraplength=780).pack(anchor="w")
-        ttk.Label(frame, text="Alle Treffer sind vorausgewählt. Entferne den Haken bei Dateien, die nicht ersetzt werden sollen.").pack(anchor="w", pady=(3, 7))
-        choices = ttk.LabelFrame(frame, text="Zu ersetzende Dateien", padding=6); choices.pack(fill="both", expand=True)
-        canvas = tk.Canvas(choices, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(choices, orient="vertical", command=canvas.yview)
-        self._choices_frame = ttk.Frame(canvas)
-        self._choices_frame.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
-        choices_window = canvas.create_window((0, 0), window=self._choices_frame, anchor="nw")
-        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(choices_window, width=event.width))
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True); scrollbar.pack(side="right", fill="y")
+        ttk.Label(frame, text="Alle Treffer sind vorausgewählt. Die Einzelauswahl muss nur bei Ausnahmen geöffnet werden.").pack(anchor="w", pady=(3, 4))
+        self._choices_visible = False
+        self._toggle_choices_button = ttk.Button(frame, text=f"Einzelne Treffer auswählen ({len(matches)}) …", command=self._toggle_choices)
+        self._toggle_choices_button.pack(anchor="w", pady=(0, 6))
+        self._choices = ttk.LabelFrame(frame, text="Zu ersetzende Dateien", padding=6)
+        choice_controls = ttk.Frame(self._choices); choice_controls.pack(fill="x", pady=(0, 5))
+        ttk.Button(choice_controls, text="Alle auswählen", command=lambda: self._set_all(True)).pack(side="left")
+        ttk.Button(choice_controls, text="Alle abwählen", command=lambda: self._set_all(False)).pack(side="left", padx=(6, 0))
+        self._choices_canvas = tk.Canvas(self._choices, highlightthickness=0, height=280)
+        scrollbar = ttk.Scrollbar(self._choices, orient="vertical", command=self._choices_canvas.yview)
+        self._choices_frame = ttk.Frame(self._choices_canvas)
+        self._choices_frame.bind("<Configure>", self._update_choice_scrollregion)
+        self._choices_window = self._choices_canvas.create_window((0, 0), window=self._choices_frame, anchor="nw")
+        self._choices_canvas.bind("<Configure>", self._resize_choices)
+        self._choices_canvas.configure(yscrollcommand=scrollbar.set)
+        self._choices_canvas.pack(side="left", fill="both", expand=True); scrollbar.pack(side="right", fill="y")
         self._choice_vars: list[tuple[tuple[int, str, str], tk.BooleanVar]] = []
+        current_host = None
         for host_index, host, name, target, modified, expiry in matches:
+            if host != current_host:
+                ttk.Label(self._choices_frame, text=host, font=("Segoe UI", 10, "bold")).pack(fill="x", anchor="w", pady=(7 if current_host else 0, 1))
+                current_host = host
             value = tk.BooleanVar(value=True)
-            label = f"{host}: {name} → {target}\n    Dateizeitstempel: {modified or 'nicht ermittelt'} | Läuft frühestens ab: {expiry or 'nicht ermittelt'}"
+            label = f"{name} → {target}\n    Dateizeitstempel: {modified or 'nicht ermittelt'} | Läuft frühestens ab: {expiry or 'nicht ermittelt'}"
             tk.Checkbutton(self._choices_frame, text=label, variable=value, anchor="w", justify="left", wraplength=750).pack(fill="x", anchor="w", pady=2)
             self._choice_vars.append(((host_index, name, target), value))
-        controls = ttk.Frame(frame); controls.pack(fill="x", pady=(6, 0))
-        ttk.Button(controls, text="Alle auswählen", command=lambda: self._set_all(True)).pack(side="left")
-        ttk.Button(controls, text="Alle abwählen", command=lambda: self._set_all(False)).pack(side="left", padx=(6, 0))
-        details = ttk.LabelFrame(frame, text="Hinweise und Scan-Ergebnis", padding=6); details.pack(fill="both", expand=True, pady=(8, 0))
-        text = scrolledtext.ScrolledText(details, wrap="word", height=11); text.pack(fill="both", expand=True)
+        self._details = ttk.LabelFrame(frame, text="Hinweise und Scan-Ergebnis", padding=6); self._details.pack(fill="both", expand=True, pady=(2, 0))
+        text = scrolledtext.ScrolledText(self._details, wrap="word", height=11); text.pack(fill="both", expand=True)
         text.tag_configure("host", font=("Segoe UI", 10, "bold"))
         text.tag_configure("warning", foreground="#b8860b")
         text.tag_configure("error", foreground="#c62828")
@@ -149,6 +156,32 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
         self.transient(parent); self.grab_set(); self.protocol("WM_DELETE_WINDOW", self._cancel)
     def _set_all(self, selected: bool):
         for _key, value in self._choice_vars: value.set(selected)
+
+    def _toggle_choices(self):
+        self._choices_visible = not self._choices_visible
+        if self._choices_visible:
+            self._choices.pack(fill="both", expand=False, pady=(0, 8), before=self._details)
+            self._toggle_choices_button.configure(text=f"Einzelauswahl schließen ({len(self._choice_vars)} Treffer)")
+            self.geometry("850x760")
+            self.after_idle(self._update_choice_scrollregion)
+        else:
+            self._choices.pack_forget()
+            self._choices_canvas.yview_moveto(0)
+            self._toggle_choices_button.configure(text=f"Einzelne Treffer auswählen ({len(self._choice_vars)}) …")
+            self.geometry("850x600")
+
+    def _resize_choices(self, event):
+        self._choices_canvas.itemconfigure(self._choices_window, width=event.width)
+        self._update_choice_scrollregion()
+
+    def _update_choice_scrollregion(self, _event=None):
+        canvas = self._choices_canvas
+        bbox = canvas.bbox("all")
+        if not bbox:
+            return
+        canvas.configure(scrollregion=(0, 0, max(canvas.winfo_width(), bbox[2]), max(canvas.winfo_height(), bbox[3])))
+        if bbox[3] <= canvas.winfo_height():
+            canvas.yview_moveto(0)
 
     def _confirm(self):
         self.result = {key for key, value in self._choice_vars if value.get()}

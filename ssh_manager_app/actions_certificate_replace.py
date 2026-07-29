@@ -211,9 +211,10 @@ def _selected_deployments(scanned, spec, selected_matches: set[tuple[int, str, s
 def _show_replace_preview(app, progress, scanned, spec, source_summary) -> None:
     progress.close()
     report_lines, selectable_matches = ["ZERTIFIKATE ERSETZEN – VORSCHAU", ""], []
-    for host_index, (session, user, result) in enumerate(scanned):
+    ordered_scanned = sorted(enumerate(scanned), key=lambda entry: (entry[1][0].display_name.casefold(), entry[1][0].hostname.casefold()))
+    for host_index, (session, user, result) in ordered_scanned:
         report_lines.extend([f"{session.display_name} ({session.hostname})", "-" * 50])
-        for name, target, modified, expiry in result["matches"]:
+        for name, target, modified, expiry in sorted(result["matches"], key=lambda match: (match[0].casefold(), match[1].casefold())):
             modified, expiry = _format_timestamp(modified), _earliest_certificate_expiry(expiry)
             selectable_matches.append((host_index, f"{session.display_name} ({session.hostname})", name, target, modified, expiry))
             report_lines.append(f"  ERSETZEN: {name} → {target}")
