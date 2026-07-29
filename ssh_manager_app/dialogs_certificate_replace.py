@@ -21,6 +21,7 @@ class CertificateReplaceDialog(tk.Toplevel):
         self._on_whitelist_changed = on_whitelist_changed
         self._reference_sessions = reference_sessions or []
         self._sudo_password = tk.StringVar()
+        self._keystore_password = tk.StringVar()
         self._close_on_success = tk.BooleanVar(value=False)
         self._build(target_count, whitelist)
         self.transient(parent); self.grab_set(); self.protocol("WM_DELETE_WINDOW", self._cancel)
@@ -47,6 +48,9 @@ class CertificateReplaceDialog(tk.Toplevel):
         ttk.Label(secure, text="sudo-Passwort (optional):").grid(row=0, column=0, sticky="w", padx=(0, 8))
         ttk.Entry(secure, textvariable=self._sudo_password, show="•").grid(row=0, column=1, sticky="ew")
         ttk.Checkbutton(secure, text="Tab nach Erfolg schließen", variable=self._close_on_success).grid(row=0, column=2, padx=(10, 0))
+        ttk.Label(secure, text="Keystore-/P12-Passwort (optional):").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(6, 0))
+        ttk.Entry(secure, textvariable=self._keystore_password, show="•").grid(row=1, column=1, sticky="ew", pady=(6, 0))
+        ttk.Label(secure, text="Ohne Passwort werden für JKS/P12 nur Dateizeitstempel angezeigt.", foreground="#666666").grid(row=2, column=1, sticky="w", pady=(3, 0))
         after = ttk.LabelFrame(root, text="Nachaktion (optional)", padding=8); after.pack(fill="x", pady=(10, 0)); after.columnconfigure(1, weight=1)
         labels = [str(item.get("name") or item.get("label") or item["command"].splitlines()[0]) for item in self._favorites]
         self._favorite = ttk.Combobox(after, values=labels, state="readonly"); self._favorite.grid(row=0, column=0, columnspan=2, sticky="ew")
@@ -97,7 +101,7 @@ class CertificateReplaceDialog(tk.Toplevel):
         names = [Path(path).name for path in self._files]
         if len(names) != len(set(names)):
             messagebox.showwarning("Doppelte Namen", "Ausgewählte Dateien müssen unterschiedliche Namen haben.", parent=self); return
-        self.result = {"files": list(self._files), "roots": roots, "sudo_password": self._sudo_password.get(), "post_command": self._post.get("1.0", "end").strip(), "close_on_success": self._close_on_success.get()}
+        self.result = {"files": list(self._files), "roots": roots, "sudo_password": self._sudo_password.get(), "keystore_password": self._keystore_password.get(), "post_command": self._post.get("1.0", "end").strip(), "close_on_success": self._close_on_success.get()}
         self.destroy()
 
     def _cancel(self): self.result = None; self.destroy()

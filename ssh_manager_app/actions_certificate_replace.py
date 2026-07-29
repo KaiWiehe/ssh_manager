@@ -16,7 +16,7 @@ def _quote(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
 
-def _scan_host(session: Session, user: str, roots: list[str], names: list[str], sudo_password: str) -> dict:
+def _scan_host(session: Session, user: str, roots: list[str], names: list[str], sudo_password: str, keystore_password: str = "") -> dict:
     if session.is_ssh_config_session:
         command = ["ssh", "-o", "BatchMode=yes", session.display_name, "bash", "-s"]
     else:
@@ -26,13 +26,30 @@ def _scan_host(session: Session, user: str, roots: list[str], names: list[str], 
     script = ["set -u"]
     if sudo_password:
         script.extend([f"SSH_MANAGER_SUDO_PASSWORD={_quote(sudo_password)}", "sudo() { printf '%s\\n' \"$SSH_MANAGER_SUDO_PASSWORD\" | command sudo -S -p '' \"$@\"; }"])
+    if keystore_password:
+        script.extend([
+            f"KEYSTORE_PASSWORD={_quote(keystore_password)}",
+            "keystore_password_file=$(mktemp /tmp/ssh-manager-keystore-pass-XXXXXX)",
+            "printf '%s' \"$KEYSTORE_PASSWORD\" > \"$keystore_password_file\"",
+            "chmod 600 \"$keystore_password_file\"",
+            "trap 'rm -f \"$keystore_password_file\"' EXIT",
+        ])
     script.append("roots=(" + " ".join(_quote(root) for root in roots) + ")")
     script.append("names=(" + " ".join(_quote(name) for name in names) + ")")
     script.extend([
         "for root in \"${roots[@]}\"; do",
         "  if ! sudo test -d \"$root\"; then printf 'E\\t%s\\tNicht erreichbar oder kein Ordner\\n' \"$root\"; continue; fi",
         "  for name in \"${names[@]}\"; do",
-        "    sudo find -P \"$root\" -type f -name \"$name\" -printf 'M\\tf\\t%f\\t%p\\n' 2>/dev/null || true",
+        "    while IFS= read -r target; do",
+        "      modified=$(sudo stat -c '%y' -- \"$target\" 2>/dev/null || true)",
+        "      expiry=''",
+        "      case \"$name\" in",
+        "        *.crt|*.pem) expiry=$(sudo openssl x509 -in \"$target\" -noout -enddate 2>/dev/null | sed 's/^notAfter=//') ;;",
+        "        *.p12|*.pfx) if [ -n \"${KEYSTORE_PASSWORD:-}\" ]; then expiry=$(sudo openssl pkcs12 -in \"$target\" -passin file:\"$keystore_password_file\" -clcerts -nokeys 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | sed 's/^notAfter=//'); fi ;;",
+        "        *.jks) if [ -n \"${KEYSTORE_PASSWORD:-}\" ]; then expiry=$(LC_ALL=C sudo keytool -list -v -keystore \"$target\" -storepass:file \"$keystore_password_file\" 2>/dev/null | awk -F'until: ' '/Valid from:/{print $2}' | paste -sd ', ' -); fi ;;",
+        "      esac",
+        "      printf 'M\\tf\\t%s\\t%s\\t%s\\t%s\\n' \"$name\" \"$target\" \"$modified\" \"$expiry\"",
+        "    done < <(sudo find -P \"$root\" -type f -name \"$name\" -print 2>/dev/null)",
         "    sudo find -P \"$root\" -type l -name \"$name\" -printf 'M\\tl\\t%f\\t%p\\n' 2>/dev/null || true",
         "  done",
         "done",
@@ -48,9 +65,9 @@ def _scan_host(session: Session, user: str, roots: list[str], names: list[str], 
     for line in completed.stdout.decode("utf-8", errors="replace").splitlines():
         kind, _, rest = line.partition("\t")
         if kind == "E": warnings.append(rest.replace("\t", ": ", 1)); continue
-        fields = line.split("\t", 3)
-        if len(fields) == 4 and fields[0] == "M":
-            target = (fields[2], fields[3])
+        fields = line.split("\t")
+        if len(fields) >= 4 and fields[0] == "M":
+            target = (fields[2], fields[3], fields[4] if len(fields) > 4 else "", fields[5] if len(fields) > 5 else "")
             (matches if fields[1] == "f" else symlinks).append(target)
     return {"matches": list(dict.fromkeys(matches)), "symlinks": list(dict.fromkeys(symlinks)), "errors": [], "warnings": warnings}
 
@@ -81,7 +98,7 @@ def replace_certificates(app, sessions: list[Session]) -> None:
         for session, user in users:
             if progress.cancelled:
                 return
-            scanned.append((session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"])))
+            scanned.append((session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"], spec["keystore_password"])))
         if not progress.cancelled:
             app.after(0, lambda: _show_replace_preview(app, progress, scanned, spec))
 
@@ -93,14 +110,18 @@ def _show_replace_preview(app, progress, scanned, spec) -> None:
     report_lines, deployments = ["ZERTIFIKATE ERSETZEN – VORSCHAU", ""], []
     for session, user, result in scanned:
         report_lines.extend([f"{session.display_name} ({session.hostname})", "-" * 50])
-        for name, target in result["matches"]: report_lines.append(f"  ERSETZEN: {name} → {target}")
-        for name, target in result["symlinks"]: report_lines.append(f"  AUSLASSEN (Symlink): {name} → {target}")
+        for name, target, modified, expiry in result["matches"]:
+            report_lines.append(f"  ERSETZEN: {name} → {target}")
+            report_lines.append(f"    Dateizeitstempel: {modified or 'nicht ermittelt'}")
+            report_lines.append(f"    Zertifikat gültig bis: {expiry or 'nicht ermittelt'}")
+        for name, target, _modified, _expiry in result["symlinks"]:
+            report_lines.append(f"  AUSLASSEN (Symlink): {name} → {target}")
         for warning in result.get("warnings", []): report_lines.append(f"  HINWEIS: {warning}")
         for error in result["errors"]: report_lines.append(f"  FEHLER: {error}")
         if not result["matches"] and not result["errors"]: report_lines.append("  Keine Treffer.")
         report_lines.append("")
         if result["matches"] and not result["errors"]:
-            deployments.append((session, user, {**spec, "matches": result["matches"]}))
+            deployments.append((session, user, {**spec, "matches": [(name, target) for name, target, _modified, _expiry in result["matches"]]}))
         elif result["matches"]:
             report_lines.append("  AUSGELASSEN: Wegen Scan-Fehlern wird auf diesem Host nichts ersetzt.")
     report_lines.append("Nachaktion: " + ("ausgeführt bei vollständig erfolgreichem Host" if spec["post_command"] else "keine"))
