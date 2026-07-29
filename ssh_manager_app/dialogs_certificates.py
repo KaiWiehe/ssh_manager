@@ -10,7 +10,7 @@ class CertificateDeployDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, target_count: int):
         super().__init__(parent)
-        self.title("Zertifikatsdateien übertragen")
+        self.title("Dateien übertragen")
         self.geometry("760x590")
         self.minsize(680, 520)
         self.result: dict | None = None
@@ -32,10 +32,10 @@ class CertificateDeployDialog(tk.Toplevel):
         root.columnconfigure(0, weight=1)
         root.rowconfigure(2, weight=1)
 
-        ttk.Label(root, text=f"Zertifikatsdateien für {target_count} Host(s)", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(root, text=f"Dateien für {target_count} Host(s)", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w")
         ttk.Label(root, text="Dateien werden zuerst nach /tmp hochgeladen und erst danach per sudo in den Zielordner kopiert.", foreground="#666666").grid(row=1, column=0, sticky="w", pady=(2, 10))
 
-        files_frame = ttk.LabelFrame(root, text="Lokale Zertifikatsdateien", padding=10)
+        files_frame = ttk.LabelFrame(root, text="Lokale Dateien", padding=10)
         files_frame.grid(row=2, column=0, sticky="nsew")
         files_frame.columnconfigure(0, weight=1)
         files_frame.rowconfigure(0, weight=1)
@@ -75,7 +75,7 @@ class CertificateDeployDialog(tk.Toplevel):
         ttk.Button(actions, text="Übertragen", command=self._on_ok, width=12).pack(side="right", padx=(0, 8))
 
     def _choose_files(self) -> None:
-        paths = filedialog.askopenfilenames(parent=self, title="Zertifikatsdateien auswählen")
+        paths = filedialog.askopenfilenames(parent=self, title="Dateien auswählen")
         for path in paths:
             if path and path not in self._files:
                 self._files.append(path)
@@ -96,7 +96,7 @@ class CertificateDeployDialog(tk.Toplevel):
 
     def _on_ok(self) -> None:
         if not self._files:
-            messagebox.showwarning("Keine Dateien", "Bitte mindestens eine Zertifikatsdatei auswählen.", parent=self)
+            messagebox.showwarning("Keine Dateien", "Bitte mindestens eine Datei auswählen.", parent=self)
             return
         missing = [path for path in self._files if not Path(path).is_file()]
         if missing:

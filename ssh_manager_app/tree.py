@@ -1041,7 +1041,7 @@ class SessionTree(ttk.Frame):
                 )
             if getattr(self, "_on_deploy_certificate_files", None):
                 menu.add_command(
-                    label=f"Zertifikatsdateien übertragen… ({len(folder_sessions)})",
+                    label=f"Dateien übertragen… ({len(folder_sessions)})",
                     command=lambda ss=list(folder_sessions): self._on_deploy_certificate_files(ss),
                 )
             if self._on_set_sessions_username:
@@ -1309,13 +1309,13 @@ class SessionTree(ttk.Frame):
                 )
         if getattr(self, "_on_deploy_certificate_files", None) and session.hostname:
             menu.add_command(
-                label="Zertifikatsdateien übertragen…",
+                label="Dateien übertragen…",
                 command=lambda s=session: self._on_deploy_certificate_files([s]),
             )
             selected_runnable = [s for s in selected if s.hostname]
             if len(selected_runnable) >= 2:
                 menu.add_command(
-                    label=f"Zertifikatsdateien auf Auswahl übertragen… ({len(selected_runnable)})",
+                    label=f"Dateien auf Auswahl übertragen… ({len(selected_runnable)})",
                     command=lambda ss=selected_runnable: self._on_deploy_certificate_files(ss),
                 )
         if self._on_resolve_dns and session.hostname:

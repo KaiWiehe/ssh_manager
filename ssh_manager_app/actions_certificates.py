@@ -32,7 +32,7 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
         f"Nach-Befehl: {post_text}\n\n"
         "Übertragung jetzt starten?"
     )
-    if not messagebox.askyesno("Zertifikatsübertragung bestätigen", confirmation, icon="warning", parent=app):
+    if not messagebox.askyesno("Dateiübertragung bestätigen", confirmation, icon="warning", parent=app):
         return
 
     session_users = resolve_users_for_sessions(app, runnable, "all")

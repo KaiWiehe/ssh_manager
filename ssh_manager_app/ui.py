@@ -707,7 +707,7 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))
-    actions_menu.add_command(label="Zertifikatsdateien übertragen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
+    actions_menu.add_command(label="Dateien übertragen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_separator()
     actions_menu.add_command(label="DNS/IP auflösen…", command=lambda: open_dns_lookup_dialog_callback(self))
     actions_menu.add_command(label="DNS/IP für Auswahl auflösen…", command=lambda: resolve_dns_for_sessions_callback(self, self._tree.get_selected_sessions()))
