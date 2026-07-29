@@ -47,6 +47,11 @@ def _build_ssh_command(session: Session, user: str | None = None) -> str:
     return f"ssh {effective_user}@{session.hostname}"
 
 
+def _force_ssh_tty_command(ssh_command: str) -> str:
+    """Force a TTY before the SSH destination, including when stdin is redirected."""
+    return ssh_command.replace("ssh ", "ssh -tt ", 1)
+
+
 def _terminal_profile_flag(profile_name: str) -> str:
     profile = (profile_name or "Git Bash").strip() or "Git Bash"
     return f'-p "{profile}" '
@@ -550,14 +555,16 @@ def build_certificate_replace_wt_command(
     profile_flag = _terminal_profile_flag(settings.profile_name)
     parts: list[str] = []
     for index, (session, user, spec) in enumerate(session_replacements):
-        files_by_name = {Path(path).name: str(path) for path in spec["files"]}
+        all_files_by_name = {Path(path).name: str(path) for path in spec["files"]}
         matches = [(str(name), str(path)) for name, path in spec["matches"]]
+        files_by_name = {name: all_files_by_name[name] for name, _target in matches if name in all_files_by_name}
         sudo_password = str(spec.get("sudo_password") or "")
         post_command = str(spec.get("post_command") or "").strip()
         close_on_success = bool(spec.get("close_on_success"))
         run_id = uuid.uuid4().hex
         temp_paths = {name: f"/tmp/ssh-manager-replace-{run_id}-{item_index}" for item_index, name in enumerate(files_by_name)}
         ssh_cmd = _build_ssh_command(session, user)
+        tty_ssh_cmd = _force_ssh_tty_command(ssh_cmd)
         if session.is_ssh_config_session:
             scp_target, scp_port = session.display_name, ""
         else:
@@ -590,7 +597,14 @@ def build_certificate_replace_wt_command(
         if post_command:
             remote_lines.extend(["echo 'Führe Nach-Befehl aus …'", post_command, "post_status=$?", "[ $post_status -eq 0 ] || exit $post_status"])
         remote_lines.append("echo 'ZUSAMMENFASSUNG: Zertifikate erfolgreich ersetzt.'")
-        script_lines.extend([f"{ssh_cmd} -t <<'__CERT_REPLACE__'", *remote_lines, "__CERT_REPLACE__", "status=$?"])
+        cleanup_paths = " ".join(temp_paths.values())
+        script_lines.extend([
+            f"{tty_ssh_cmd} <<'__CERT_REPLACE__'",
+            *remote_lines,
+            "__CERT_REPLACE__",
+            "status=$?",
+            f"if [ $status -ne 0 ]; then {ssh_cmd} \"rm -f -- {cleanup_paths}\" >/dev/null 2>&1 || true; fi",
+        ])
         if close_on_success:
             script_lines.append("if [ $status -eq 0 ]; then exit 0; fi")
         else:

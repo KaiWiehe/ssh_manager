@@ -193,6 +193,21 @@ def test_build_certificate_replace_preserves_target_metadata_and_runs_post_comma
     assert "sudo systemctl restart wildfly.service" in script
 
 
+def test_build_certificate_replace_uploads_only_files_with_matches_and_forces_tty():
+    session = Session("app__srv", "App", [], "10.0.0.9")
+    captured = {}
+    with patch("ssh_manager_app.core._find_git_bash", return_value="bash"), \
+         patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda _prefix, content: captured.update(content=content) or "/tmp/replace.sh"):
+        build_certificate_replace_wt_command(
+            [(session, "deploy", {"files": [r"C:\\certs\\needed.jks", r"C:\\certs\\unused.p12"], "matches": [("needed.jks", "/opt/wildfly/needed.jks")]})],
+        )
+    script = captured["content"]
+    assert "needed.jks" in script
+    assert "unused.p12" not in script
+    assert "ssh -tt deploy@10.0.0.9 <<'__CERT_REPLACE__'" in script
+    assert "rm -f -- /tmp/ssh-manager-replace-" in script
+
+
 def test_build_ssh_tunnel_command_returns_expected_wt_args():
     settings = WindowsTerminalSettings(profile_name="My Bash", use_tab_color=False, title_mode="default")
 
