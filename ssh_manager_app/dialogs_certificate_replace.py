@@ -4,11 +4,13 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
+from .dialogs_certificates import RemoteFolderBrowserDialog
+
 
 class CertificateReplaceDialog(tk.Toplevel):
     """Collect certificate files and persistent remote search roots."""
 
-    def __init__(self, parent, target_count: int, whitelist: list[str], favorites: list[dict], on_whitelist_changed):
+    def __init__(self, parent, target_count: int, whitelist: list[str], favorites: list[dict], on_whitelist_changed, reference_sessions=None):
         super().__init__(parent)
         self.title("Zertifikate ersetzen")
         self.geometry("780x620")
@@ -16,6 +18,7 @@ class CertificateReplaceDialog(tk.Toplevel):
         self._files: list[str] = []
         self._favorites = [item for item in favorites if item.get("mode", "command") == "command" and str(item.get("command", "")).strip()]
         self._on_whitelist_changed = on_whitelist_changed
+        self._reference_sessions = reference_sessions or []
         self._sudo_password = tk.StringVar()
         self._close_on_success = tk.BooleanVar(value=False)
         self._build(target_count, whitelist)
@@ -34,6 +37,10 @@ class CertificateReplaceDialog(tk.Toplevel):
         roots = ttk.LabelFrame(root, text="Whitelist-Suchpfade", padding=8); roots.pack(fill="x", pady=(10, 0))
         self._roots = scrolledtext.ScrolledText(roots, height=4, wrap="none"); self._roots.pack(fill="x")
         self._roots.insert("1.0", "\n".join(whitelist))
+        root_controls = ttk.Frame(roots); root_controls.pack(fill="x", pady=(6, 0))
+        self._browse_roots_button = ttk.Button(root_controls, text="Auf Server durchsuchen…", command=self._browse_roots)
+        self._browse_roots_button.pack(side="left")
+        if not self._reference_sessions: self._browse_roots_button.configure(state="disabled")
         ttk.Label(roots, text="Absolute Linux-Pfade, einer pro Zeile. Die Liste wird dauerhaft gespeichert; leer blockiert die Suche.", foreground="#666666").pack(anchor="w", pady=(4, 0))
         secure = ttk.Frame(root); secure.pack(fill="x", pady=(10, 0)); secure.columnconfigure(1, weight=1)
         ttk.Label(secure, text="sudo-Passwort (optional):").grid(row=0, column=0, sticky="w", padx=(0, 8))
@@ -63,6 +70,15 @@ class CertificateReplaceDialog(tk.Toplevel):
 
     def _roots_value(self):
         return list(dict.fromkeys(line.strip().rstrip("/") or "/" for line in self._roots.get("1.0", "end").splitlines() if line.strip()))
+
+    def _browse_roots(self):
+        roots = self._roots_value()
+        dialog = RemoteFolderBrowserDialog(self, self._reference_sessions, roots[-1] if roots else "/", self._sudo_password.get())
+        self.wait_window(dialog)
+        if dialog.result and dialog.result not in roots:
+            roots.append(dialog.result)
+            self._roots.delete("1.0", "end")
+            self._roots.insert("1.0", "\n".join(roots))
 
     def _apply_favorite(self):
         index = self._favorite.current()

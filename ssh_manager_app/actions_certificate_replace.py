@@ -67,7 +67,7 @@ def replace_certificates(app, sessions: list[Session]) -> None:
 
     dialog = CertificateReplaceDialog(
         app, len(runnable), list(app._initial_toolbar_search_texts.get("certificate_replace_whitelist", [])),
-        list(app._initial_toolbar_search_texts.get("remote_command_favorites", [])), save_whitelist,
+        list(app._initial_toolbar_search_texts.get("remote_command_favorites", [])), save_whitelist, reference_sessions=users,
     )
     app.wait_window(dialog)
     if dialog.result is None: return
