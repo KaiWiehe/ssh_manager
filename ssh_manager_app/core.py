@@ -47,11 +47,6 @@ def _build_ssh_command(session: Session, user: str | None = None) -> str:
     return f"ssh {effective_user}@{session.hostname}"
 
 
-def _force_ssh_tty_command(ssh_command: str) -> str:
-    """Force a TTY before the SSH destination, including when stdin is redirected."""
-    return ssh_command.replace("ssh ", "ssh -tt ", 1)
-
-
 def _terminal_profile_flag(profile_name: str) -> str:
     profile = (profile_name or "Git Bash").strip() or "Git Bash"
     return f'-p "{profile}" '
@@ -564,7 +559,6 @@ def build_certificate_replace_wt_command(
         run_id = uuid.uuid4().hex
         temp_paths = {name: f"/tmp/ssh-manager-replace-{run_id}-{item_index}" for item_index, name in enumerate(files_by_name)}
         ssh_cmd = _build_ssh_command(session, user)
-        tty_ssh_cmd = _force_ssh_tty_command(ssh_cmd)
         if session.is_ssh_config_session:
             scp_target, scp_port = session.display_name, ""
         else:
@@ -599,7 +593,7 @@ def build_certificate_replace_wt_command(
         remote_lines.append("echo 'ZUSAMMENFASSUNG: Zertifikate erfolgreich ersetzt.'")
         cleanup_paths = " ".join(temp_paths.values())
         script_lines.extend([
-            f"{tty_ssh_cmd} <<'__CERT_REPLACE__'",
+            f"{ssh_cmd} <<'__CERT_REPLACE__'",
             *remote_lines,
             "__CERT_REPLACE__",
             "status=$?",
