@@ -108,11 +108,31 @@ class CertificateReplaceDialog(tk.Toplevel):
 
 
 class CertificateReplacePreviewDialog(tk.Toplevel):
-    def __init__(self, parent, report: str):
+    def __init__(self, parent, report: str, matches: list[tuple[int, str, str, str, str, str]]):
         super().__init__(parent); self.title("Zertifikate ersetzen – Vorschau"); self.geometry("850x600"); self.result = False
         frame = ttk.Frame(self, padding=14); frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="Prüfe die Treffer. Erst mit ‚Ersetzen‘ werden Dateien geändert.", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        text = scrolledtext.ScrolledText(frame, wrap="word"); text.pack(fill="both", expand=True, pady=10)
+        ttk.Label(frame, text="Alle Treffer sind vorausgewählt. Entferne den Haken bei Dateien, die nicht ersetzt werden sollen.").pack(anchor="w", pady=(3, 7))
+        choices = ttk.LabelFrame(frame, text="Zu ersetzende Dateien", padding=6); choices.pack(fill="both", expand=True)
+        canvas = tk.Canvas(choices, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(choices, orient="vertical", command=canvas.yview)
+        self._choices_frame = ttk.Frame(canvas)
+        self._choices_frame.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        choices_window = canvas.create_window((0, 0), window=self._choices_frame, anchor="nw")
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(choices_window, width=event.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True); scrollbar.pack(side="right", fill="y")
+        self._choice_vars: list[tuple[tuple[int, str, str], tk.BooleanVar]] = []
+        for host_index, host, name, target, modified, expiry in matches:
+            value = tk.BooleanVar(value=True)
+            label = f"{host}: {name} → {target}\n    Dateizeitstempel: {modified or 'nicht ermittelt'} | Gültig bis: {expiry or 'nicht ermittelt'}"
+            tk.Checkbutton(self._choices_frame, text=label, variable=value, anchor="w", justify="left", wraplength=750).pack(fill="x", anchor="w", pady=2)
+            self._choice_vars.append(((host_index, name, target), value))
+        controls = ttk.Frame(frame); controls.pack(fill="x", pady=(6, 0))
+        ttk.Button(controls, text="Alle auswählen", command=lambda: self._set_all(True)).pack(side="left")
+        ttk.Button(controls, text="Alle abwählen", command=lambda: self._set_all(False)).pack(side="left", padx=(6, 0))
+        details = ttk.LabelFrame(frame, text="Hinweise und Scan-Ergebnis", padding=6); details.pack(fill="both", expand=True, pady=(8, 0))
+        text = scrolledtext.ScrolledText(details, wrap="word", height=11); text.pack(fill="both", expand=True)
         text.tag_configure("host", font=("Segoe UI", 10, "bold"))
         text.tag_configure("warning", foreground="#b8860b")
         text.tag_configure("error", foreground="#c62828")
@@ -124,8 +144,14 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
         ttk.Button(buttons, text="Abbrechen", command=self._cancel).pack(side="right")
         ttk.Button(buttons, text="Ersetzen", command=self._confirm).pack(side="right", padx=8)
         self.transient(parent); self.grab_set(); self.protocol("WM_DELETE_WINDOW", self._cancel)
-    def _confirm(self): self.result = True; self.destroy()
-    def _cancel(self): self.result = False; self.destroy()
+    def _set_all(self, selected: bool):
+        for _key, value in self._choice_vars: value.set(selected)
+
+    def _confirm(self):
+        self.result = {key for key, value in self._choice_vars if value.get()}
+        self.destroy()
+
+    def _cancel(self): self.result = None; self.destroy()
 
     @staticmethod
     def _line_tag(line: str) -> str | None:

@@ -105,12 +105,28 @@ def replace_certificates(app, sessions: list[Session]) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
+def _selected_deployments(scanned, spec, selected_matches: set[tuple[int, str, str]]):
+    deployments = []
+    for host_index, (session, user, result) in enumerate(scanned):
+        if result["errors"]:
+            continue
+        matches = [
+            (name, target)
+            for name, target, _modified, _expiry in result["matches"]
+            if (host_index, name, target) in selected_matches
+        ]
+        if matches:
+            deployments.append((session, user, {**spec, "matches": matches}))
+    return deployments
+
+
 def _show_replace_preview(app, progress, scanned, spec) -> None:
     progress.close()
-    report_lines, deployments = ["ZERTIFIKATE ERSETZEN – VORSCHAU", ""], []
-    for session, user, result in scanned:
+    report_lines, selectable_matches = ["ZERTIFIKATE ERSETZEN – VORSCHAU", ""], []
+    for host_index, (session, user, result) in enumerate(scanned):
         report_lines.extend([f"{session.display_name} ({session.hostname})", "-" * 50])
         for name, target, modified, expiry in result["matches"]:
+            selectable_matches.append((host_index, f"{session.display_name} ({session.hostname})", name, target, modified, expiry))
             report_lines.append(f"  ERSETZEN: {name} → {target}")
             report_lines.append(f"    Dateizeitstempel: {modified or 'nicht ermittelt'}")
             report_lines.append(f"    Zertifikat gültig bis: {expiry or 'nicht ermittelt'}")
@@ -120,14 +136,16 @@ def _show_replace_preview(app, progress, scanned, spec) -> None:
         for error in result["errors"]: report_lines.append(f"  FEHLER: {error}")
         if not result["matches"] and not result["errors"]: report_lines.append("  Keine Treffer.")
         report_lines.append("")
-        if result["matches"] and not result["errors"]:
-            deployments.append((session, user, {**spec, "matches": [(name, target) for name, target, _modified, _expiry in result["matches"]]}))
-        elif result["matches"]:
+        if result["matches"] and result["errors"]:
             report_lines.append("  AUSGELASSEN: Wegen Scan-Fehlern wird auf diesem Host nichts ersetzt.")
     report_lines.append("Nachaktion: " + ("ausgeführt bei vollständig erfolgreichem Host" if spec["post_command"] else "keine"))
-    preview = CertificateReplacePreviewDialog(app, "\n".join(report_lines))
+    preview = CertificateReplacePreviewDialog(app, "\n".join(report_lines), selectable_matches)
     app.wait_window(preview)
-    if not preview.result or not deployments: return
+    if preview.result is None: return
+    deployments = _selected_deployments(scanned, spec, preview.result)
+    if not deployments:
+        messagebox.showinfo("Zertifikate ersetzen", "Es wurden keine Zertifikatsdateien zum Ersetzen ausgewählt.", parent=app)
+        return
     try:
         command = build_certificate_replace_wt_command(deployments, session_colors=app._tree.get_session_colors(), terminal_settings=app.settings.windows_terminal)
         subprocess.Popen(command, shell=True)

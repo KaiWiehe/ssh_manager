@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ssh_manager_app.actions_certificate_replace import _scan_host
+from ssh_manager_app.actions_certificate_replace import _scan_host, _selected_deployments
 from ssh_manager_app.dialogs_certificate_replace import CertificateReplacePreviewDialog
 from ssh_manager_app.models import Session
 
@@ -41,3 +41,18 @@ def test_certificate_replace_preview_assigns_visual_tags():
     assert CertificateReplacePreviewDialog._line_tag("  HINWEIS: /etc/nginx fehlt") == "warning"
     assert CertificateReplacePreviewDialog._line_tag("  FEHLER: SSH-Scan fehlgeschlagen") == "error"
     assert CertificateReplacePreviewDialog._line_tag("Produktivserver (10.0.0.9)") == "host"
+
+
+def test_selected_deployments_only_includes_checked_certificate_matches():
+    session = Session("srv", "Server", [], "10.0.0.9")
+    scanned = [(
+        session, "deploy", {"errors": [], "matches": [
+            ("one.jks", "/opt/one.jks", "timestamp", "expiry"),
+            ("two.p12", "/opt/two.p12", "timestamp", "expiry"),
+        ]},
+    )]
+
+    deployments = _selected_deployments(scanned, {"files": ["one.jks", "two.p12"]}, {(0, "two.p12", "/opt/two.p12")})
+
+    assert len(deployments) == 1
+    assert deployments[0][2]["matches"] == [("two.p12", "/opt/two.p12")]
