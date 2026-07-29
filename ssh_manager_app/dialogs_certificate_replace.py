@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
@@ -114,3 +115,23 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
         self.transient(parent); self.grab_set(); self.protocol("WM_DELETE_WINDOW", self._cancel)
     def _confirm(self): self.result = True; self.destroy()
     def _cancel(self): self.result = False; self.destroy()
+
+
+class CertificateReplaceScanProgressDialog(tk.Toplevel):
+    """Modal indeterminate progress indicator while remote certificate scans run."""
+    def __init__(self, parent, target_count: int):
+        super().__init__(parent); self.title("Zertifikate suchen"); self.resizable(False, False)
+        self._cancel_event = threading.Event(); self.transient(parent); self.grab_set(); self.protocol("WM_DELETE_WINDOW", self._cancel)
+        frame = ttk.Frame(self, padding=18); frame.pack(fill="both", expand=True)
+        count = "1 Host" if target_count == 1 else f"{target_count} Hosts"
+        ttk.Label(frame, text=f"Zertifikate werden gesucht … ({count})").pack(anchor="w", pady=(0, 10))
+        self._progress = ttk.Progressbar(frame, mode="indeterminate", length=320); self._progress.pack(fill="x"); self._progress.start(12)
+        self.update_idletasks(); self.geometry(f"+{parent.winfo_rootx() + 80}+{parent.winfo_rooty() + 80}")
+    @property
+    def cancelled(self): return self._cancel_event.is_set()
+    def _cancel(self): self._cancel_event.set(); self.close()
+    def close(self):
+        try: self._progress.stop()
+        except tk.TclError: pass
+        try: self.destroy()
+        except tk.TclError: pass

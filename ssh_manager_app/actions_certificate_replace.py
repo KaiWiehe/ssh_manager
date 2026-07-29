@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import subprocess
+import threading
 from pathlib import Path
 from tkinter import messagebox
 
 from .actions_remote import resolve_users_for_sessions
 from .actions_ui import persist_ui_state
 from .core import build_certificate_replace_wt_command
-from .dialogs_certificate_replace import CertificateReplaceDialog, CertificateReplacePreviewDialog
+from .dialogs_certificate_replace import CertificateReplaceDialog, CertificateReplacePreviewDialog, CertificateReplaceScanProgressDialog
 from .models import Session
 
 
@@ -39,19 +40,19 @@ def _scan_host(session: Session, user: str, roots: list[str], names: list[str], 
     try:
         completed = subprocess.run(command, input=("\n".join(script) + "\n").encode("utf-8"), capture_output=True, timeout=40, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return {"matches": [], "symlinks": [], "errors": [str(exc)]}
+        return {"matches": [], "symlinks": [], "errors": [str(exc)], "warnings": []}
     if completed.returncode != 0:
         error = (completed.stderr or completed.stdout).decode("utf-8", errors="replace").strip() or "SSH-Scan fehlgeschlagen"
-        return {"matches": [], "symlinks": [], "errors": [error]}
-    matches, symlinks, errors = [], [], []
+        return {"matches": [], "symlinks": [], "errors": [error], "warnings": []}
+    matches, symlinks, warnings = [], [], []
     for line in completed.stdout.decode("utf-8", errors="replace").splitlines():
         kind, _, rest = line.partition("\t")
-        if kind == "E": errors.append(rest.replace("\t", ": ", 1)); continue
+        if kind == "E": warnings.append(rest.replace("\t", ": ", 1)); continue
         fields = line.split("\t", 3)
         if len(fields) == 4 and fields[0] == "M":
             target = (fields[2], fields[3])
             (matches if fields[1] == "f" else symlinks).append(target)
-    return {"matches": list(dict.fromkeys(matches)), "symlinks": list(dict.fromkeys(symlinks)), "errors": errors}
+    return {"matches": list(dict.fromkeys(matches)), "symlinks": list(dict.fromkeys(symlinks)), "errors": [], "warnings": warnings}
 
 
 def replace_certificates(app, sessions: list[Session]) -> None:
@@ -73,14 +74,28 @@ def replace_certificates(app, sessions: list[Session]) -> None:
     if dialog.result is None: return
     spec = dialog.result
     names = [Path(path).name for path in spec["files"]]
-    scanned = []
-    for session, user in users:
-        scanned.append((session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"])))
+    progress = CertificateReplaceScanProgressDialog(app, len(users))
+
+    def worker() -> None:
+        scanned = []
+        for session, user in users:
+            if progress.cancelled:
+                return
+            scanned.append((session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"])))
+        if not progress.cancelled:
+            app.after(0, lambda: _show_replace_preview(app, progress, scanned, spec))
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def _show_replace_preview(app, progress, scanned, spec) -> None:
+    progress.close()
     report_lines, deployments = ["ZERTIFIKATE ERSETZEN – VORSCHAU", ""], []
     for session, user, result in scanned:
         report_lines.extend([f"{session.display_name} ({session.hostname})", "-" * 50])
         for name, target in result["matches"]: report_lines.append(f"  ERSETZEN: {name} → {target}")
         for name, target in result["symlinks"]: report_lines.append(f"  AUSLASSEN (Symlink): {name} → {target}")
+        for warning in result.get("warnings", []): report_lines.append(f"  HINWEIS: {warning}")
         for error in result["errors"]: report_lines.append(f"  FEHLER: {error}")
         if not result["matches"] and not result["errors"]: report_lines.append("  Keine Treffer.")
         report_lines.append("")
