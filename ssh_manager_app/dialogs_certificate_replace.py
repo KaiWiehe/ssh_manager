@@ -108,10 +108,13 @@ class CertificateReplaceDialog(tk.Toplevel):
 
 
 class CertificateReplacePreviewDialog(tk.Toplevel):
-    def __init__(self, parent, report: str, matches: list[tuple[int, str, str, str, str, str]]):
+    def __init__(self, parent, report: str, matches: list[tuple[int, str, str, str, str, str]], source_summary: list[tuple[str, str]]):
         super().__init__(parent); self.title("Zertifikate ersetzen – Vorschau"); self.geometry("850x600"); self.result = False
         frame = ttk.Frame(self, padding=14); frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="Prüfe die Treffer. Erst mit ‚Ersetzen‘ werden Dateien geändert.", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        summary = ttk.LabelFrame(frame, text="Neue Zertifikate – Ablaufdaten", padding=6); summary.pack(fill="x", pady=(7, 0))
+        for name, expiry in source_summary:
+            ttk.Label(summary, text=f"• {name}: gültig bis {expiry}", wraplength=780).pack(anchor="w")
         ttk.Label(frame, text="Alle Treffer sind vorausgewählt. Entferne den Haken bei Dateien, die nicht ersetzt werden sollen.").pack(anchor="w", pady=(3, 7))
         choices = ttk.LabelFrame(frame, text="Zu ersetzende Dateien", padding=6); choices.pack(fill="both", expand=True)
         canvas = tk.Canvas(choices, highlightthickness=0)

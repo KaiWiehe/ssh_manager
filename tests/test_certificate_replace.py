@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ssh_manager_app.actions_certificate_replace import _scan_host, _selected_deployments
+from ssh_manager_app.actions_certificate_replace import _format_timestamp, _scan_host, _selected_deployments
 from ssh_manager_app.dialogs_certificate_replace import CertificateReplacePreviewDialog
 from ssh_manager_app.models import Session
 
@@ -41,6 +41,11 @@ def test_certificate_replace_preview_assigns_visual_tags():
     assert CertificateReplacePreviewDialog._line_tag("  HINWEIS: /etc/nginx fehlt") == "warning"
     assert CertificateReplacePreviewDialog._line_tag("  FEHLER: SSH-Scan fehlgeschlagen") == "error"
     assert CertificateReplacePreviewDialog._line_tag("Produktivserver (10.0.0.9)") == "host"
+
+
+def test_certificate_timestamp_format_is_compact_and_readable():
+    assert _format_timestamp("2026-07-29 13:12:38.781885924 +0200") == "29.07.2026 13:12:38 (+02:00)"
+    assert _format_timestamp("Sat Jan 30 00:59:59 CET 2027, Tue Jan 19 00:59:59 CET 2038") == "30.01.2027 00:59:59, 19.01.2038 00:59:59"
 
 
 def test_selected_deployments_only_includes_checked_certificate_matches():
