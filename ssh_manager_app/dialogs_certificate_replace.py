@@ -108,13 +108,30 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
         super().__init__(parent); self.title("Zertifikate ersetzen – Vorschau"); self.geometry("850x600"); self.result = False
         frame = ttk.Frame(self, padding=14); frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="Prüfe die Treffer. Erst mit ‚Ersetzen‘ werden Dateien geändert.", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        text = scrolledtext.ScrolledText(frame, wrap="word"); text.pack(fill="both", expand=True, pady=10); text.insert("1.0", report); text.configure(state="disabled")
+        text = scrolledtext.ScrolledText(frame, wrap="word"); text.pack(fill="both", expand=True, pady=10)
+        text.tag_configure("host", font=("Segoe UI", 10, "bold"))
+        text.tag_configure("warning", foreground="#b8860b")
+        text.tag_configure("error", foreground="#c62828")
+        for line in report.splitlines(keepends=True):
+            tag = self._line_tag(line.rstrip("\n"))
+            text.insert("end", line, tag)
+        text.configure(state="disabled")
         buttons = ttk.Frame(frame); buttons.pack(anchor="e")
         ttk.Button(buttons, text="Abbrechen", command=self._cancel).pack(side="right")
         ttk.Button(buttons, text="Ersetzen", command=self._confirm).pack(side="right", padx=8)
         self.transient(parent); self.grab_set(); self.protocol("WM_DELETE_WINDOW", self._cancel)
     def _confirm(self): self.result = True; self.destroy()
     def _cancel(self): self.result = False; self.destroy()
+
+    @staticmethod
+    def _line_tag(line: str) -> str | None:
+        if line.startswith("  HINWEIS:"):
+            return "warning"
+        if line.startswith("  FEHLER:"):
+            return "error"
+        if " (" in line and line.endswith(")") and not line.startswith("  "):
+            return "host"
+        return None
 
 
 class CertificateReplaceScanProgressDialog(tk.Toplevel):

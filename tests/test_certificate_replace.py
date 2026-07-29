@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from ssh_manager_app.actions_certificate_replace import _scan_host
+from ssh_manager_app.dialogs_certificate_replace import CertificateReplacePreviewDialog
 from ssh_manager_app.models import Session
 
 
@@ -21,3 +22,9 @@ def test_certificate_scan_returns_regular_matches_and_reports_symlinks_without_c
     script = run.call_args.kwargs["input"].decode("utf-8")
     assert "-type f -name \"$name\"" in script
     assert "-type l -name \"$name\"" in script
+
+
+def test_certificate_replace_preview_assigns_visual_tags():
+    assert CertificateReplacePreviewDialog._line_tag("  HINWEIS: /etc/nginx fehlt") == "warning"
+    assert CertificateReplacePreviewDialog._line_tag("  FEHLER: SSH-Scan fehlgeschlagen") == "error"
+    assert CertificateReplacePreviewDialog._line_tag("Produktivserver (10.0.0.9)") == "host"
