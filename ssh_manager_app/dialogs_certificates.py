@@ -38,11 +38,11 @@ def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_passwo
         "  sudo find \"$path\" -mindepth 1 -maxdepth 1 -type d -printf '%p\\n' | sort",
         "fi",
     ])
+    remote_input = ("\n".join(script) + "\n").encode("utf-8")
     try:
         completed = subprocess.run(
             command,
-            input="\n".join(script) + "\n",
-            text=True,
+            input=remote_input,
             capture_output=True,
             timeout=20,
             check=False,
@@ -50,9 +50,11 @@ def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_passwo
     except (OSError, subprocess.TimeoutExpired) as exc:
         return [], str(exc)
     if completed.returncode != 0:
-        error = (completed.stderr or completed.stdout or "Ordner konnten nicht abgefragt werden.").strip()
+        output = completed.stderr or completed.stdout or b"Ordner konnten nicht abgefragt werden."
+        error = output.decode("utf-8", errors="replace").strip() if isinstance(output, bytes) else str(output).strip()
         return [], error
-    return [line.strip() for line in completed.stdout.splitlines() if line.strip()], ""
+    output = completed.stdout.decode("utf-8", errors="replace") if isinstance(completed.stdout, bytes) else str(completed.stdout)
+    return [line.strip() for line in output.splitlines() if line.strip()], ""
 
 
 class RemoteFolderBrowserDialog(tk.Toplevel):
