@@ -675,6 +675,17 @@ class RemoteCommandDialog(tk.Toplevel):
         self._save_favorite = tk.BooleanVar(value=False)
         ttk.Checkbutton(options, text="Tab direkt schließen, wenn erfolgreich", variable=self._close_on_success).pack(side="left")
         ttk.Checkbutton(options, text="Diese Ausführung als Favorit speichern", variable=self._save_favorite).pack(side="left", padx=18)
+        self._sudo_password_var = tk.StringVar()
+        self._show_sudo_password = tk.BooleanVar(value=False)
+        ttk.Label(options, text="sudo-Passwort (optional):").pack(side="left", padx=(18, 6))
+        self._sudo_password_entry = ttk.Entry(options, textvariable=self._sudo_password_var, show="•", width=18)
+        self._sudo_password_entry.pack(side="left")
+        ttk.Checkbutton(
+            options,
+            text="anzeigen",
+            variable=self._show_sudo_password,
+            command=lambda: self._sudo_password_entry.configure(show="" if self._show_sudo_password.get() else "•"),
+        ).pack(side="left", padx=(4, 0))
         ttk.Button(options, text="Ausführen", command=self._on_ok, width=12).pack(side="right", padx=(6, 0))
         ttk.Button(options, text="Abbrechen", command=self._on_cancel, width=10).pack(side="right")
 
@@ -860,7 +871,8 @@ class RemoteCommandDialog(tk.Toplevel):
             if item is None:
                 return
             spec.update(item)
-        self.result = (self._user_mode.get(), spec, self._close_on_success.get(), save_favorite)
+        sudo_password = self._sudo_password_var.get()
+        self.result = (self._user_mode.get(), spec, self._close_on_success.get(), save_favorite, sudo_password)
         self.destroy()
 
     def _on_cancel(self) -> None:

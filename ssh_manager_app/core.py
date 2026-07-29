@@ -101,6 +101,23 @@ def _shell_single_quote(text: str) -> str:
     """Quoted Text für Bash in Single Quotes."""
     return "'" + text.replace("'", "'\"'\"'") + "'"
 
+
+def _sudo_password_prelude(sudo_password: str | None) -> list[str]:
+    """Return a remote-shell wrapper for a one-off sudo password.
+
+    The password is deliberately kept out of command-line arguments.  It is
+    only embedded in the temporary, encrypted SSH payload and is not part of
+    command history or remote-command favourites.
+    """
+    if not sudo_password:
+        return []
+    return [
+        f"SSH_MANAGER_SUDO_PASSWORD={_shell_single_quote(sudo_password)}",
+        "sudo() {",
+        "  printf '%s\\n' \"$SSH_MANAGER_SUDO_PASSWORD\" | command sudo -S -p '' \"$@\"",
+        "}",
+    ]
+
 def _ssh_target(hostname: str, user: str | None = None, port: int = 22) -> str:
     """Erzeugt ein ssh-Ziel inklusive optionalem User und Port."""
     target = hostname
@@ -184,6 +201,7 @@ def build_remote_command_wt_command(
     close_on_success: bool,
     session_colors: dict[str, str] | None = None,
     terminal_settings: WindowsTerminalSettings | None = None,
+    sudo_password: str | None = None,
 ) -> str:
     """Erzeugt WT-Tabs, die pro Host ein lokales Bash-Skript starten."""
     settings = terminal_settings or WindowsTerminalSettings()
@@ -202,15 +220,21 @@ def build_remote_command_wt_command(
             f"printf '%s\\n' {_shell_single_quote(f'User: {user}')}",
             f"printf '%s\\n\\n' {_shell_single_quote(start_label)}",
         ]
+        if sudo_password:
+            script_lines.append("trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT")
         if close_on_success:
             script_lines.append(f"{ssh_cmd} <<'__REMOTE_CMD__'")
         else:
             script_lines.append(f"{ssh_cmd} -t <<'__REMOTE_CMD__'")
+        script_lines.extend(_sudo_password_prelude(sudo_password))
         script_lines.append(remote_script)
         script_lines.append("__REMOTE_CMD__")
         script_lines.append("status=$?")
         if not close_on_success:
-            script_lines.append("if [ $status -eq 0 ]; then exec bash; fi")
+            if sudo_password:
+                script_lines.append("if [ $status -eq 0 ]; then unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec bash; fi")
+            else:
+                script_lines.append("if [ $status -eq 0 ]; then exec bash; fi")
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
         script_path = _write_temp_bash_script("remote_cmd_", "\n".join(script_lines) + "\n")
@@ -289,6 +313,7 @@ def build_remote_script_wt_command(
     close_on_success: bool,
     session_colors: dict[str, str] | None = None,
     terminal_settings: WindowsTerminalSettings | None = None,
+    sudo_password: str | None = None,
 ) -> str:
     """Erzeugt WT-Tabs für Remote-Befehle sowie lokale/remote Python- oder Shell-Skripte."""
     settings = terminal_settings or WindowsTerminalSettings()
@@ -332,6 +357,12 @@ def build_remote_script_wt_command(
             title = f"Remote-Befehl: {command.strip() or '-'}"
             remote_body = f"{ssh_cmd} {'-t ' if not close_on_success else ''}<<'__REMOTE_CMD__'\n{command}\n__REMOTE_CMD__"
 
+        if sudo_password:
+            remote_body = remote_body.replace(
+                "<<'__REMOTE_CMD__'\n",
+                "<<'__REMOTE_CMD__'\n" + "\n".join(_sudo_password_prelude(sudo_password)) + "\n",
+            )
+
         execution_preview = _format_remote_execution_preview(spec)
         script_lines = [
             "#!/usr/bin/env bash",
@@ -343,8 +374,13 @@ def build_remote_script_wt_command(
             remote_body,
             "status=$?",
         ]
+        if sudo_password:
+            script_lines.insert(1, "trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT")
         if not close_on_success:
-            script_lines.append("if [ $status -eq 0 ]; then exec bash; fi")
+            if sudo_password:
+                script_lines.append("if [ $status -eq 0 ]; then unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec bash; fi")
+            else:
+                script_lines.append("if [ $status -eq 0 ]; then exec bash; fi")
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
         script_path = _write_temp_bash_script("remote_script_", "\n".join(script_lines) + "\n")

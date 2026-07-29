@@ -199,12 +199,14 @@ def run_remote_command(app, sessions: list[Session]) -> None:
     app.wait_window(dialog)
     if dialog.result is None:
         return
+    sudo_password = ""
     if len(dialog.result) == 3:
         user_mode, command, close_on_success = dialog.result
         spec = {"mode": "command", "command": command, "interpreter": "bash", "path": ""}
         save_favorite = False
     else:
-        user_mode, spec, close_on_success, save_favorite = dialog.result
+        user_mode, spec, close_on_success, save_favorite, *password_result = dialog.result
+        sudo_password = password_result[0] if password_result else ""
         command = spec.get("command", "")
     if hasattr(dialog, "_favorites"):
         app._initial_toolbar_search_texts["remote_command_favorites"] = list(dialog._favorites)[:25]
@@ -232,19 +234,23 @@ def run_remote_command(app, sessions: list[Session]) -> None:
         return
 
     if spec.get("mode") == "command":
-        cmd = build_remote_command_wt_command(
-            [(session, user, command) for session, user in session_users],
-            close_on_success=close_on_success,
-            session_colors=app._tree.get_session_colors(),
-            terminal_settings=app.settings.windows_terminal,
-        )
+        build_kwargs = {
+            "close_on_success": close_on_success,
+            "session_colors": app._tree.get_session_colors(),
+            "terminal_settings": app.settings.windows_terminal,
+        }
+        if sudo_password:
+            build_kwargs["sudo_password"] = sudo_password
+        cmd = build_remote_command_wt_command([(session, user, command) for session, user in session_users], **build_kwargs)
     else:
-        cmd = build_remote_script_wt_command(
-            [(session, user, spec) for session, user in session_users],
-            close_on_success=close_on_success,
-            session_colors=app._tree.get_session_colors(),
-            terminal_settings=app.settings.windows_terminal,
-        )
+        build_kwargs = {
+            "close_on_success": close_on_success,
+            "session_colors": app._tree.get_session_colors(),
+            "terminal_settings": app.settings.windows_terminal,
+        }
+        if sudo_password:
+            build_kwargs["sudo_password"] = sudo_password
+        cmd = build_remote_script_wt_command([(session, user, spec) for session, user in session_users], **build_kwargs)
     try:
         subprocess.Popen(cmd, shell=True)
     except OSError as exc:

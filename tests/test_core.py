@@ -63,6 +63,24 @@ def test_build_remote_command_wt_command_creates_temp_script_and_uses_git_bash()
     assert "exec bash" in script_text
 
 
+def test_build_remote_command_wt_command_passes_optional_sudo_password_without_command_args():
+    session = Session("app__srv", "App", [], "10.0.0.9")
+    captured = {}
+
+    with patch("ssh_manager_app.core._find_git_bash", return_value="bash"), \
+         patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda _prefix, content: captured.setdefault("content", content) or "/tmp/run.sh"):
+        build_remote_command_wt_command(
+            [(session, "deploy", "sudo systemctl status wildfly.service")],
+            close_on_success=False,
+            sudo_password="secret'value",
+        )
+
+    assert "SSH_MANAGER_SUDO_PASSWORD='secret'\"'\"'value'" in captured["content"]
+    assert "command sudo -S -p '' \"$@\"" in captured["content"]
+    assert "trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT" in captured["content"]
+    assert "unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec bash" in captured["content"]
+
+
 def test_build_ssh_tunnel_command_returns_expected_wt_args():
     settings = WindowsTerminalSettings(profile_name="My Bash", use_tab_color=False, title_mode="default")
 
