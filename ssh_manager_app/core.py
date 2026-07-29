@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import tkinter as tk
+import uuid
 from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote
@@ -389,6 +390,129 @@ def build_remote_script_wt_command(
         title_flag = _terminal_title_flag(session, user, settings.title_mode)
         tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
         parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
+    return " ; ".join(parts)
+
+
+def build_certificate_deploy_wt_command(
+    session_deployments: list[tuple[Session, str, dict]],
+    *,
+    session_colors: dict[str, str] | None = None,
+    terminal_settings: WindowsTerminalSettings | None = None,
+) -> str:
+    """Build one Windows Terminal tab per host for a certificate deployment."""
+    settings = terminal_settings or WindowsTerminalSettings()
+    git_bash = _find_git_bash()
+    colors = session_colors or {}
+    profile_flag = _terminal_profile_flag(settings.profile_name)
+    parts: list[str] = []
+
+    for index, (session, user, spec) in enumerate(session_deployments):
+        files = [str(path) for path in spec["files"]]
+        target_dir = str(spec["target_dir"])
+        overwrite = bool(spec.get("overwrite"))
+        sudo_password = str(spec.get("sudo_password") or "")
+        post_command = str(spec.get("post_command") or "").strip()
+        run_id = uuid.uuid4().hex
+        remote_tmp_files = [f"/tmp/ssh-manager-cert-{run_id}-{file_index}" for file_index in range(len(files))]
+
+        if session.is_ssh_config_session:
+            scp_target = session.display_name
+            scp_port = ""
+        else:
+            scp_target = _ssh_target(session.hostname or session.display_name, user, session.port)
+            scp_port = f"-P {session.port} " if session.port != 22 else ""
+
+        script_lines = [
+            "#!/usr/bin/env bash",
+            "trap 'rm -f \"$0\"' EXIT",
+            "set -u",
+            f"printf '%s\\n' {_shell_single_quote('Zertifikatsübertragung')}",
+            f"printf '%s\\n' {_shell_single_quote(f'Host: {session.display_name} ({session.hostname})')}",
+            f"printf '%s\\n' {_shell_single_quote(f'Zielordner: {target_dir}')}",
+            "printf '%s\\n' 'Upload nach /tmp:'",
+        ]
+        for local_path, remote_tmp in zip(files, remote_tmp_files):
+            script_lines.append(f"printf '%s\\n' {_shell_single_quote('  - ' + Path(local_path).name)}")
+            script_lines.append(f"scp {scp_port}{_shell_single_quote(local_path)} {scp_target}:{_shell_single_quote(remote_tmp)}")
+            script_lines.append("if [ $? -ne 0 ]; then")
+            script_lines.append("  echo 'FEHLER: Upload fehlgeschlagen. Der Nach-Befehl wird nicht ausgeführt.'")
+            script_lines.append("  exit 1")
+            script_lines.append("fi")
+
+        ssh_cmd = _build_ssh_command(session, user)
+        remote_lines = [
+            "set -u",
+            *(_sudo_password_prelude(sudo_password)),
+            "header() {",
+            "  printf '\\n==================================================\\n'",
+            "  printf ' %s\\n' \"$1\"",
+            "  printf '==================================================\\n'",
+            "}",
+            "cleanup() { rm -f -- " + " ".join(_shell_single_quote(path) for path in remote_tmp_files) + "; }",
+            "trap cleanup EXIT",
+            "header 'Zertifikatsdateien installieren'",
+            f"target_dir={_shell_single_quote(target_dir)}",
+            "if ! sudo mkdir -p -- \"$target_dir\"; then",
+            "  echo 'FEHLER: Zielordner konnte nicht erstellt oder geöffnet werden.'",
+            "  exit 1",
+            "fi",
+        ]
+        if not overwrite:
+            remote_lines.append("echo 'Prüfe, ob vorhandene Dateien überschrieben würden …'")
+            for local_path in files:
+                target_path = f"{target_dir}/{Path(local_path).name}" if target_dir != "/" else f"/{Path(local_path).name}"
+                remote_lines.extend([
+                    f"if [ -e {_shell_single_quote(target_path)} ]; then",
+                    f"  echo {_shell_single_quote('AUSGELASSEN: Zieldatei existiert bereits: ' + target_path)}",
+                    "  echo 'Es wurde keine Datei dieses Hosts ersetzt und kein Nach-Befehl ausgeführt.'",
+                    "  exit 2",
+                    "fi",
+                ])
+        else:
+            remote_lines.append("echo 'Vorhandene Zieldateien dürfen überschrieben werden.'")
+
+        remote_lines.append("echo 'Installiere Dateien:'")
+        for local_path, remote_tmp in zip(files, remote_tmp_files):
+            target_path = f"{target_dir}/{Path(local_path).name}" if target_dir != "/" else f"/{Path(local_path).name}"
+            remote_lines.extend([
+                f"if ! sudo cp -f -- {_shell_single_quote(remote_tmp)} {_shell_single_quote(target_path)}; then",
+                f"  echo {_shell_single_quote('FEHLER: Datei konnte nicht installiert werden: ' + target_path)}",
+                "  exit 1",
+                "fi",
+                f"echo {_shell_single_quote('  OK: ' + target_path)}",
+            ])
+        if post_command:
+            remote_lines.extend([
+                "header 'Nach-Befehl nach erfolgreichem Upload'",
+                post_command,
+                "post_status=$?",
+                "if [ $post_status -ne 0 ]; then",
+                "  echo \"FEHLER: Nach-Befehl fehlgeschlagen (Exit-Code: $post_status).\"",
+                "  exit $post_status",
+                "fi",
+            ])
+        remote_lines.extend([
+            "header 'ZUSAMMENFASSUNG'",
+            f"echo {_shell_single_quote(f'Erfolgreich übertragen: {len(files)} Datei(en) nach {target_dir}')}",
+            "echo 'Temporäre Dateien werden bereinigt.'",
+        ])
+        script_lines.extend([
+            "printf '%s\\n' 'Alle Uploads erfolgreich. Installiere Dateien auf dem Zielhost …'",
+            f"{ssh_cmd} -t <<'__CERT_DEPLOY__'",
+            *remote_lines,
+            "__CERT_DEPLOY__",
+            "status=$?",
+            "if [ $status -eq 0 ]; then rm -f \"$0\"; exec bash; fi",
+            "echo \"Übertragung fehlgeschlagen (Exit-Code: $status).\"",
+            "read",
+            "exit $status",
+        ])
+        script_path = _write_temp_bash_script("certificate_deploy_", "\n".join(script_lines) + "\n")
+        color = colors.get(session.key) if settings.use_tab_color else None
+        color_flag = f'--tabColor "{color}" ' if color else ""
+        title_flag = _terminal_title_flag(session, user, settings.title_mode)
+        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
+        parts.append(f"wt.exe {tab_cmd}" if index == 0 else tab_cmd)
     return " ; ".join(parts)
 
 def _write_temp_bash_script(prefix: str, content: str) -> str:

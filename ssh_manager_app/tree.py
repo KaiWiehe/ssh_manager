@@ -69,6 +69,7 @@ class SessionTree(ttk.Frame):
         on_open_tunnel=None,                # Callable[[Session], None] | None
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
+        on_deploy_certificate_files=None,   # Callable[[list[Session]], None] | None
         on_resolve_dns=None,                # Callable[[list[Session]], None] | None
         on_resolve_dns_with_server=None,    # Callable[[list[Session]], None] | None
         on_open_via_jumphost=None,          # Callable[[Session], None] | None
@@ -109,6 +110,7 @@ class SessionTree(ttk.Frame):
         self._on_open_tunnel = on_open_tunnel
         self._on_open_in_winscp = on_open_in_winscp
         self._on_run_remote_command = on_run_remote_command
+        self._on_deploy_certificate_files = on_deploy_certificate_files
         self._on_resolve_dns = on_resolve_dns
         self._on_resolve_dns_with_server = on_resolve_dns_with_server
         self._on_open_via_jumphost = on_open_via_jumphost
@@ -1037,6 +1039,11 @@ class SessionTree(ttk.Frame):
                     label=f"Befehl auf Ordner ausführen… ({len(folder_sessions)})",
                     command=lambda ss=list(folder_sessions): self._on_run_remote_command(ss),
                 )
+            if getattr(self, "_on_deploy_certificate_files", None):
+                menu.add_command(
+                    label=f"Zertifikatsdateien übertragen… ({len(folder_sessions)})",
+                    command=lambda ss=list(folder_sessions): self._on_deploy_certificate_files(ss),
+                )
             if self._on_set_sessions_username:
                 menu.add_command(
                     label=f"Benutzer setzen… ({len(folder_sessions)})",
@@ -1299,6 +1306,17 @@ class SessionTree(ttk.Frame):
                 menu.add_command(
                     label=f"Befehl auf Auswahl ausführen… ({len(selected_runnable)})",
                     command=lambda ss=selected_runnable: self._on_run_remote_command(ss),
+                )
+        if getattr(self, "_on_deploy_certificate_files", None) and session.hostname:
+            menu.add_command(
+                label="Zertifikatsdateien übertragen…",
+                command=lambda s=session: self._on_deploy_certificate_files([s]),
+            )
+            selected_runnable = [s for s in selected if s.hostname]
+            if len(selected_runnable) >= 2:
+                menu.add_command(
+                    label=f"Zertifikatsdateien auf Auswahl übertragen… ({len(selected_runnable)})",
+                    command=lambda ss=selected_runnable: self._on_deploy_certificate_files(ss),
                 )
         if self._on_resolve_dns and session.hostname:
             menu.add_command(

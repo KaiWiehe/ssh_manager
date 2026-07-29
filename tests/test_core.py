@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from ssh_manager_app.core import (
     build_jump_wt_command,
+    build_certificate_deploy_wt_command,
     build_remote_command_wt_command,
     build_ssh_tunnel_command,
 )
@@ -79,6 +80,58 @@ def test_build_remote_command_wt_command_passes_optional_sudo_password_without_c
     assert "command sudo -S -p '' \"$@\"" in captured["content"]
     assert "trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT" in captured["content"]
     assert "unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec bash" in captured["content"]
+
+
+def test_build_certificate_deploy_wt_command_uploads_all_files_then_installs_and_runs_post_command():
+    session = Session("app__srv", "App", [], "10.0.0.9")
+    captured = {}
+
+    def fake_write_temp_script(_prefix, content):
+        captured["content"] = content
+        return "/tmp/cert-deploy.sh"
+
+    with patch("ssh_manager_app.core._find_git_bash", return_value="bash"), \
+         patch("ssh_manager_app.core._write_temp_bash_script", side_effect=fake_write_temp_script):
+        command = build_certificate_deploy_wt_command(
+            [(session, "deploy", {
+                "files": [r"C:\\certs\\server.crt", r"C:\\certs\\server.key"],
+                "target_dir": "/etc/wildfly/certs",
+                "overwrite": True,
+                "sudo_password": "secret",
+                "post_command": "sudo systemctl restart wildfly.service",
+            })],
+        )
+
+    assert command.startswith("wt.exe new-tab")
+    script = captured["content"]
+    assert script.count("scp ") == 2
+    assert "SSH_MANAGER_SUDO_PASSWORD='secret'" in script
+    assert "sudo cp -f --" in script
+    assert "/etc/wildfly/certs/server.crt" in script
+    assert "/etc/wildfly/certs/server.key" in script
+    assert "sudo systemctl restart wildfly.service" in script
+    assert script.index("scp ") < script.index("sudo cp -f --") < script.index("sudo systemctl restart wildfly.service")
+
+
+def test_build_certificate_deploy_wt_command_blocks_existing_files_without_overwrite():
+    session = Session("app__srv", "App", [], "10.0.0.9")
+    captured = {}
+
+    with patch("ssh_manager_app.core._find_git_bash", return_value="bash"), \
+         patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda _prefix, content: captured.update(content=content) or "/tmp/cert-deploy.sh"):
+        build_certificate_deploy_wt_command(
+            [(session, "deploy", {
+                "files": [r"C:\\certs\\server.crt"],
+                "target_dir": "/etc/wildfly/certs",
+                "overwrite": False,
+                "sudo_password": "",
+                "post_command": "sudo systemctl restart wildfly.service",
+            })],
+        )
+
+    script = captured["content"]
+    assert "AUSGELASSEN: Zieldatei existiert bereits" in script
+    assert "Es wurde keine Datei dieses Hosts ersetzt und kein Nach-Befehl ausgeführt." in script
 
 
 def test_build_ssh_tunnel_command_returns_expected_wt_args():
