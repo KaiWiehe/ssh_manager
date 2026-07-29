@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ssh_manager_app.dialogs_certificates import _ssh_folder_list_command
+from ssh_manager_app.dialogs_certificates import _sort_remote_entries, _ssh_folder_list_command
 from ssh_manager_app.models import Session
 
 
@@ -33,3 +33,21 @@ def test_remote_folder_listing_returns_ssh_errors():
 
     assert folders == []
     assert error == "Permission denied"
+
+
+def test_remote_folder_entries_sort_folders_before_files_alphabetically():
+    entries = [
+        ("f", "/etc/ssl/z-old.pem"),
+        ("d", "/etc/ssl/Zebra"),
+        ("f", "/etc/ssl/a-cert.pem"),
+        ("d", "/etc/ssl/alpha"),
+        ("l", "/etc/ssl/current.pem"),
+    ]
+
+    assert _sort_remote_entries(entries) == [
+        ("d", "/etc/ssl/alpha"),
+        ("d", "/etc/ssl/Zebra"),
+        ("f", "/etc/ssl/a-cert.pem"),
+        ("l", "/etc/ssl/current.pem"),
+        ("f", "/etc/ssl/z-old.pem"),
+    ]

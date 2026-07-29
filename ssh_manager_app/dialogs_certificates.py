@@ -62,6 +62,11 @@ def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_passwo
     return entries, ""
 
 
+def _sort_remote_entries(entries: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Keep navigable folders above files while sorting both groups by name."""
+    return sorted(entries, key=lambda entry: (0 if entry[0] == "d" else 1, entry[1].casefold()))
+
+
 class RemoteFolderBrowserDialog(tk.Toplevel):
     """Browse direct remote subdirectories on one selected reference host."""
 
@@ -139,10 +144,10 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         if error:
             self._status_var.set(f"Abfrage fehlgeschlagen: {error}")
             return
-        self._entries = entries
+        self._entries = _sort_remote_entries(entries)
         folder_count = 0
         file_count = 0
-        for entry_type, entry_path in entries:
+        for entry_type, entry_path in self._entries:
             if entry_type == "d":
                 prefix = "📁"
                 folder_count += 1
