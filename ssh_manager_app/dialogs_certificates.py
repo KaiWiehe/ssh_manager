@@ -1,20 +1,179 @@
 from __future__ import annotations
 
 import tkinter as tk
+import posixpath
+import subprocess
+import threading
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
+
+from .models import Session
+
+
+def _shell_single_quote(text: str) -> str:
+    return "'" + text.replace("'", "'\"'\"'") + "'"
+
+
+def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_password: str) -> tuple[list[str], str]:
+    """Read direct child directories over SSH without exposing the password in args."""
+    if session.is_ssh_config_session:
+        command = ["ssh", "-o", "BatchMode=yes", session.display_name, "bash", "-s"]
+    else:
+        command = ["ssh", "-o", "BatchMode=yes"]
+        if session.port != 22:
+            command.extend(["-p", str(session.port)])
+        command.extend([f"{user}@{session.hostname}", "bash", "-s"])
+
+    script = ["set -u"]
+    if sudo_password:
+        script.extend([
+            f"SSH_MANAGER_SUDO_PASSWORD={_shell_single_quote(sudo_password)}",
+            "sudo() { printf '%s\\n' \"$SSH_MANAGER_SUDO_PASSWORD\" | command sudo -S -p '' \"$@\"; }",
+        ])
+    script.extend([
+        f"path={_shell_single_quote(path)}",
+        "if [ -d \"$path\" ] && [ -r \"$path\" ] && [ -x \"$path\" ]; then",
+        "  find \"$path\" -mindepth 1 -maxdepth 1 -type d -printf '%p\\n' | sort",
+        "else",
+        "  sudo find \"$path\" -mindepth 1 -maxdepth 1 -type d -printf '%p\\n' | sort",
+        "fi",
+    ])
+    try:
+        completed = subprocess.run(
+            command,
+            input="\n".join(script) + "\n",
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return [], str(exc)
+    if completed.returncode != 0:
+        error = (completed.stderr or completed.stdout or "Ordner konnten nicht abgefragt werden.").strip()
+        return [], error
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()], ""
+
+
+class RemoteFolderBrowserDialog(tk.Toplevel):
+    """Browse direct remote subdirectories on one selected reference host."""
+
+    def __init__(self, parent: tk.Toplevel, session_users: list[tuple[Session, str]], initial_path: str, sudo_password: str):
+        super().__init__(parent)
+        self.title("Ordner auf Server durchsuchen")
+        self.geometry("680x470")
+        self.minsize(580, 390)
+        self.result: str | None = None
+        self._session_users = session_users
+        self._sudo_password = sudo_password
+        self._host_var = tk.StringVar(value=self._host_label(session_users[0]))
+        self._path_var = tk.StringVar(value=initial_path or "/")
+        self._status_var = tk.StringVar(value="Ordner werden geladen …")
+
+        self.transient(parent)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self._build()
+        self._center_on_parent(parent)
+        self._load()
+
+    @staticmethod
+    def _host_label(item: tuple[Session, str]) -> str:
+        session, user = item
+        return f"{session.display_name} ({user}@{session.hostname})"
+
+    def _build(self) -> None:
+        root = ttk.Frame(self, padding=14)
+        root.pack(fill="both", expand=True)
+        root.columnconfigure(1, weight=1)
+        root.rowconfigure(2, weight=1)
+        ttk.Label(root, text="Referenz-Host:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self._host_combo = ttk.Combobox(root, state="readonly", textvariable=self._host_var, values=[self._host_label(item) for item in self._session_users])
+        self._host_combo.grid(row=0, column=1, sticky="ew")
+        self._host_combo.bind("<<ComboboxSelected>>", lambda _event: self._load())
+        ttk.Label(root, text="Aktueller Ordner:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(10, 0))
+        self._path_entry = ttk.Entry(root, textvariable=self._path_var)
+        self._path_entry.grid(row=1, column=1, sticky="ew", pady=(10, 0))
+        self._path_entry.bind("<Return>", lambda _event: self._load())
+        self._folders = tk.Listbox(root, height=12)
+        self._folders.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(10, 0))
+        self._folders.bind("<Double-Button-1>", lambda _event: self._open_selected())
+        ttk.Label(root, textvariable=self._status_var, foreground="#666666", wraplength=620).grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        controls = ttk.Frame(root)
+        controls.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        ttk.Button(controls, text="Eine Ebene hoch", command=self._up).pack(side="left")
+        ttk.Button(controls, text="Aktualisieren", command=self._load).pack(side="left", padx=(8, 0))
+        ttk.Button(controls, text="Abbrechen", command=self._on_cancel).pack(side="right")
+        ttk.Button(controls, text="Diesen Ordner verwenden", command=self._use_current).pack(side="right", padx=(0, 8))
+
+    def _selected_session_user(self) -> tuple[Session, str]:
+        index = max(0, self._host_combo.current())
+        return self._session_users[index]
+
+    def _load(self) -> None:
+        path = self._path_var.get().strip() or "/"
+        if not path.startswith("/"):
+            self._status_var.set("Bitte einen absoluten Linux-Pfad angeben.")
+            return
+        self._path_var.set(path.rstrip("/") or "/")
+        self._folders.delete(0, "end")
+        self._status_var.set("Ordner werden geladen …")
+        self._host_combo.configure(state="disabled")
+        session, user = self._selected_session_user()
+        threading.Thread(target=self._load_worker, args=(session, user, self._path_var.get(), self._sudo_password), daemon=True).start()
+
+    def _load_worker(self, session: Session, user: str, path: str, sudo_password: str) -> None:
+        folders, error = _ssh_folder_list_command(session, user, path, sudo_password)
+        self.after(0, lambda: self._show_folders(folders, error))
+
+    def _show_folders(self, folders: list[str], error: str) -> None:
+        self._host_combo.configure(state="readonly")
+        if error:
+            self._status_var.set(f"Abfrage fehlgeschlagen: {error}")
+            return
+        for folder in folders:
+            self._folders.insert("end", folder)
+        self._status_var.set(f"{len(folders)} Unterordner gefunden. Doppelklick öffnet einen Ordner.")
+
+    def _open_selected(self) -> None:
+        selected = self._folders.curselection()
+        if not selected:
+            return
+        self._path_var.set(self._folders.get(selected[0]))
+        self._load()
+
+    def _up(self) -> None:
+        current = self._path_var.get().rstrip("/") or "/"
+        parent = posixpath.dirname(current)
+        self._path_var.set(parent or "/")
+        self._load()
+
+    def _use_current(self) -> None:
+        self.result = self._path_var.get().strip() or "/"
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+    def _center_on_parent(self, parent: tk.Toplevel) -> None:
+        self.update_idletasks()
+        x = parent.winfo_rootx() + max(0, (parent.winfo_width() - self.winfo_width()) // 2)
+        y = parent.winfo_rooty() + max(0, (parent.winfo_height() - self.winfo_height()) // 2)
+        self.geometry(f"+{x}+{y}")
 
 
 class CertificateDeployDialog(tk.Toplevel):
     """Collects one certificate deployment without persisting sensitive data."""
 
-    def __init__(self, parent: tk.Tk, target_count: int):
+    def __init__(self, parent: tk.Tk, target_count: int, reference_sessions: list[tuple[Session, str]] | None = None):
         super().__init__(parent)
         self.title("Dateien übertragen")
         self.geometry("760x590")
         self.minsize(680, 520)
         self.result: dict | None = None
         self._files: list[str] = []
+        self._reference_sessions = reference_sessions or []
         self._target_dir_var = tk.StringVar()
         self._overwrite_var = tk.BooleanVar(value=False)
         self._sudo_password_var = tk.StringVar()
@@ -51,6 +210,10 @@ class CertificateDeployDialog(tk.Toplevel):
         destination.columnconfigure(1, weight=1)
         ttk.Label(destination, text="Zielordner:").grid(row=0, column=0, sticky="w", padx=(0, 8))
         ttk.Entry(destination, textvariable=self._target_dir_var).grid(row=0, column=1, sticky="ew")
+        self._browse_button = ttk.Button(destination, text="Auf Server durchsuchen…", command=self._browse_remote_folders)
+        self._browse_button.grid(row=0, column=2, padx=(8, 0))
+        if not self._reference_sessions:
+            self._browse_button.configure(state="disabled")
         ttk.Label(destination, text="Alle ausgewählten Dateien behalten ihren Namen.", foreground="#666666").grid(row=1, column=1, sticky="w", pady=(4, 0))
         ttk.Checkbutton(destination, text="Vorhandene Dateien überschreiben", variable=self._overwrite_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
@@ -93,6 +256,17 @@ class CertificateDeployDialog(tk.Toplevel):
 
     def _toggle_password(self) -> None:
         self._password_entry.configure(show="" if self._show_password_var.get() else "•")
+
+    def _browse_remote_folders(self) -> None:
+        dialog = RemoteFolderBrowserDialog(
+            self,
+            self._reference_sessions,
+            self._target_dir_var.get().strip() or "/",
+            self._sudo_password_var.get(),
+        )
+        self.wait_window(dialog)
+        if dialog.result:
+            self._target_dir_var.set(dialog.result)
 
     def _on_ok(self) -> None:
         if not self._files:

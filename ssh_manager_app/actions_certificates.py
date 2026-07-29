@@ -16,7 +16,11 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
         messagebox.showwarning("Keine Hosts", "Keine ausführbaren Hosts ausgewählt.", parent=app)
         return
 
-    dialog = CertificateDeployDialog(app, target_count=len(runnable))
+    session_users = resolve_users_for_sessions(app, runnable, "all")
+    if session_users is None:
+        return
+
+    dialog = CertificateDeployDialog(app, target_count=len(runnable), reference_sessions=session_users)
     app.wait_window(dialog)
     if dialog.result is None:
         return
@@ -33,10 +37,6 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
         "Übertragung jetzt starten?"
     )
     if not messagebox.askyesno("Dateiübertragung bestätigen", confirmation, icon="warning", parent=app):
-        return
-
-    session_users = resolve_users_for_sessions(app, runnable, "all")
-    if session_users is None:
         return
 
     try:
