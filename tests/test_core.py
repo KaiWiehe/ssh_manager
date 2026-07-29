@@ -134,6 +134,27 @@ def test_build_certificate_deploy_wt_command_blocks_existing_files_without_overw
     assert "Es wurde keine Datei dieses Hosts ersetzt und kein Nach-Befehl ausgeführt." in script
 
 
+def test_build_certificate_deploy_wt_command_keeps_bash_open_by_default_and_can_close_tab():
+    session = Session("app__srv", "App", [], "10.0.0.9")
+
+    def build_content(close_on_success):
+        captured = {}
+        with patch("ssh_manager_app.core._find_git_bash", return_value="bash"), \
+             patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda _prefix, content: captured.update(content=content) or "/tmp/cert-deploy.sh"):
+            build_certificate_deploy_wt_command(
+                [(session, "deploy", {
+                    "files": [r"C:\\certs\\server.crt"],
+                    "target_dir": "/etc/wildfly/certs",
+                    "overwrite": False,
+                    "close_on_success": close_on_success,
+                })],
+            )
+        return captured["content"]
+
+    assert "exec bash" in build_content(False)
+    assert "  exit 0" in build_content(True)
+
+
 def test_build_ssh_tunnel_command_returns_expected_wt_args():
     settings = WindowsTerminalSettings(profile_name="My Bash", use_tab_color=False, title_mode="default")
 

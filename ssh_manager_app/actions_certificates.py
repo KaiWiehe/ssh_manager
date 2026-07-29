@@ -20,7 +20,13 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
     if session_users is None:
         return
 
-    dialog = CertificateDeployDialog(app, target_count=len(runnable), reference_sessions=session_users)
+    favorites = list(app._initial_toolbar_search_texts.get("remote_command_favorites", []))
+    dialog = CertificateDeployDialog(
+        app,
+        target_count=len(runnable),
+        reference_sessions=session_users,
+        favorites=favorites,
+    )
     app.wait_window(dialog)
     if dialog.result is None:
         return

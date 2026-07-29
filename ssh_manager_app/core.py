@@ -412,6 +412,7 @@ def build_certificate_deploy_wt_command(
         overwrite = bool(spec.get("overwrite"))
         sudo_password = str(spec.get("sudo_password") or "")
         post_command = str(spec.get("post_command") or "").strip()
+        close_on_success = bool(spec.get("close_on_success"))
         run_id = uuid.uuid4().hex
         remote_tmp_files = [f"/tmp/ssh-manager-cert-{run_id}-{file_index}" for file_index in range(len(files))]
 
@@ -502,7 +503,19 @@ def build_certificate_deploy_wt_command(
             *remote_lines,
             "__CERT_DEPLOY__",
             "status=$?",
-            "if [ $status -eq 0 ]; then rm -f \"$0\"; exec bash; fi",
+            "if [ $status -eq 0 ]; then",
+        ])
+        if close_on_success:
+            script_lines.extend([
+                "  exit 0",
+            ])
+        else:
+            script_lines.extend([
+                "  rm -f \"$0\"",
+                "  exec bash",
+            ])
+        script_lines.extend([
+            "fi",
             "echo \"Übertragung fehlgeschlagen (Exit-Code: $status).\"",
             "read",
             "exit $status",

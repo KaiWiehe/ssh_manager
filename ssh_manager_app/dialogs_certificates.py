@@ -168,7 +168,7 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
 class CertificateDeployDialog(tk.Toplevel):
     """Collects one certificate deployment without persisting sensitive data."""
 
-    def __init__(self, parent: tk.Tk, target_count: int, reference_sessions: list[tuple[Session, str]] | None = None):
+    def __init__(self, parent: tk.Tk, target_count: int, reference_sessions: list[tuple[Session, str]] | None = None, favorites: list[dict] | None = None):
         super().__init__(parent)
         self.title("Dateien übertragen")
         self.geometry("760x590")
@@ -176,6 +176,7 @@ class CertificateDeployDialog(tk.Toplevel):
         self.result: dict | None = None
         self._files: list[str] = []
         self._reference_sessions = reference_sessions or []
+        self._favorites = [item for item in (favorites or []) if item.get("mode", "command") == "command" and str(item.get("command", "")).strip()]
         self._target_dir_var = tk.StringVar()
         self._overwrite_var = tk.BooleanVar(value=False)
         self._sudo_password_var = tk.StringVar()
@@ -231,11 +232,29 @@ class CertificateDeployDialog(tk.Toplevel):
         after = ttk.LabelFrame(root, text="Befehl nach erfolgreichem Upload (optional)", padding=10)
         after.grid(row=5, column=0, sticky="ew", pady=(10, 0))
         after.columnconfigure(0, weight=1)
+        favorite_bar = ttk.Frame(after)
+        favorite_bar.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        favorite_bar.columnconfigure(1, weight=1)
+        ttk.Label(favorite_bar, text="Favorit:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self._favorite_var = tk.StringVar()
+        favorite_labels = [self._favorite_label(item) for item in self._favorites]
+        self._favorite_combo = ttk.Combobox(favorite_bar, state="readonly", textvariable=self._favorite_var, values=favorite_labels)
+        self._favorite_combo.grid(row=0, column=1, sticky="ew")
+        self._favorite_combo.bind("<<ComboboxSelected>>", lambda _event: self._apply_favorite())
+        if not self._favorites:
+            self._favorite_combo.configure(state="disabled")
+            ttk.Label(favorite_bar, text="Keine Befehl-Favoriten vorhanden.", foreground="#666666").grid(row=0, column=2, sticky="w", padx=(8, 0))
         self._post_command = scrolledtext.ScrolledText(after, wrap="word", height=4)
-        self._post_command.grid(row=0, column=0, sticky="ew")
+        self._post_command.grid(row=1, column=0, sticky="ew")
+
+        options = ttk.Frame(root)
+        options.grid(row=6, column=0, sticky="w", pady=(10, 0))
+        self._close_on_success_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(options, text="Terminal-Tab nach erfolgreicher Übertragung schließen", variable=self._close_on_success_var).pack(side="left")
+        ttk.Label(options, text="Standard: offen lassen für eine interaktive Bash-Konsole.", foreground="#666666").pack(side="left", padx=(10, 0))
 
         actions = ttk.Frame(root)
-        actions.grid(row=6, column=0, sticky="e", pady=(12, 0))
+        actions.grid(row=7, column=0, sticky="e", pady=(12, 0))
         ttk.Button(actions, text="Abbrechen", command=self._on_cancel, width=11).pack(side="right")
         ttk.Button(actions, text="Übertragen", command=self._on_ok, width=12).pack(side="right", padx=(0, 8))
 
@@ -258,6 +277,18 @@ class CertificateDeployDialog(tk.Toplevel):
 
     def _toggle_password(self) -> None:
         self._password_entry.configure(show="" if self._show_password_var.get() else "•")
+
+    @staticmethod
+    def _favorite_label(item: dict) -> str:
+        return str(item.get("name") or item.get("label") or str(item.get("command", "")).splitlines()[0])
+
+    def _apply_favorite(self) -> None:
+        selected = self._favorite_combo.current()
+        if selected < 0:
+            return
+        command = str(self._favorites[selected].get("command", "")).strip()
+        self._post_command.delete("1.0", "end")
+        self._post_command.insert("1.0", command)
 
     def _browse_remote_folders(self) -> None:
         dialog = RemoteFolderBrowserDialog(
@@ -295,6 +326,7 @@ class CertificateDeployDialog(tk.Toplevel):
             "overwrite": self._overwrite_var.get(),
             "sudo_password": self._sudo_password_var.get(),
             "post_command": self._post_command.get("1.0", "end").strip(),
+            "close_on_success": self._close_on_success_var.get(),
         }
         self.destroy()
 
