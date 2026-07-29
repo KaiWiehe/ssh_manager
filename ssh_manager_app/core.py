@@ -233,9 +233,9 @@ def build_remote_command_wt_command(
         script_lines.append("status=$?")
         if not close_on_success:
             if sudo_password:
-                script_lines.append("if [ $status -eq 0 ]; then unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec bash; fi")
+                script_lines.append(f"if [ $status -eq 0 ]; then unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec {ssh_cmd}; fi")
             else:
-                script_lines.append("if [ $status -eq 0 ]; then exec bash; fi")
+                script_lines.append(f"if [ $status -eq 0 ]; then exec {ssh_cmd}; fi")
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
         script_path = _write_temp_bash_script("remote_cmd_", "\n".join(script_lines) + "\n")
@@ -379,9 +379,9 @@ def build_remote_script_wt_command(
             script_lines.insert(1, "trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT")
         if not close_on_success:
             if sudo_password:
-                script_lines.append("if [ $status -eq 0 ]; then unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec bash; fi")
+                script_lines.append(f"if [ $status -eq 0 ]; then unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec {ssh_cmd}; fi")
             else:
-                script_lines.append("if [ $status -eq 0 ]; then exec bash; fi")
+                script_lines.append(f"if [ $status -eq 0 ]; then exec {ssh_cmd}; fi")
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
         script_path = _write_temp_bash_script("remote_script_", "\n".join(script_lines) + "\n")

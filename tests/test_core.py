@@ -61,7 +61,7 @@ def test_build_remote_command_wt_command_creates_temp_script_and_uses_git_bash()
     script_text = captured["content"]
     assert "ssh deploy@10.0.0.9 -t <<'__REMOTE_CMD__'" in script_text
     assert "uptime" in script_text
-    assert "exec bash" in script_text
+    assert "exec ssh deploy@10.0.0.9" in script_text
 
 
 def test_build_remote_command_wt_command_passes_optional_sudo_password_without_command_args():
@@ -79,7 +79,7 @@ def test_build_remote_command_wt_command_passes_optional_sudo_password_without_c
     assert "SSH_MANAGER_SUDO_PASSWORD='secret'\"'\"'value'" in captured["content"]
     assert "command sudo -S -p '' \"$@\"" in captured["content"]
     assert "trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT" in captured["content"]
-    assert "unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec bash" in captured["content"]
+    assert "unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec ssh deploy@10.0.0.9" in captured["content"]
 
 
 def test_build_certificate_deploy_wt_command_uploads_all_files_then_installs_and_runs_post_command():
