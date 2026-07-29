@@ -5,6 +5,7 @@ import threading
 import os
 import re
 import tempfile
+from datetime import datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from tkinter import messagebox
@@ -43,6 +44,26 @@ def _format_timestamp(value: str) -> str:
     return ", ".join(formatted)
 
 
+def _earliest_certificate_expiry(value: str) -> str:
+    """Return only the earliest certificate expiry from a keystore chain."""
+    parsed_dates = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}:\d{2}:\d{2})", item)
+        try:
+            if iso:
+                parsed_dates.append(datetime.strptime(f"{iso.group(1)}-{iso.group(2)}-{iso.group(3)} {iso.group(4)}", "%Y-%m-%d %H:%M:%S"))
+            else:
+                parsed_dates.append(parsedate_to_datetime(item).replace(tzinfo=None))
+        except (TypeError, ValueError, IndexError):
+            continue
+    if parsed_dates:
+        return min(parsed_dates).strftime("%d.%m.%Y %H:%M:%S")
+    return _format_timestamp(value)
+
+
 def _local_certificate_expiry(path: str, keystore_password: str) -> str:
     suffix = Path(path).suffix.lower()
     if suffix not in {".crt", ".pem", ".p12", ".pfx", ".jks"}:
@@ -70,7 +91,7 @@ def _local_certificate_expiry(path: str, keystore_password: str) -> str:
             output = certificate.stdout if certificate.returncode == 0 else ""
         if suffix == ".jks":
             dates = [line.split("until:", 1)[1].strip() for line in output.splitlines() if "until:" in line]
-            return _format_timestamp(", ".join(dates)) if dates else "nicht ermittelt (kein Zertifikat gefunden)"
+            return _earliest_certificate_expiry(", ".join(dates)) if dates else "nicht ermittelt (kein Zertifikat gefunden)"
         date = next((line.split("=", 1)[1] for line in output.splitlines() if line.startswith("notAfter=")), "")
         return _format_timestamp(date)
     except (OSError, subprocess.TimeoutExpired):
@@ -193,11 +214,11 @@ def _show_replace_preview(app, progress, scanned, spec, source_summary) -> None:
     for host_index, (session, user, result) in enumerate(scanned):
         report_lines.extend([f"{session.display_name} ({session.hostname})", "-" * 50])
         for name, target, modified, expiry in result["matches"]:
-            modified, expiry = _format_timestamp(modified), _format_timestamp(expiry)
+            modified, expiry = _format_timestamp(modified), _earliest_certificate_expiry(expiry)
             selectable_matches.append((host_index, f"{session.display_name} ({session.hostname})", name, target, modified, expiry))
             report_lines.append(f"  ERSETZEN: {name} → {target}")
             report_lines.append(f"    Dateizeitstempel: {modified or 'nicht ermittelt'}")
-            report_lines.append(f"    Zertifikat gültig bis: {expiry or 'nicht ermittelt'}")
+            report_lines.append(f"    Zertifikat läuft frühestens ab: {expiry or 'nicht ermittelt'}")
         for name, target, _modified, _expiry in result["symlinks"]:
             report_lines.append(f"  AUSLASSEN (Symlink): {name} → {target}")
         for warning in result.get("warnings", []): report_lines.append(f"  HINWEIS: {warning}")
