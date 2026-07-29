@@ -141,6 +141,7 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
             label = f"{name} → {target}\n    Dateizeitstempel: {modified or 'nicht ermittelt'} | Läuft frühestens ab: {expiry or 'nicht ermittelt'}"
             tk.Checkbutton(self._choices_frame, text=label, variable=value, anchor="w", justify="left", wraplength=750).pack(fill="x", anchor="w", pady=2)
             self._choice_vars.append(((host_index, name, target), value))
+        self._bind_choice_mousewheel(self._choices)
         self._details = ttk.LabelFrame(frame, text="Hinweise und Scan-Ergebnis", padding=6); self._details.pack(fill="both", expand=True, pady=(2, 0))
         text = scrolledtext.ScrolledText(self._details, wrap="word", height=11); text.pack(fill="both", expand=True)
         text.tag_configure("host", font=("Segoe UI", 10, "bold"))
@@ -182,6 +183,20 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
         canvas.configure(scrollregion=(0, 0, max(canvas.winfo_width(), bbox[2]), max(canvas.winfo_height(), bbox[3])))
         if bbox[3] <= canvas.winfo_height():
             canvas.yview_moveto(0)
+
+    def _bind_choice_mousewheel(self, widget):
+        widget.bind("<MouseWheel>", self._scroll_choices_with_mousewheel, add="+")
+        for child in widget.winfo_children():
+            self._bind_choice_mousewheel(child)
+
+    def _scroll_choices_with_mousewheel(self, event):
+        if not self._choices_visible:
+            return None
+        bbox = self._choices_canvas.bbox("all")
+        if not bbox or bbox[3] <= self._choices_canvas.winfo_height():
+            return None
+        self._choices_canvas.yview_scroll(-int(event.delta / 120), "units")
+        return "break"
 
     def _confirm(self):
         self.result = {key for key, value in self._choice_vars if value.get()}
