@@ -194,6 +194,9 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
         remote_favorites = toolbar_texts.get("remote_command_favorites")
         if isinstance(remote_favorites, list):
             toolbar_texts["remote_command_favorites"] = [item for item in remote_favorites if isinstance(item, dict)]
+        certificate_whitelist = toolbar_texts.get("certificate_replace_whitelist")
+        if isinstance(certificate_whitelist, list):
+            toolbar_texts["certificate_replace_whitelist"] = [str(item).strip() for item in certificate_whitelist if str(item).strip().startswith("/")]
         favorites = data.get("favorite_sessions", {})
         if not isinstance(favorites, dict):
             favorites = {}

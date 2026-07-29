@@ -240,6 +240,12 @@ def deploy_certificate_files_callback(app, sessions) -> None:
     deploy_certificate_files(app, sessions)
 
 
+def replace_certificates_callback(app, sessions) -> None:
+    from .actions_certificate_replace import replace_certificates
+
+    replace_certificates(app, sessions)
+
+
 def open_dns_lookup_dialog_callback(app) -> None:
     from .actions_dns import open_dns_lookup_dialog
 
@@ -708,6 +714,7 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Dateien übertragen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
+    actions_menu.add_command(label="Zertifikate ersetzen…", command=lambda: replace_certificates_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_separator()
     actions_menu.add_command(label="DNS/IP auflösen…", command=lambda: open_dns_lookup_dialog_callback(self))
     actions_menu.add_command(label="DNS/IP für Auswahl auflösen…", command=lambda: resolve_dns_for_sessions_callback(self, self._tree.get_selected_sessions()))
@@ -804,6 +811,7 @@ def build_main_ui(self) -> None:
         on_open_in_winscp=lambda sessions: open_in_winscp_callback(self, sessions),
         on_run_remote_command=lambda sessions: run_remote_command_callback(self, sessions),
         on_deploy_certificate_files=lambda sessions: deploy_certificate_files_callback(self, sessions),
+        on_replace_certificates=lambda sessions: replace_certificates_callback(self, sessions),
         on_resolve_dns=lambda sessions: resolve_dns_for_sessions_callback(self, sessions),
         on_resolve_dns_with_server=lambda sessions: resolve_dns_for_sessions_with_server_callback(self, sessions),
         on_open_via_jumphost=lambda session: open_via_jumphost_callback(self, session),

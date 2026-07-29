@@ -536,6 +536,74 @@ def build_certificate_deploy_wt_command(
         parts.append(f"wt.exe {tab_cmd}" if index == 0 else tab_cmd)
     return " ; ".join(parts)
 
+
+def build_certificate_replace_wt_command(
+    session_replacements: list[tuple[Session, str, dict]],
+    *,
+    session_colors: dict[str, str] | None = None,
+    terminal_settings: WindowsTerminalSettings | None = None,
+) -> str:
+    """Create per-host terminal tabs that replace scanned certificate matches."""
+    settings = terminal_settings or WindowsTerminalSettings()
+    git_bash = _find_git_bash()
+    colors = session_colors or {}
+    profile_flag = _terminal_profile_flag(settings.profile_name)
+    parts: list[str] = []
+    for index, (session, user, spec) in enumerate(session_replacements):
+        files_by_name = {Path(path).name: str(path) for path in spec["files"]}
+        matches = [(str(name), str(path)) for name, path in spec["matches"]]
+        sudo_password = str(spec.get("sudo_password") or "")
+        post_command = str(spec.get("post_command") or "").strip()
+        close_on_success = bool(spec.get("close_on_success"))
+        run_id = uuid.uuid4().hex
+        temp_paths = {name: f"/tmp/ssh-manager-replace-{run_id}-{item_index}" for item_index, name in enumerate(files_by_name)}
+        ssh_cmd = _build_ssh_command(session, user)
+        if session.is_ssh_config_session:
+            scp_target, scp_port = session.display_name, ""
+        else:
+            scp_target = _ssh_target(session.hostname or session.display_name, user, session.port)
+            scp_port = f"-P {session.port} " if session.port != 22 else ""
+
+        script_lines = ["#!/usr/bin/env bash", "trap 'rm -f \"$0\"' EXIT", "set -u", "echo 'Zertifikate ersetzen'"]
+        for name, local_path in files_by_name.items():
+            script_lines.extend([
+                f"scp {scp_port}{_shell_single_quote(local_path)} {scp_target}:{_shell_single_quote(temp_paths[name])}",
+                "if [ $? -ne 0 ]; then echo 'FEHLER: Upload fehlgeschlagen.'; exit 1; fi",
+            ])
+        remote_lines = [
+            "set -u",
+            *(_sudo_password_prelude(sudo_password)),
+            "cleanup() { rm -f -- " + " ".join(_shell_single_quote(path) for path in temp_paths.values()) + "; }",
+            "trap cleanup EXIT",
+            "echo 'Ersetze gefundene Zertifikate …'",
+        ]
+        for name, target in matches:
+            temp_path = temp_paths[name]
+            remote_lines.extend([
+                f"target={_shell_single_quote(target)}",
+                "metadata=$(sudo stat -c '%u:%g:%a' -- \"$target\") || { echo \"FEHLER: Metadaten nicht lesbar: $target\"; exit 1; }",
+                f"sudo cp -f -- {_shell_single_quote(temp_path)} \"$target\" || {{ echo \"FEHLER: Kopieren fehlgeschlagen: $target\"; exit 1; }}",
+                "IFS=':' read -r owner group mode <<< \"$metadata\"",
+                "sudo chown \"$owner:$group\" -- \"$target\" && sudo chmod \"$mode\" -- \"$target\" || { echo \"FEHLER: Metadaten nicht wiederhergestellt: $target\"; exit 1; }",
+                "echo \"  OK: $target\"",
+            ])
+        if post_command:
+            remote_lines.extend(["echo 'Führe Nach-Befehl aus …'", post_command, "post_status=$?", "[ $post_status -eq 0 ] || exit $post_status"])
+        remote_lines.append("echo 'ZUSAMMENFASSUNG: Zertifikate erfolgreich ersetzt.'")
+        script_lines.extend([f"{ssh_cmd} -t <<'__CERT_REPLACE__'", *remote_lines, "__CERT_REPLACE__", "status=$?"])
+        if close_on_success:
+            script_lines.append("if [ $status -eq 0 ]; then exit 0; fi")
+        else:
+            script_lines.append(f"if [ $status -eq 0 ]; then rm -f \"$0\"; exec {ssh_cmd}; fi")
+        script_lines.extend(["echo \"Ersetzen fehlgeschlagen (Exit-Code: $status).\"", "read", "exit $status"])
+        script_path = _write_temp_bash_script("certificate_replace_", "\n".join(script_lines) + "\n")
+        color = colors.get(session.key) if settings.use_tab_color else None
+        color_flag = f'--tabColor "{color}" ' if color else ""
+        title_flag = _terminal_title_flag(session, user, settings.title_mode)
+        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
+        parts.append(f"wt.exe {tab_cmd}" if index == 0 else tab_cmd)
+    return " ; ".join(parts)
+
 def _write_temp_bash_script(prefix: str, content: str) -> str:
     """Schreibt ein temporäres Bash-Skript für WT/Git Bash und gibt den Windows-Pfad zurück."""
     script_dir = _STATE_FILE.parent / "tmp"

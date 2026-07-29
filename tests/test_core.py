@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from ssh_manager_app.core import (
     build_jump_wt_command,
     build_certificate_deploy_wt_command,
+    build_certificate_replace_wt_command,
     build_remote_command_wt_command,
     build_ssh_tunnel_command,
 )
@@ -175,6 +176,21 @@ def test_build_certificate_deploy_wt_command_keeps_bash_open_by_default_and_can_
     assert "exec ssh deploy@10.0.0.9" in build_content(False)
     assert "exec bash" not in build_content(False)
     assert "  exit 0" in build_content(True)
+
+
+def test_build_certificate_replace_preserves_target_metadata_and_runs_post_command():
+    session = Session("app__srv", "App", [], "10.0.0.9")
+    captured = {}
+    with patch("ssh_manager_app.core._find_git_bash", return_value="bash"), \
+         patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda _prefix, content: captured.update(content=content) or "/tmp/replace.sh"):
+        build_certificate_replace_wt_command(
+            [(session, "deploy", {"files": [r"C:\\certs\\keystore.jks"], "matches": [("keystore.jks", "/opt/wildfly-a/keystore.jks")], "post_command": "sudo systemctl restart wildfly.service"})],
+        )
+    script = captured["content"]
+    assert "sudo stat -c '%u:%g:%a'" in script
+    assert "sudo chown \"$owner:$group\"" in script
+    assert "sudo chmod \"$mode\"" in script
+    assert "sudo systemctl restart wildfly.service" in script
 
 
 def test_build_ssh_tunnel_command_returns_expected_wt_args():
