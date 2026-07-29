@@ -408,7 +408,7 @@ def build_certificate_deploy_wt_command(
 
     for index, (session, user, spec) in enumerate(session_deployments):
         files = [str(path) for path in spec["files"]]
-        target_dir = str(spec["target_dir"])
+        target_dirs = [str(path) for path in (spec.get("target_dirs") or [spec["target_dir"]])]
         overwrite = bool(spec.get("overwrite"))
         sudo_password = str(spec.get("sudo_password") or "")
         post_command = str(spec.get("post_command") or "").strip()
@@ -429,7 +429,7 @@ def build_certificate_deploy_wt_command(
             "set -u",
             f"printf '%s\\n' {_shell_single_quote('Dateiübertragung')}",
             f"printf '%s\\n' {_shell_single_quote(f'Host: {session.display_name} ({session.hostname})')}",
-            f"printf '%s\\n' {_shell_single_quote(f'Zielordner: {target_dir}')}",
+            f"printf '%s\\n' {_shell_single_quote('Zielordner: ' + ', '.join(target_dirs))}",
             "printf '%s\\n' 'Upload nach /tmp:'",
         ]
         for local_path, remote_tmp in zip(files, remote_tmp_files):
@@ -452,36 +452,44 @@ def build_certificate_deploy_wt_command(
             "cleanup() { rm -f -- " + " ".join(_shell_single_quote(path) for path in remote_tmp_files) + "; }",
             "trap cleanup EXIT",
             "header 'Dateien installieren'",
-            f"target_dir={_shell_single_quote(target_dir)}",
-            "if ! sudo mkdir -p -- \"$target_dir\"; then",
-            "  echo 'FEHLER: Zielordner konnte nicht erstellt oder geöffnet werden.'",
-            "  exit 1",
-            "fi",
+            "target_dirs=(" + " ".join(_shell_single_quote(path) for path in target_dirs) + ")",
+            "for target_dir in \"${target_dirs[@]}\"; do",
+            "  if ! sudo mkdir -p -- \"$target_dir\"; then",
+            "    echo \"FEHLER: Zielordner konnte nicht erstellt oder geöffnet werden: $target_dir\"",
+            "    exit 1",
+            "  fi",
+            "done",
         ]
         if not overwrite:
             remote_lines.append("echo 'Prüfe, ob vorhandene Dateien überschrieben würden …'")
+            remote_lines.append("for target_dir in \"${target_dirs[@]}\"; do")
             for local_path in files:
-                target_path = f"{target_dir}/{Path(local_path).name}" if target_dir != "/" else f"/{Path(local_path).name}"
+                filename = Path(local_path).name
                 remote_lines.extend([
-                    f"if [ -e {_shell_single_quote(target_path)} ]; then",
-                    f"  echo {_shell_single_quote('AUSGELASSEN: Zieldatei existiert bereits: ' + target_path)}",
-                    "  echo 'Es wurde keine Datei dieses Hosts ersetzt und kein Nach-Befehl ausgeführt.'",
-                    "  exit 2",
-                    "fi",
+                    f"  target_file=\"$target_dir\"/{_shell_single_quote(filename)}",
+                    "  if [ -e \"$target_file\" ]; then",
+                    "    echo \"AUSGELASSEN: Zieldatei existiert bereits: $target_file\"",
+                    "    echo 'Es wurde keine Datei dieses Hosts ersetzt und kein Nach-Befehl ausgeführt.'",
+                    "    exit 2",
+                    "  fi",
                 ])
+            remote_lines.append("done")
         else:
             remote_lines.append("echo 'Vorhandene Zieldateien dürfen überschrieben werden.'")
 
         remote_lines.append("echo 'Installiere Dateien:'")
+        remote_lines.append("for target_dir in \"${target_dirs[@]}\"; do")
         for local_path, remote_tmp in zip(files, remote_tmp_files):
-            target_path = f"{target_dir}/{Path(local_path).name}" if target_dir != "/" else f"/{Path(local_path).name}"
+            filename = Path(local_path).name
             remote_lines.extend([
-                f"if ! sudo cp -f -- {_shell_single_quote(remote_tmp)} {_shell_single_quote(target_path)}; then",
-                f"  echo {_shell_single_quote('FEHLER: Datei konnte nicht installiert werden: ' + target_path)}",
-                "  exit 1",
-                "fi",
-                f"echo {_shell_single_quote('  OK: ' + target_path)}",
+                f"  target_file=\"$target_dir\"/{_shell_single_quote(filename)}",
+                f"  if ! sudo cp -f -- {_shell_single_quote(remote_tmp)} \"$target_file\"; then",
+                "    echo \"FEHLER: Datei konnte nicht installiert werden: $target_file\"",
+                "    exit 1",
+                "  fi",
+                "  echo \"  OK: $target_file\"",
             ])
+        remote_lines.append("done")
         if post_command:
             remote_lines.extend([
                 "header 'Nach-Befehl nach erfolgreichem Upload'",
@@ -494,7 +502,7 @@ def build_certificate_deploy_wt_command(
             ])
         remote_lines.extend([
             "header 'ZUSAMMENFASSUNG'",
-            f"echo {_shell_single_quote(f'Erfolgreich übertragen: {len(files)} Datei(en) nach {target_dir}')}",
+            f"echo {_shell_single_quote(f'Erfolgreich übertragen: {len(files)} Datei(en) in {len(target_dirs)} Zielordner')}",
             "echo 'Temporäre Dateien werden bereinigt.'",
         ])
         script_lines.extend([

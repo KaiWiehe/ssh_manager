@@ -107,8 +107,9 @@ def test_build_certificate_deploy_wt_command_uploads_all_files_then_installs_and
     assert script.count("scp ") == 2
     assert "SSH_MANAGER_SUDO_PASSWORD='secret'" in script
     assert "sudo cp -f --" in script
-    assert "/etc/wildfly/certs/server.crt" in script
-    assert "/etc/wildfly/certs/server.key" in script
+    assert "target_dirs=('/etc/wildfly/certs')" in script
+    assert "'server.crt'" in script
+    assert "'server.key'" in script
     assert "sudo systemctl restart wildfly.service" in script
     assert script.index("scp ") < script.index("sudo cp -f --") < script.index("sudo systemctl restart wildfly.service")
 
@@ -132,6 +133,26 @@ def test_build_certificate_deploy_wt_command_blocks_existing_files_without_overw
     script = captured["content"]
     assert "AUSGELASSEN: Zieldatei existiert bereits" in script
     assert "Es wurde keine Datei dieses Hosts ersetzt und kein Nach-Befehl ausgeführt." in script
+
+
+def test_build_certificate_deploy_wt_command_copies_to_every_target_directory_after_precheck():
+    session = Session("app__srv", "App", [], "10.0.0.9")
+    captured = {}
+
+    with patch("ssh_manager_app.core._find_git_bash", return_value="bash"), \
+         patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda _prefix, content: captured.update(content=content) or "/tmp/cert-deploy.sh"):
+        build_certificate_deploy_wt_command(
+            [(session, "deploy", {
+                "files": [r"C:\\certs\\server.crt"],
+                "target_dirs": ["/opt/wildfly-a/certs", "/opt/wildfly-b/certs"],
+                "overwrite": False,
+            })],
+        )
+
+    script = captured["content"]
+    assert "target_dirs=('/opt/wildfly-a/certs' '/opt/wildfly-b/certs')" in script
+    assert script.index("Prüfe, ob vorhandene Dateien überschrieben würden") < script.index("sudo cp -f --")
+    assert "Erfolgreich übertragen: 1 Datei(en) in 2 Zielordner" in script
 
 
 def test_build_certificate_deploy_wt_command_keeps_bash_open_by_default_and_can_close_tab():

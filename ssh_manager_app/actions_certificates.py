@@ -34,10 +34,12 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
     deployment = dialog.result
     overwrite_text = "Ja" if deployment["overwrite"] else "Nein (vorhandene Dateien blockieren den Host)"
     post_text = "Ja" if deployment["post_command"] else "Nein"
+    target_dirs = deployment["target_dirs"]
+    target_preview = "\n".join(f"  - {path}" for path in target_dirs)
     confirmation = (
         f"Dateien: {len(deployment['files'])}\n"
         f"Hosts: {len(runnable)}\n"
-        f"Zielordner: {deployment['target_dir']}\n"
+        f"Zielordner ({len(target_dirs)}):\n{target_preview}\n"
         f"Überschreiben: {overwrite_text}\n"
         f"Nach-Befehl: {post_text}\n\n"
         "Übertragung jetzt starten?"

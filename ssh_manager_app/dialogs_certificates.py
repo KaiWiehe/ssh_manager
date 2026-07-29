@@ -207,7 +207,6 @@ class CertificateDeployDialog(tk.Toplevel):
         self._files: list[str] = []
         self._reference_sessions = reference_sessions or []
         self._favorites = [item for item in (favorites or []) if item.get("mode", "command") == "command" and str(item.get("command", "")).strip()]
-        self._target_dir_var = tk.StringVar()
         self._overwrite_var = tk.BooleanVar(value=False)
         self._sudo_password_var = tk.StringVar()
         self._show_password_var = tk.BooleanVar(value=False)
@@ -241,13 +240,14 @@ class CertificateDeployDialog(tk.Toplevel):
         destination = ttk.LabelFrame(root, text="Ziel", padding=10)
         destination.grid(row=3, column=0, sticky="ew", pady=(10, 0))
         destination.columnconfigure(1, weight=1)
-        ttk.Label(destination, text="Zielordner:").grid(row=0, column=0, sticky="w", padx=(0, 8))
-        ttk.Entry(destination, textvariable=self._target_dir_var).grid(row=0, column=1, sticky="ew")
+        ttk.Label(destination, text="Zielordner:").grid(row=0, column=0, sticky="nw", padx=(0, 8))
+        self._target_dirs_text = scrolledtext.ScrolledText(destination, wrap="none", height=3)
+        self._target_dirs_text.grid(row=0, column=1, sticky="ew")
         self._browse_button = ttk.Button(destination, text="Auf Server durchsuchen…", command=self._browse_remote_folders)
         self._browse_button.grid(row=0, column=2, padx=(8, 0))
         if not self._reference_sessions:
             self._browse_button.configure(state="disabled")
-        ttk.Label(destination, text="Alle ausgewählten Dateien behalten ihren Namen.", foreground="#666666").grid(row=1, column=1, sticky="w", pady=(4, 0))
+        ttk.Label(destination, text="Ein absoluter Linux-Pfad pro Zeile. Alle ausgewählten Dateien behalten ihren Namen.", foreground="#666666").grid(row=1, column=1, sticky="w", pady=(4, 0))
         ttk.Checkbutton(destination, text="Vorhandene Dateien überschreiben", variable=self._overwrite_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         security = ttk.LabelFrame(root, text="sudo", padding=10)
@@ -321,15 +321,22 @@ class CertificateDeployDialog(tk.Toplevel):
         self._post_command.insert("1.0", command)
 
     def _browse_remote_folders(self) -> None:
+        target_dirs = self._get_target_dirs()
         dialog = RemoteFolderBrowserDialog(
             self,
             self._reference_sessions,
-            self._target_dir_var.get().strip() or "/",
+            target_dirs[-1] if target_dirs else "/",
             self._sudo_password_var.get(),
         )
         self.wait_window(dialog)
         if dialog.result:
-            self._target_dir_var.set(dialog.result)
+            if dialog.result not in target_dirs:
+                target_dirs.append(dialog.result)
+                self._target_dirs_text.delete("1.0", "end")
+                self._target_dirs_text.insert("1.0", "\n".join(target_dirs))
+
+    def _get_target_dirs(self) -> list[str]:
+        return [line.strip() for line in self._target_dirs_text.get("1.0", "end").splitlines() if line.strip()]
 
     def _on_ok(self) -> None:
         if not self._files:
@@ -343,16 +350,17 @@ class CertificateDeployDialog(tk.Toplevel):
         if len(names) != len(set(names)):
             messagebox.showwarning("Doppelte Dateinamen", "Die ausgewählten Dateien müssen unterschiedliche Dateinamen haben.", parent=self)
             return
-        target_dir = self._target_dir_var.get().strip()
-        if not target_dir.startswith("/"):
-            messagebox.showwarning("Ungültiger Zielordner", "Bitte einen absoluten Linux-Pfad angeben, z. B. /etc/ssl/private.", parent=self)
+        target_dirs = self._get_target_dirs()
+        if not target_dirs:
+            messagebox.showwarning("Kein Zielordner", "Bitte mindestens einen Zielordner angeben.", parent=self)
             return
-        if "\n" in target_dir or "\r" in target_dir:
-            messagebox.showwarning("Ungültiger Zielordner", "Der Zielordner darf keinen Zeilenumbruch enthalten.", parent=self)
+        if any(not path.startswith("/") for path in target_dirs):
+            messagebox.showwarning("Ungültiger Zielordner", "Bitte ausschließlich absolute Linux-Pfade angeben, z. B. /etc/ssl/private.", parent=self)
             return
+        target_dirs = list(dict.fromkeys(path.rstrip("/") or "/" for path in target_dirs))
         self.result = {
             "files": list(self._files),
-            "target_dir": target_dir.rstrip("/") or "/",
+            "target_dirs": target_dirs,
             "overwrite": self._overwrite_var.get(),
             "sudo_password": self._sudo_password_var.get(),
             "post_command": self._post_command.get("1.0", "end").strip(),
