@@ -82,6 +82,7 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self._path_var = tk.StringVar(value=initial_path or "/")
         self._status_var = tk.StringVar(value="Ordner werden geladen …")
         self._entries: list[tuple[str, str]] = []
+        self._load_generation = 0
 
         self.transient(parent)
         self.grab_set()
@@ -130,20 +131,28 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
             return
         self._path_var.set(path.rstrip("/") or "/")
         self._folders.delete(0, "end")
+        self._entries = []
+        self._folders.configure(state="disabled")
         self._status_var.set("Ordner werden geladen …")
         self._host_combo.configure(state="disabled")
         session, user = self._selected_session_user()
-        threading.Thread(target=self._load_worker, args=(session, user, self._path_var.get(), self._sudo_password), daemon=True).start()
+        self._load_generation += 1
+        generation = self._load_generation
+        threading.Thread(target=self._load_worker, args=(session, user, self._path_var.get(), self._sudo_password, generation), daemon=True).start()
 
-    def _load_worker(self, session: Session, user: str, path: str, sudo_password: str) -> None:
+    def _load_worker(self, session: Session, user: str, path: str, sudo_password: str, generation: int) -> None:
         folders, error = _ssh_folder_list_command(session, user, path, sudo_password)
-        self.after(0, lambda: self._show_folders(folders, error))
+        self.after(0, lambda: self._show_folders(folders, error, generation))
 
-    def _show_folders(self, entries: list[tuple[str, str]], error: str) -> None:
+    def _show_folders(self, entries: list[tuple[str, str]], error: str, generation: int) -> None:
+        if generation != self._load_generation:
+            return
         self._host_combo.configure(state="readonly")
+        self._folders.configure(state="normal")
         if error:
             self._status_var.set(f"Abfrage fehlgeschlagen: {error}")
             return
+        self._folders.delete(0, "end")
         self._entries = _sort_remote_entries(entries)
         folder_count = 0
         file_count = 0
@@ -167,7 +176,11 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         selected = self._folders.curselection()
         if not selected:
             return
-        entry_type, entry_path = self._entries[selected[0]]
+        index = selected[0]
+        if index >= len(self._entries):
+            self._status_var.set("Die Ordnerliste wurde gerade aktualisiert. Bitte den Eintrag erneut auswählen.")
+            return
+        entry_type, entry_path = self._entries[index]
         if entry_type != "d":
             self._status_var.set("Dateien dienen nur als Kontext. Bitte einen Ordner auswählen.")
             return
