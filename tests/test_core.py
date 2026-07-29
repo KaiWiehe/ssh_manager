@@ -151,7 +151,8 @@ def test_build_certificate_deploy_wt_command_keeps_bash_open_by_default_and_can_
             )
         return captured["content"]
 
-    assert "exec bash" in build_content(False)
+    assert "exec ssh deploy@10.0.0.9" in build_content(False)
+    assert "exec bash" not in build_content(False)
     assert "  exit 0" in build_content(True)
 
 

@@ -512,7 +512,7 @@ def build_certificate_deploy_wt_command(
         else:
             script_lines.extend([
                 "  rm -f \"$0\"",
-                "  exec bash",
+                f"  exec {ssh_cmd}",
             ])
         script_lines.extend([
             "fi",
