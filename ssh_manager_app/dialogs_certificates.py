@@ -14,8 +14,8 @@ def _shell_single_quote(text: str) -> str:
     return "'" + text.replace("'", "'\"'\"'") + "'"
 
 
-def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_password: str) -> tuple[list[str], str]:
-    """Read direct child directories over SSH without exposing the password in args."""
+def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_password: str) -> tuple[list[tuple[str, str]], str]:
+    """Read direct child entries over SSH without exposing the password in args."""
     if session.is_ssh_config_session:
         command = ["ssh", "-o", "BatchMode=yes", session.display_name, "bash", "-s"]
     else:
@@ -33,9 +33,9 @@ def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_passwo
     script.extend([
         f"path={_shell_single_quote(path)}",
         "if [ -d \"$path\" ] && [ -r \"$path\" ] && [ -x \"$path\" ]; then",
-        "  find \"$path\" -mindepth 1 -maxdepth 1 -type d -printf '%p\\n' | sort",
+        "  find \"$path\" -mindepth 1 -maxdepth 1 -printf '%y\\t%p\\n' | sort -t $'\\t' -k2",
         "else",
-        "  sudo find \"$path\" -mindepth 1 -maxdepth 1 -type d -printf '%p\\n' | sort",
+        "  sudo find \"$path\" -mindepth 1 -maxdepth 1 -printf '%y\\t%p\\n' | sort -t $'\\t' -k2",
         "fi",
     ])
     remote_input = ("\n".join(script) + "\n").encode("utf-8")
@@ -54,7 +54,12 @@ def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_passwo
         error = output.decode("utf-8", errors="replace").strip() if isinstance(output, bytes) else str(output).strip()
         return [], error
     output = completed.stdout.decode("utf-8", errors="replace") if isinstance(completed.stdout, bytes) else str(completed.stdout)
-    return [line.strip() for line in output.splitlines() if line.strip()], ""
+    entries: list[tuple[str, str]] = []
+    for line in output.splitlines():
+        entry_type, separator, entry_path = line.partition("\t")
+        if separator and entry_path.strip():
+            entries.append((entry_type, entry_path.strip()))
+    return entries, ""
 
 
 class RemoteFolderBrowserDialog(tk.Toplevel):
@@ -71,6 +76,7 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self._host_var = tk.StringVar(value=self._host_label(session_users[0]))
         self._path_var = tk.StringVar(value=initial_path or "/")
         self._status_var = tk.StringVar(value="Ordner werden geladen …")
+        self._entries: list[tuple[str, str]] = []
 
         self.transient(parent)
         self.grab_set()
@@ -128,20 +134,39 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         folders, error = _ssh_folder_list_command(session, user, path, sudo_password)
         self.after(0, lambda: self._show_folders(folders, error))
 
-    def _show_folders(self, folders: list[str], error: str) -> None:
+    def _show_folders(self, entries: list[tuple[str, str]], error: str) -> None:
         self._host_combo.configure(state="readonly")
         if error:
             self._status_var.set(f"Abfrage fehlgeschlagen: {error}")
             return
-        for folder in folders:
-            self._folders.insert("end", folder)
-        self._status_var.set(f"{len(folders)} Unterordner gefunden. Doppelklick öffnet einen Ordner.")
+        self._entries = entries
+        folder_count = 0
+        file_count = 0
+        for entry_type, entry_path in entries:
+            if entry_type == "d":
+                prefix = "📁"
+                folder_count += 1
+            elif entry_type == "f":
+                prefix = "📄"
+                file_count += 1
+            elif entry_type == "l":
+                prefix = "🔗"
+                file_count += 1
+            else:
+                prefix = "•"
+                file_count += 1
+            self._folders.insert("end", f"{prefix}  {entry_path}")
+        self._status_var.set(f"{folder_count} Ordner und {file_count} Dateien/Einträge gefunden. Doppelklick öffnet nur Ordner.")
 
     def _open_selected(self) -> None:
         selected = self._folders.curselection()
         if not selected:
             return
-        self._path_var.set(self._folders.get(selected[0]))
+        entry_type, entry_path = self._entries[selected[0]]
+        if entry_type != "d":
+            self._status_var.set("Dateien dienen nur als Kontext. Bitte einen Ordner auswählen.")
+            return
+        self._path_var.set(entry_path)
         self._load()
 
     def _up(self) -> None:

@@ -7,12 +7,12 @@ from ssh_manager_app.models import Session
 
 def test_remote_folder_listing_uses_ssh_stdin_for_sudo_password_not_arguments():
     session = Session("app__srv", "App", [], "10.0.0.9", port=2222)
-    completed = SimpleNamespace(returncode=0, stdout=b"/etc/ssl/certs\n/etc/ssl/private\n", stderr=b"")
+    completed = SimpleNamespace(returncode=0, stdout=b"d\t/etc/ssl/certs\nf\t/etc/ssl/old-cert.pem\n", stderr=b"")
 
     with patch("ssh_manager_app.dialogs_certificates.subprocess.run", return_value=completed) as run:
         folders, error = _ssh_folder_list_command(session, "deploy", "/etc/ssl", "secret")
 
-    assert folders == ["/etc/ssl/certs", "/etc/ssl/private"]
+    assert folders == [("d", "/etc/ssl/certs"), ("f", "/etc/ssl/old-cert.pem")]
     assert error == ""
     command = run.call_args.args[0]
     assert "secret" not in command
@@ -21,6 +21,7 @@ def test_remote_folder_listing_uses_ssh_stdin_for_sudo_password_not_arguments():
     assert "\r" not in remote_script
     assert "SSH_MANAGER_SUDO_PASSWORD='secret'" in remote_script
     assert "-maxdepth 1" in remote_script
+    assert "%y\\t%p" in remote_script
 
 
 def test_remote_folder_listing_returns_ssh_errors():
