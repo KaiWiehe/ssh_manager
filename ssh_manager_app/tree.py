@@ -69,6 +69,7 @@ class SessionTree(ttk.Frame):
         on_open_tunnel=None,                # Callable[[Session], None] | None
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
+        on_restart_servers=None,            # Callable[[list[Session]], None] | None
         on_deploy_certificate_files=None,   # Callable[[list[Session]], None] | None
         on_replace_certificates=None,       # Callable[[list[Session]], None] | None
         on_resolve_dns=None,                # Callable[[list[Session]], None] | None
@@ -111,6 +112,7 @@ class SessionTree(ttk.Frame):
         self._on_open_tunnel = on_open_tunnel
         self._on_open_in_winscp = on_open_in_winscp
         self._on_run_remote_command = on_run_remote_command
+        self._on_restart_servers = on_restart_servers
         self._on_deploy_certificate_files = on_deploy_certificate_files
         self._on_replace_certificates = on_replace_certificates
         self._on_resolve_dns = on_resolve_dns
@@ -1041,6 +1043,12 @@ class SessionTree(ttk.Frame):
                     label=f"Befehl auf Ordner ausführen… ({len(folder_sessions)})",
                     command=lambda ss=list(folder_sessions): self._on_run_remote_command(ss),
                 )
+            restart_servers = getattr(self, "_on_restart_servers", None)
+            if restart_servers:
+                menu.add_command(
+                    label=f"Server im Ordner neu starten… ({len(folder_sessions)})",
+                    command=lambda ss=list(folder_sessions), callback=restart_servers: callback(ss),
+                )
             if getattr(self, "_on_deploy_certificate_files", None):
                 menu.add_command(
                     label=f"Dateien übertragen… ({len(folder_sessions)})",
@@ -1310,6 +1318,18 @@ class SessionTree(ttk.Frame):
                 menu.add_command(
                     label=f"Befehl auf Auswahl ausführen… ({len(selected_runnable)})",
                     command=lambda ss=selected_runnable: self._on_run_remote_command(ss),
+                )
+        restart_servers = getattr(self, "_on_restart_servers", None)
+        if restart_servers and session.hostname:
+            menu.add_command(
+                label="Server neu starten…",
+                command=lambda s=session, callback=restart_servers: callback([s]),
+            )
+            selected_runnable = [s for s in selected if s.hostname]
+            if len(selected_runnable) >= 2:
+                menu.add_command(
+                    label=f"Server aus Auswahl neu starten… ({len(selected_runnable)})",
+                    command=lambda ss=selected_runnable, callback=restart_servers: callback(ss),
                 )
         if getattr(self, "_on_deploy_certificate_files", None) and session.hostname:
             menu.add_command(

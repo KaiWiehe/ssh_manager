@@ -2369,6 +2369,8 @@ def test_dialog_exports_use_split_modules():
         MoveFolderDialog,
         RemoteCommandConfirmDialog,
         RemoteCommandDialog,
+        ServerRestartDialog,
+        ServerRestartProgressDialog,
         SessionEditDialog,
         SettingsView,
         SshConfigInspectDialog,
@@ -2391,6 +2393,8 @@ def test_dialog_exports_use_split_modules():
         SshRemoveKeyDialog as SshRemoveKeyDialogImpl,
         SshTunnelDialog as SshTunnelDialogImpl,
     )
+    from ssh_manager_app.dialogs_restart import ServerRestartDialog as ServerRestartDialogImpl
+    from ssh_manager_app.dialogs_restart import ServerRestartProgressDialog as ServerRestartProgressDialogImpl
     from ssh_manager_app.dialogs_session_edit import SessionEditDialog as SessionEditDialogImpl
     from ssh_manager_app.dialogs_settings_misc import SettingsView as SettingsViewImpl
     from ssh_manager_app.dialogs_settings_misc import SshConfigInspectDialog as SshConfigInspectDialogImpl
@@ -2405,6 +2409,8 @@ def test_dialog_exports_use_split_modules():
     assert MoveFolderDialog is MoveFolderDialogImpl
     assert RemoteCommandConfirmDialog is RemoteCommandConfirmDialogImpl
     assert RemoteCommandDialog is RemoteCommandDialogImpl
+    assert ServerRestartDialog is ServerRestartDialogImpl
+    assert ServerRestartProgressDialog is ServerRestartProgressDialogImpl
     assert SessionEditDialog is SessionEditDialogImpl
     assert SettingsView is SettingsViewImpl
     assert SshConfigInspectDialog is SshConfigInspectDialogImpl
@@ -2435,6 +2441,7 @@ def test_layout_toolbar_buttons_places_only_enabled_buttons_in_order():
     app.settings.toolbar.show_reload = True
     app.settings.toolbar.show_open_tunnel = False
     app.settings.toolbar.show_check_hosts = True
+    app.settings.toolbar.show_restart_servers = True
 
     app._toolbar_buttons = {key: MagicMock() for key in TOOLBAR_BUTTON_ORDER}
 
@@ -2450,7 +2457,8 @@ def test_layout_toolbar_buttons_places_only_enabled_buttons_in_order():
     assert app._toolbar_buttons["show_add_connection"].grid.call_args.kwargs == {"row": 0, "column": 4, "padx": (8, 2)}
     assert app._toolbar_buttons["show_reload"].grid.call_args.kwargs == {"row": 0, "column": 5, "padx": (2, 2)}
     app._toolbar_buttons["show_open_tunnel"].grid.assert_not_called()
-    assert app._toolbar_buttons["show_check_hosts"].grid.call_args.kwargs == {"row": 0, "column": 6, "padx": (2, 0)}
+    assert app._toolbar_buttons["show_check_hosts"].grid.call_args.kwargs == {"row": 0, "column": 6, "padx": (2, 2)}
+    assert app._toolbar_buttons["show_restart_servers"].grid.call_args.kwargs == {"row": 0, "column": 7, "padx": (2, 0)}
 
 
 def test_export_and_import_settings_dialog_delegate_only_when_view_exists():

@@ -453,6 +453,7 @@ class SettingsView(ttk.Frame):
             ("show_reload", "Neu laden"),
             ("show_open_tunnel", "Tunnel öffnen…"),
             ("show_check_hosts", "Hosts prüfen"),
+            ("show_restart_servers", "Server neu starten…"),
         ]
         for idx, (key, label) in enumerate(toolbar_items):
             var = tk.BooleanVar()

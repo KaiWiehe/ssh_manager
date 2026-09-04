@@ -133,6 +133,18 @@ def test_load_settings_from_path_normalizes_default_user_and_timeout():
     assert settings.startup_expand_mode == default_settings().startup_expand_mode
 
 
+def test_load_settings_from_path_defaults_and_restores_restart_toolbar_button():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(json.dumps({"toolbar": {"show_check_hosts": False}}), encoding="utf-8")
+        old_settings = load_settings_from_path(path)
+        path.write_text(json.dumps({"toolbar": {"show_restart_servers": False}}), encoding="utf-8")
+        explicit_settings = load_settings_from_path(path)
+
+    assert old_settings.toolbar.show_restart_servers is True
+    assert explicit_settings.toolbar.show_restart_servers is False
+
+
 def test_load_settings_from_path_loads_valid_appearance_settings():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "settings.json"

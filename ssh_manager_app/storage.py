@@ -132,6 +132,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
             show_reload=bool(toolbar_raw.get("show_reload", defaults.toolbar.show_reload)),
             show_open_tunnel=bool(toolbar_raw.get("show_open_tunnel", defaults.toolbar.show_open_tunnel)),
             show_check_hosts=bool(toolbar_raw.get("show_check_hosts", defaults.toolbar.show_check_hosts)),
+            show_restart_servers=bool(toolbar_raw.get("show_restart_servers", defaults.toolbar.show_restart_servers)),
             show_username_column=bool(toolbar_raw.get("show_username_column", defaults.toolbar.show_username_column)),
             show_hostname_column=bool(toolbar_raw.get("show_hostname_column", defaults.toolbar.show_hostname_column)),
             show_port_column=bool(toolbar_raw.get("show_port_column", defaults.toolbar.show_port_column)),

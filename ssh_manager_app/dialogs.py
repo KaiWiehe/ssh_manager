@@ -14,6 +14,7 @@ from .dialogs_remote import (
     SshRemoveKeyDialog,
     SshTunnelDialog,
 )
+from .dialogs_restart import ServerRestartDialog, ServerRestartProgressDialog
 from .dialogs_session_edit import SessionEditDialog
 from .dialogs_settings_misc import SettingsView, SshConfigInspectDialog
 from .dialogs_toast import ToastNotification
@@ -27,6 +28,8 @@ __all__ = [
     "MoveFolderDialog",
     "RemoteCommandConfirmDialog",
     "RemoteCommandDialog",
+    "ServerRestartDialog",
+    "ServerRestartProgressDialog",
     "SessionEditDialog",
     "SettingsView",
     "SshConfigInspectDialog",

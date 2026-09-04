@@ -19,6 +19,7 @@ TOOLBAR_BUTTON_ORDER = [
     "show_reload",
     "show_open_tunnel",
     "show_check_hosts",
+    "show_restart_servers",
 ]
 
 
@@ -29,7 +30,7 @@ def layout_toolbar_buttons(app) -> None:
         btn.grid_forget()
         if getattr(app.settings.toolbar, key):
             padx = (8, 2) if key == "show_add_connection" else (2, 2)
-            if key == "show_check_hosts":
+            if key == "show_restart_servers":
                 padx = (2, 0)
             btn.grid(row=0, column=col, padx=padx)
             col += 1
@@ -232,6 +233,12 @@ def run_remote_command_callback(app, sessions) -> None:
     from .actions_remote import run_remote_command
 
     run_remote_command(app, sessions)
+
+
+def restart_servers_callback(app, sessions) -> None:
+    from .actions_restart import restart_servers
+
+    restart_servers(app, sessions)
 
 
 def deploy_certificate_files_callback(app, sessions) -> None:
@@ -711,6 +718,7 @@ def build_main_ui(self) -> None:
     actions_menu = tk.Menu(menubar, tearoff=False)
     actions_menu.add_command(label="Verbinden", accelerator=_acc("connect"), command=lambda: connect_selected_sessions_callback(self))
     actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
+    actions_menu.add_command(label="Server neu starten…", command=lambda: restart_servers_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Dateien übertragen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
@@ -773,6 +781,7 @@ def build_main_ui(self) -> None:
     self._toolbar_buttons["show_reload"] = ttk.Button(toolbar, text="Neu laden", command=lambda: reload_sessions_callback(self))
     self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=lambda: open_tunnel_callback(self))
     self._toolbar_buttons["show_check_hosts"] = ttk.Button(toolbar, text="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
+    self._toolbar_buttons["show_restart_servers"] = ttk.Button(toolbar, text="Server neu starten…", command=lambda: restart_servers_callback(self, self._tree.get_selected_sessions()))
     layout_toolbar_buttons(self)
 
     refresh_checkbox_images(self)
@@ -810,6 +819,7 @@ def build_main_ui(self) -> None:
         on_open_tunnel=lambda session=None: open_tunnel_callback(self, session),
         on_open_in_winscp=lambda sessions: open_in_winscp_callback(self, sessions),
         on_run_remote_command=lambda sessions: run_remote_command_callback(self, sessions),
+        on_restart_servers=lambda sessions: restart_servers_callback(self, sessions),
         on_deploy_certificate_files=lambda sessions: deploy_certificate_files_callback(self, sessions),
         on_replace_certificates=lambda sessions: replace_certificates_callback(self, sessions),
         on_resolve_dns=lambda sessions: resolve_dns_for_sessions_callback(self, sessions),

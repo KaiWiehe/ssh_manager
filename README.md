@@ -44,6 +44,7 @@ python ssh_manager.py
 - JSON-Dateien der App direkt in VS Code öffnen
 - SSH-Tunnel öffnen
 - Remote-Befehle auf mehrere Hosts ausführen
+- ausgewählte Server parallel per `sudo reboot` neu starten und ihre Rückkehr über SSH sowie optional eine systemd-Unit überwachen
 - Python-/Shell-Skripte per SSH ausführen:
   - lokale Skripte vorher nach `/tmp` hochladen und danach wieder löschen
   - vorhandene Skripte per Remote-Pfad starten
@@ -51,6 +52,12 @@ python ssh_manager.py
   - Ausführungsreihenfolge und getrennte Output-Header im Terminal
   - Verlauf und Favoriten inkl. Name, Notiz, Bearbeiten, Löschen und Anpinnen
 - SSH-Keys verteilen oder entfernen
+
+## Server neu starten
+
+Über **Server neu starten…** können einzelne Verbindungen, eine Checkbox-Auswahl oder alle Verbindungen eines Ordners parallel neu gestartet werden. Vor dem Start werden ein gemeinsames sudo-Passwort, optional eine systemd-Unit wie `wildfly.service` und die maximale Wartezeit abgefragt. Das Passwort wird nur für diesen Lauf verwendet, nicht gespeichert und nicht als Prozessargument übergeben; bei passwortlosem sudo kann es leer bleiben.
+
+Die Statusansicht bestätigt zunächst den tatsächlichen Neustart und wartet danach auf eine stabile SSH-Verbindung. Wurde eine systemd-Unit angegeben, erscheint das grüne Häkchen erst, wenn auch diese wieder `active` ist. Fehler und Zeitüberschreitungen werden pro Server angezeigt, ohne die Überwachung der übrigen Server abzubrechen.
 
 ## Bedienung
 

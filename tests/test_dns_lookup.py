@@ -563,6 +563,7 @@ def test_all_titled_dialog_classes_handle_the_window_close_button():
             "SshTunnelDialog",
             "SessionEditDialog",
         },
+        "dialogs_restart.py": {"ServerRestartDialog", "ServerRestartProgressDialog"},
         "dialogs_session_edit.py": {"SessionEditDialog"},
         "dialogs_settings_misc.py": {"SshConfigInspectDialog"},
     }
