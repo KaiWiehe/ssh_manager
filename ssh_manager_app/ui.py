@@ -3,8 +3,13 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from ttkbootstrap import Style as BootstrapStyle
-from ttkbootstrap import apply_bootstyle, apply_icon
+try:
+    from ttkbootstrap import Style as BootstrapStyle
+    from ttkbootstrap import apply_bootstyle, apply_icon
+except ModuleNotFoundError:
+    BootstrapStyle = None
+    apply_bootstyle = None
+    apply_icon = None
 
 from .dialogs_settings_misc import SettingsView
 from .core import _create_checkbox_images
@@ -77,9 +82,9 @@ def layout_toolbar_buttons(app) -> None:
 def _decorate(widget: tk.Misc, *, icon: str | None = None, bootstyle: str | None = None) -> None:
     """Apply optional ttkbootstrap semantics to an existing tkinter widget."""
     try:
-        if bootstyle:
+        if bootstyle and apply_bootstyle is not None:
             apply_bootstyle(widget, bootstyle)
-        if icon:
+        if icon and apply_icon is not None:
             apply_icon(widget, icon, size=14)
     except (KeyError, TypeError, tk.TclError):
         pass
@@ -687,9 +692,16 @@ def configure_app_styles(app: tk.Tk) -> None:
     appearance = getattr(getattr(app, "settings", None), "appearance", None)
     theme = getattr(appearance, "theme", "default")
     foundation = bootstrap_theme_for(theme)
-    bootstrap_style = BootstrapStyle(theme=foundation, default_button="neutral")
-    bootstrap_style.theme_use(foundation)
-    app._bootstrap_style = bootstrap_style
+    if BootstrapStyle is not None:
+        style = BootstrapStyle(theme=foundation, default_button="neutral")
+        style.theme_use(foundation)
+    else:
+        style = ttk.Style(app)
+        available = style.theme_names()
+        fallback = "vista" if "vista" in available else "clam"
+        if fallback in available:
+            style.theme_use(fallback)
+    app._bootstrap_style = style
     _apply_palette_styles(app, palette_for_theme(theme))
     _install_toplevel_theme_hook(app)
 

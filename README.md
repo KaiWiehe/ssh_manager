@@ -156,6 +156,8 @@ Dort liegen z. B.:
 
 Die App nutzt neben der Python-Standardbibliothek `ttkbootstrap` und `Pillow` für Themes, Icons und skalierbare Widget-Grafiken. Die festgelegten Laufzeitversionen stehen in `requirements.txt`; Test- und Build-Werkzeuge in `requirements-dev.txt`.
 
+Ein direkter Start mit `python ssh_manager.py` bleibt auch ohne installiertes `ttkbootstrap` möglich. In diesem Fall verwendet die App das integrierte ttk-Theme mit der SSH-Manager-Farbpalette; für das vollständige Design einschließlich Bootstrap-Icons wird die Projektumgebung aus den Installationsschritten oben empfohlen.
+
 Eine isolierte Vorschau mit Beispieldaten lässt sich ohne Zugriff auf Registry oder App-Daten öffnen:
 
 ```bat
