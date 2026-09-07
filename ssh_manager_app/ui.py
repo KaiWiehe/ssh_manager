@@ -3,11 +3,15 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from ttkbootstrap import Style as BootstrapStyle
+from ttkbootstrap import apply_bootstyle, apply_icon
+
 from .dialogs_settings_misc import SettingsView
 from .core import _create_checkbox_images
 from .shortcuts import ShortcutAction, ShortcutManager
-from .themes import THEME_PALETTES, ThemePalette
+from .themes import ThemePalette, bootstrap_theme_for, palette_for_theme
 from .tree import SessionTree
+from .version import APP_NAME
 
 
 TOOLBAR_BUTTON_ORDER = [
@@ -23,17 +27,82 @@ TOOLBAR_BUTTON_ORDER = [
 ]
 
 
+def toolbar_direct_capacity(width: int) -> int:
+    """Keep the command strip compact and move the rest into overflow."""
+    if width < 700:
+        return 2
+    if width < 900:
+        return 4
+    if width < 1120:
+        return 6
+    return len(TOOLBAR_BUTTON_ORDER)
+
+
 def layout_toolbar_buttons(app) -> None:
-    col = 2
-    for key in TOOLBAR_BUTTON_ORDER:
-        btn = app._toolbar_buttons[key]
-        btn.grid_forget()
-        if getattr(app.settings.toolbar, key):
-            padx = (8, 2) if key == "show_add_connection" else (2, 2)
-            if key == "show_restart_servers":
-                padx = (2, 0)
-            btn.grid(row=0, column=col, padx=padx)
-            col += 1
+    enabled = [
+        key for key in TOOLBAR_BUTTON_ORDER
+        if key != "show_add_connection" and getattr(app.settings.toolbar, key)
+    ]
+    try:
+        width = int(app.__dict__["_main_frame"].winfo_width())
+    except (AttributeError, TypeError, ValueError):
+        width = 900
+    except KeyError:
+        width = 900
+    capacity = toolbar_direct_capacity(width)
+    direct = enabled[:capacity]
+    overflow = enabled[capacity:]
+
+    for button in app._toolbar_buttons.values():
+        button.grid_forget()
+    add_button = app._toolbar_buttons.get("show_add_connection")
+    if add_button is not None and app.settings.toolbar.show_add_connection:
+        add_button.grid(row=0, column=1, padx=(8, 0))
+    for column, key in enumerate(direct):
+        app._toolbar_buttons[key].grid(row=0, column=column, padx=(0, 6))
+
+    overflow_button = app.__dict__.get("_toolbar_overflow_btn")
+    overflow_menu = app.__dict__.get("_toolbar_overflow_menu")
+    if overflow_button is None or overflow_menu is None:
+        return
+    overflow_button.grid_forget()
+    overflow_menu.delete(0, "end")
+    for key in overflow:
+        label, command = app._toolbar_specs[key]
+        overflow_menu.add_command(label=label, command=command)
+    if overflow:
+        overflow_button.grid(row=0, column=len(direct), padx=(0, 6))
+
+
+def _decorate(widget: tk.Misc, *, icon: str | None = None, bootstyle: str | None = None) -> None:
+    """Apply optional ttkbootstrap semantics to an existing tkinter widget."""
+    try:
+        if bootstyle:
+            apply_bootstyle(widget, bootstyle)
+        if icon:
+            apply_icon(widget, icon, size=14)
+    except (KeyError, TypeError, tk.TclError):
+        pass
+
+
+def _on_main_frame_resized(app, event) -> None:
+    capacity = toolbar_direct_capacity(event.width)
+    if getattr(app, "_toolbar_capacity", None) != capacity:
+        app._toolbar_capacity = capacity
+        layout_toolbar_buttons(app)
+    compact = event.width < 720
+    if getattr(app, "_command_bar_compact", None) == compact:
+        return
+    app._command_bar_compact = compact
+    buttons = getattr(app, "_command_group_buttons", ())
+    for button in buttons:
+        button.grid_forget()
+    if compact:
+        for column, button in enumerate(buttons, start=1):
+            button.grid(row=1, column=column, sticky="w", padx=(0, 6), pady=(8, 0))
+    else:
+        for column, button in enumerate(buttons, start=3):
+            button.grid(row=0, column=column, padx=(0, 6) if column < 5 else 0)
 
 
 def persist_ui_state_callback(app) -> None:
@@ -418,6 +487,11 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     muted = palette.muted
     selected = palette.selected
     button_active = palette.button_active
+    dark_mode = int(bg[1:3], 16) < 80
+    danger_text = "#fca5a5" if dark_mode else "#b42318"
+    danger_border = "#7f1d1d" if dark_mode else "#e5a9a4"
+    danger_active = "#4a2525" if dark_mode else "#fff1f0"
+    danger_pressed = "#5c2020" if dark_mode else "#fee4e2"
 
     app.configure(background=bg)
     app.option_add("*Menu.background", surface)
@@ -436,6 +510,19 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure(".", background=bg, foreground=text, font=ui_font)
     style.configure("TFrame", background=bg)
     style.configure("TLabel", background=bg, foreground=text)
+    style.configure("Header.TFrame", background=surface)
+    style.configure("HeaderTitle.TLabel", background=surface, foreground=text, font=(ui_font[0], ui_font[1] + 7, "bold"))
+    style.configure("HeaderSubtitle.TLabel", background=surface, foreground=muted)
+    style.configure("CommandBar.TFrame", background=surface_alt)
+    style.configure("CommandBar.TLabel", background=surface_alt, foreground=muted)
+    style.configure("QuickBar.TFrame", background=bg)
+    style.configure("Quick.TButton", padding=(9, 6), background=surface, foreground=text, bordercolor=border)
+    style.map("Quick.TButton", background=[("active", button_active), ("pressed", selected)], bordercolor=[("focus", accent), ("active", accent)])
+    style.configure("TreeSurface.TFrame", background=surface)
+    style.configure("StatusBar.TFrame", background=surface_alt)
+    style.configure("StatusBar.TLabel", background=surface_alt, foreground=muted)
+    style.configure("Muted.TLabel", foreground=muted)
+    style.configure("DialogTitle.TLabel", foreground=text, font=(ui_font[0], ui_font[1] + 3, "bold"))
     style.configure("TButton", padding=(12, 7), background=surface, foreground=text, bordercolor=border, focusthickness=1, focuscolor=accent)
     style.map("TButton", background=[("active", button_active), ("pressed", selected)], foreground=[("active", text)], bordercolor=[("focus", accent), ("active", accent)])
     style.configure("SearchHistory.TButton", padding=(4, 1), background=surface, foreground=text, bordercolor=border, focusthickness=1, focuscolor=accent)
@@ -447,6 +534,10 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("TCombobox", fieldbackground=surface, background=surface, foreground=text, bordercolor=border, lightcolor=border, darkcolor=border, arrowcolor=muted, selectbackground=surface, selectforeground=text)
     style.map("TCombobox", fieldbackground=[("readonly", surface), ("disabled", surface_alt)], foreground=[("readonly", text), ("disabled", muted)], selectbackground=[("readonly", surface)], selectforeground=[("readonly", text)], arrowcolor=[("active", accent), ("disabled", muted)])
     style.configure("TCheckbutton", background=bg, foreground=text)
+    style.configure("TLabelframe", background=surface, bordercolor=border, lightcolor=border, darkcolor=border, relief="solid")
+    style.configure("TLabelframe.Label", background=surface, foreground=text, font=(ui_font[0], ui_font[1], "bold"))
+    style.configure("TMenubutton", padding=(10, 7), background=surface, foreground=text, bordercolor=border)
+    style.map("TMenubutton", background=[("active", button_active), ("pressed", selected)], bordercolor=[("focus", accent), ("active", accent)])
     style.configure("Treeview", background=surface, fieldbackground=surface, foreground=text, rowheight=tree_row_height, font=tree_font, bordercolor=border, lightcolor=border, darkcolor=border)
     style.configure("Treeview.Heading", background=surface_alt, foreground=text, relief="flat", bordercolor=border, padding=(8, 7), font=(tree_font[0], tree_font[1], "bold"))
     style.map("Treeview", background=[("selected", selected)], foreground=[("selected", text)])
@@ -474,7 +565,12 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("EmptyStateTitle.TLabel", background=surface, foreground=text, font=(ui_font[0], ui_font[1] + 6, "bold"), anchor="center")
     style.configure("EmptyStateHint.TLabel", background=surface, foreground=muted, font=(ui_font[0], ui_font[1] + 1), anchor="center")
     style.configure("Accent.TButton", padding=(14, 8), background=accent, foreground="#ffffff", bordercolor=accent)
-    style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff")])
+    style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff"), ("disabled", "#d9e4f4")])
+    style.configure("Danger.TButton", padding=(12, 7), foreground=danger_text, background=surface, bordercolor=danger_border)
+    style.map("Danger.TButton", background=[("active", danger_active), ("pressed", danger_pressed)])
+    search_label = app.__dict__.get("_search_label")
+    if search_label is not None:
+        _safe_widget_configure(search_label, background=surface_alt, foreground=muted, font=ui_font)
     _configure_classic_widgets(app, background=surface, foreground=text, accent=accent, border=border)
     _configure_combobox_popdowns(app, background=surface, foreground=text, accent=accent)
     app.update_idletasks()
@@ -492,7 +588,7 @@ def _safe_widget_configure(widget: tk.Misc, **options) -> None:
 def _configure_classic_widgets(widget: tk.Misc, *, background: str, foreground: str, accent: str, border: str) -> None:
     """Apply runtime colors to classic Tk widgets that ttk styles do not cover."""
     for child in widget.children.values():
-        if isinstance(child, tk.Entry) or isinstance(child, tk.Spinbox):
+        if isinstance(child, (tk.Entry, tk.Spinbox, tk.Text)):
             _safe_widget_configure(
                 child,
                 background=background,
@@ -523,6 +619,23 @@ def _configure_combobox_popdowns(widget: tk.Misc, *, background: str, foreground
         _configure_combobox_popdowns(child, background=background, foreground=foreground, accent=accent)
 
 
+def _style_dialog_actions(widget: tk.Misc) -> None:
+    """Give dialog actions a consistent primary/destructive hierarchy."""
+    primary_labels = (
+        "ok", "speichern", "verbinden", "ausführen", "starten", "übernehmen",
+        "hinzufügen", "exportieren", "importieren", "hochladen", "server neu starten",
+    )
+    danger_labels = ("löschen", "entfernen", "zertifikate ersetzen")
+    for child in widget.children.values():
+        if isinstance(child, ttk.Button):
+            label = str(child.cget("text")).strip().lower()
+            if any(label.startswith(prefix) for prefix in danger_labels):
+                child.configure(style="Danger.TButton")
+            elif any(label.startswith(prefix) for prefix in primary_labels):
+                child.configure(style="Accent.TButton")
+        _style_dialog_actions(child)
+
+
 def _install_combobox_popdown_style(combobox: ttk.Combobox, *, background: str, foreground: str, accent: str) -> None:
     def apply_popdown_style() -> None:
         try:
@@ -538,65 +651,56 @@ def _install_combobox_popdown_style(combobox: ttk.Combobox, *, background: str, 
     combobox.configure(postcommand=apply_popdown_style)
 
 
+def _install_toplevel_theme_hook(app: tk.Tk) -> None:
+    """Apply the active palette to classic Tk controls created in dialogs."""
+    if getattr(app, "_theme_toplevel_hook_installed", False):
+        return
+    app._theme_toplevel_hook_installed = True
+
+    def restyle_dialog(event) -> None:
+        dialog = event.widget
+        appearance = getattr(getattr(app, "settings", None), "appearance", None)
+        theme = getattr(appearance, "theme", "default")
+        accent = getattr(appearance, "accent_color", "#2563eb")
+        palette = palette_for_theme(theme)
+        _safe_widget_configure(dialog, background=palette.bg)
+        try:
+            dialog.after_idle(
+                lambda: (
+                    _configure_classic_widgets(
+                        dialog,
+                        background=palette.surface,
+                        foreground=palette.text,
+                        accent=accent,
+                        border=palette.border,
+                    ),
+                    _style_dialog_actions(dialog),
+                )
+            )
+        except tk.TclError:
+            pass
+
+    app.bind_class("Toplevel", "<Map>", restyle_dialog, add="+")
+
+
 def configure_app_styles(app: tk.Tk) -> None:
-    style = ttk.Style(app)
-    style.theme_use("clam")
     appearance = getattr(getattr(app, "settings", None), "appearance", None)
     theme = getattr(appearance, "theme", "default")
-    accent = getattr(appearance, "accent_color", "#2563eb")
-
-    palettes = THEME_PALETTES
-    if theme in palettes:
-        _apply_palette_styles(app, palettes[theme])
-        return
-
-    app.configure(background="#f0f0f0")
-    ui_font = (getattr(appearance, "ui_font_family", "Segoe UI"), getattr(appearance, "ui_font_size", 10))
-    tree_font = (getattr(appearance, "tree_font_family", "Segoe UI"), getattr(appearance, "tree_font_size", 10))
-    tree_row_height = getattr(appearance, "tree_row_height", 28)
-    style.configure(".", font=ui_font)
-    style.configure("Treeview", rowheight=tree_row_height, font=tree_font)
-    style.configure("Treeview.Heading", font=(tree_font[0], tree_font[1], "bold"))
-    style.configure("TSpinbox", arrowsize=13)
-    style.configure("Toast.TFrame", background="#333333", relief="flat")
-    style.configure("Toast.TLabel", background="#333333", foreground="#f5f5f5")
-    style.configure("SettingsRoot.TFrame", background="#dcd7cf")
-    style.configure("SettingsNav.TFrame", background="#d3cdc4")
-    style.configure("SettingsContent.TFrame", background="#ebe7df")
-    style.configure("SettingsPanel.TFrame", background="#f6f2eb")
-    style.configure("SettingsActions.TFrame", background="#ebe7df")
-    style.configure("SettingsTitle.TLabel", background="#ebe7df", font=("Segoe UI", 17, "bold"))
-    style.configure("SettingsSubtitle.TLabel", background="#ebe7df", foreground="#5f5a52")
-    style.configure("SettingsNavTitle.TLabel", background="#d3cdc4", font=(ui_font[0], ui_font[1], "bold"))
-    style.configure("SettingsSectionTitle.TLabel", background="#f6f2eb", font=(ui_font[0], ui_font[1] + 3, "bold"))
-    style.configure("SettingsHint.TLabel", background="#f6f2eb", foreground="#6b655c")
-    style.configure("SettingsValue.TLabel", background="#f6f2eb")
-    style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w")
-    style.configure("EmptyState.TFrame", background="#ffffff")
-    style.configure("EmptyStateContent.TFrame", background="#ffffff")
-    style.configure("EmptyStateCard.TFrame", background="#ffffff", relief="flat")
-    style.configure("EmptyStateIcon.TLabel", background="#ffffff", foreground=accent, font=("Cascadia Mono", ui_font[1] + 18, "bold"), anchor="center")
-    style.configure("EmptyStateTitle.TLabel", background="#ffffff", foreground="#111111", font=(ui_font[0], ui_font[1] + 6, "bold"), anchor="center")
-    style.configure("EmptyStateHint.TLabel", background="#ffffff", foreground="#6b655c", font=(ui_font[0], ui_font[1] + 1), anchor="center")
-    style.configure("Accent.TButton", padding=(14, 8), background=accent, foreground="#ffffff", bordercolor=accent)
-    style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff")])
-    style.configure("SearchHistory.TButton", padding=(4, 1))
-    _configure_classic_widgets(app, background="#ffffff", foreground="#111111", accent=accent, border="#b8b8b8")
-    _configure_combobox_popdowns(app, background="#ffffff", foreground="#111111", accent=accent)
-    app.update_idletasks()
+    foundation = bootstrap_theme_for(theme)
+    bootstrap_style = BootstrapStyle(theme=foundation, default_button="neutral")
+    bootstrap_style.theme_use(foundation)
+    app._bootstrap_style = bootstrap_style
+    _apply_palette_styles(app, palette_for_theme(theme))
+    _install_toplevel_theme_hook(app)
 
 def refresh_checkbox_images(app) -> None:
     """Rebuild tree checkbox icons from the active theme palette."""
     appearance = getattr(getattr(app, "settings", None), "appearance", None)
     theme = getattr(appearance, "theme", "default")
     accent = getattr(appearance, "accent_color", "#1a7a3a")
-    if theme in THEME_PALETTES:
-        palette = THEME_PALETTES[theme]
-        background = palette.surface
-        border = palette.border
-    else:
-        background = "#ffffff"
-        border = "#808080"
+    palette = palette_for_theme(theme)
+    background = palette.surface
+    border = palette.border
     if not isinstance(app, tk.Misc):
         return
     app._img_unchecked, app._img_checked = _create_checkbox_images(app, background=background, border=border, check=accent)
@@ -756,15 +860,45 @@ def build_main_ui(self) -> None:
     self._main_frame = ttk.Frame(self)
     self._main_frame.grid(row=0, column=0, sticky="nsew")
     self._main_frame.columnconfigure(0, weight=1)
-    self._main_frame.rowconfigure(1, weight=1)
+    self._main_frame.rowconfigure(3, weight=1)
 
-    toolbar = ttk.Frame(self._main_frame, padding=(8, 6))
-    toolbar.grid(row=0, column=0, sticky="ew")
-    toolbar.columnconfigure(1, weight=1)
+    header = ttk.Frame(self._main_frame, style="Header.TFrame", padding=(18, 13))
+    header.grid(row=0, column=0, sticky="ew")
+    header.columnconfigure(0, weight=1)
+    title_wrap = ttk.Frame(header, style="Header.TFrame")
+    title_wrap.grid(row=0, column=0, sticky="w")
+    ttk.Label(title_wrap, text=APP_NAME, style="HeaderTitle.TLabel").grid(row=0, column=0, sticky="w")
+    ttk.Label(
+        title_wrap,
+        text="Verbindungen zentral finden, verwalten und öffnen",
+        style="HeaderSubtitle.TLabel",
+    ).grid(row=1, column=0, sticky="w", pady=(1, 0))
 
-    ttk.Label(toolbar, text="Suche:").grid(row=0, column=0, padx=(0, 4))
-    search_wrap = ttk.Frame(toolbar)
-    search_wrap.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+    self._toolbar_buttons["show_add_connection"] = ttk.Button(
+        header,
+        text="Neue Verbindung",
+        command=lambda: add_session_callback(self),
+    )
+    _decorate(self._toolbar_buttons["show_add_connection"], icon="plus-lg")
+    settings_button = ttk.Button(header, text="Einstellungen", command=lambda: show_settings_view_callback(self))
+    settings_button.grid(row=0, column=2, padx=(8, 0))
+    _decorate(settings_button, icon="gear")
+
+    command_bar = ttk.Frame(self._main_frame, style="CommandBar.TFrame", padding=(18, 10))
+    command_bar.grid(row=1, column=0, sticky="ew")
+    command_bar.columnconfigure(1, weight=1)
+    active_palette = palette_for_theme(getattr(self.settings.appearance, "theme", "default"))
+    self._search_label = tk.Label(
+        command_bar,
+        text="Suche",
+        background=active_palette.surface_alt,
+        foreground=active_palette.muted,
+        borderwidth=0,
+        font=(self.settings.appearance.ui_font_family, self.settings.appearance.ui_font_size),
+    )
+    self._search_label.grid(row=0, column=0, padx=(0, 7))
+    search_wrap = ttk.Frame(command_bar, style="CommandBar.TFrame")
+    search_wrap.grid(row=0, column=1, sticky="ew", padx=(0, 10))
     search_wrap.columnconfigure(0, weight=1)
     self._search_var = tk.StringVar(value=self._initial_toolbar_search_texts.get("main", ""))
     self._search_history = list(self._initial_toolbar_search_texts.get("search_history", []))
@@ -773,16 +907,68 @@ def build_main_ui(self) -> None:
     self._search_history_btn = ttk.Button(search_wrap, text="▾", width=1, style="SearchHistory.TButton", command=lambda: show_search_history_menu_callback(self))
     self._search_history_btn.grid(row=0, column=1, sticky="ns", padx=(2, 0))
 
-    self._toolbar_buttons["show_select_all"] = ttk.Button(toolbar, text="Alle auswählen", command=lambda: select_all_callback(self))
-    self._toolbar_buttons["show_deselect_all"] = ttk.Button(toolbar, text="Alle abwählen", command=lambda: deselect_all_callback(self))
-    self._toolbar_buttons["show_expand_all"] = ttk.Button(toolbar, text="Ausklappen", command=lambda: expand_all_callback(self))
-    self._toolbar_buttons["show_collapse_all"] = ttk.Button(toolbar, text="Einklappen", command=lambda: collapse_all_callback(self))
-    self._toolbar_buttons["show_add_connection"] = ttk.Button(toolbar, text="+ Verbindung", command=lambda: add_session_callback(self))
-    self._toolbar_buttons["show_reload"] = ttk.Button(toolbar, text="Neu laden", command=lambda: reload_sessions_callback(self))
-    self._toolbar_buttons["show_open_tunnel"] = ttk.Button(toolbar, text="Tunnel öffnen…", command=lambda: open_tunnel_callback(self))
-    self._toolbar_buttons["show_check_hosts"] = ttk.Button(toolbar, text="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
-    self._toolbar_buttons["show_restart_servers"] = ttk.Button(toolbar, text="Server neu starten…", command=lambda: restart_servers_callback(self, self._tree.get_selected_sessions()))
+    self._connect_btn = ttk.Button(
+        command_bar,
+        text="Verbinden",
+        style="Accent.TButton",
+        command=lambda: connect_selected_sessions_callback(self),
+        state=tk.DISABLED,
+    )
+    self._connect_btn.grid(row=0, column=2, padx=(0, 8))
+    _decorate(self._connect_btn, icon="terminal")
+
+    selection_button = ttk.Menubutton(command_bar, text="Auswahl", menu=selection_menu)
+    selection_button.grid(row=0, column=3, padx=(0, 6))
+    _decorate(selection_button, icon="check2-square")
+    view_button = ttk.Menubutton(command_bar, text="Ansicht", menu=view_menu)
+    view_button.grid(row=0, column=4, padx=(0, 6))
+    _decorate(view_button, icon="layout-three-columns")
+    actions_button = ttk.Menubutton(command_bar, text="Aktionen", menu=actions_menu)
+    actions_button.grid(row=0, column=5)
+    _decorate(actions_button, icon="lightning-charge")
+    self._command_group_buttons = (selection_button, view_button, actions_button)
+
+    quick_bar = ttk.Frame(self._main_frame, style="QuickBar.TFrame", padding=(18, 8, 12, 2))
+    quick_bar.grid(row=2, column=0, sticky="ew")
+    self._quick_bar = quick_bar
+    self._toolbar_specs = {
+        "show_select_all": ("Alle auswählen", lambda: select_all_callback(self)),
+        "show_deselect_all": ("Alle abwählen", lambda: deselect_all_callback(self)),
+        "show_expand_all": ("Ausklappen", lambda: expand_all_callback(self)),
+        "show_collapse_all": ("Einklappen", lambda: collapse_all_callback(self)),
+        "show_add_connection": ("Neue Verbindung", lambda: add_session_callback(self)),
+        "show_reload": ("Neu laden", lambda: reload_sessions_callback(self)),
+        "show_open_tunnel": ("Tunnel öffnen…", lambda: open_tunnel_callback(self)),
+        "show_check_hosts": ("Hosts prüfen", lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds)),
+        "show_restart_servers": ("Server neu starten…", lambda: restart_servers_callback(self, self._tree.get_selected_sessions())),
+    }
+    quick_icons = {
+        "show_select_all": "check2-square",
+        "show_deselect_all": "square",
+        "show_expand_all": "chevron-expand",
+        "show_collapse_all": "chevron-contract",
+        "show_reload": "arrow-repeat",
+        "show_open_tunnel": "ethernet",
+        "show_check_hosts": "shield-check",
+        "show_restart_servers": "power",
+    }
+    for key in TOOLBAR_BUTTON_ORDER:
+        if key == "show_add_connection":
+            continue
+        label, command = self._toolbar_specs[key]
+        button = ttk.Button(quick_bar, text=label, style="Quick.TButton", command=command)
+        self._toolbar_buttons[key] = button
+        _decorate(button, icon=quick_icons.get(key))
+    self._toolbar_overflow_menu = tk.Menu(quick_bar, tearoff=False)
+    self._toolbar_overflow_btn = ttk.Menubutton(
+        quick_bar,
+        text="Mehr",
+        menu=self._toolbar_overflow_menu,
+        style="Quick.TButton",
+    )
+    _decorate(self._toolbar_overflow_btn, icon="three-dots")
     layout_toolbar_buttons(self)
+    self._main_frame.bind("<Configure>", lambda event: _on_main_frame_resized(self, event), add="+")
 
     refresh_checkbox_images(self)
 
@@ -832,19 +1018,14 @@ def build_main_ui(self) -> None:
         on_hide_column=lambda column_key: hide_column_from_header_callback(self, column_key),
         toolbar_settings=self.settings.toolbar,
     )
-    self._tree.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 0))
+    self._tree.grid(row=3, column=0, sticky="nsew", padx=18, pady=(8, 0))
 
-    bottom = ttk.Frame(self._main_frame, padding=(8, 6))
-    bottom.grid(row=2, column=0, sticky="ew")
-    bottom.columnconfigure(0, weight=1)
-
-    self._connect_btn = ttk.Button(
-        bottom,
-        text="Verbinden",
-        command=lambda: connect_selected_sessions_callback(self),
-        state=tk.DISABLED,
-    )
-    self._connect_btn.grid(row=0, column=0)
+    status_bar = ttk.Frame(self._main_frame, style="StatusBar.TFrame", padding=(18, 6))
+    status_bar.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+    status_bar.columnconfigure(0, weight=1)
+    self._selection_status_var = tk.StringVar(value="Keine Verbindung ausgewählt")
+    ttk.Label(status_bar, textvariable=self._selection_status_var, style="StatusBar.TLabel").grid(row=0, column=0, sticky="w")
+    ttk.Label(status_bar, text="Enter: verbinden  ·  Ctrl+P: Befehlspalette", style="StatusBar.TLabel").grid(row=0, column=1, sticky="e")
 
     self._search_history_after_id = None
     self._search_var.trace_add("write", lambda *_: on_search_changed_callback(self))

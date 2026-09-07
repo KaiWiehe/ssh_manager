@@ -20,17 +20,17 @@ class ThemePalette:
 
 THEME_PALETTES: dict[str, ThemePalette] = {
     "modern_light": ThemePalette(
-        bg="#f3f4f6",
+        bg="#f5f7fa",
         surface="#ffffff",
-        surface_alt="#f9fafb",
-        nav="#eef2f7",
-        border="#d1d5db",
-        text="#111827",
-        muted="#6b7280",
-        selected="#dbeafe",
-        button_active="#eef2ff",
-        toast_bg="#111827",
-        toast_text="#f9fafb",
+        surface_alt="#f8fafc",
+        nav="#eef2f6",
+        border="#d8dee8",
+        text="#172033",
+        muted="#687386",
+        selected="#e8f1ff",
+        button_active="#edf3fb",
+        toast_bg="#172033",
+        toast_text="#ffffff",
     ),
     "dark_neutral": ThemePalette(
         bg="#111111",
@@ -59,3 +59,19 @@ THEME_PALETTES: dict[str, ThemePalette] = {
         toast_text="#e5edf7",
     ),
 }
+
+
+def palette_for_theme(theme: str) -> ThemePalette:
+    """Resolve persisted theme keys without migrating users' settings files."""
+    if theme in {"default", "modern_light"}:
+        return THEME_PALETTES["modern_light"]
+    return THEME_PALETTES.get(theme, THEME_PALETTES["modern_light"])
+
+
+def bootstrap_theme_for(theme: str) -> str:
+    """Return the ttkbootstrap foundation used by an SSH-Manager theme."""
+    if theme == "dark_neutral":
+        return "bootstrap-dark"
+    if theme == "midnight":
+        return "nord-dark"
+    return "bootstrap-light"

@@ -1,7 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 ROOT = Path(SPECPATH)
+PACKAGE_DATA = (
+    collect_data_files('ttkbootstrap')
+    + copy_metadata('ttkbootstrap')
+    + copy_metadata('Pillow')
+)
 
 
 a = Analysis(
@@ -11,7 +17,7 @@ a = Analysis(
     datas=[
         (str(ROOT / 'assets' / 'ssh-manager.ico'), 'assets'),
         (str(ROOT / 'assets' / 'ssh-manager.png'), 'assets'),
-    ],
+    ] + PACKAGE_DATA,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

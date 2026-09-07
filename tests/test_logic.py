@@ -35,7 +35,8 @@ from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_
 from ssh_manager_app.actions_open import _set_winscp_external_sessions_in_existing_window, inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
 from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, persist_ui_state, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
-from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons
+from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons, toolbar_direct_capacity
+from ssh_manager_app.themes import bootstrap_theme_for, palette_for_theme
 from ssh_manager_app.constants import DEFAULT_USER, PALETTE, QUICK_USERS, _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_DEFAULT_FOLDER
 from ssh_manager_app.core import RegistryReader, _build_jump_ssh_command, _build_ssh_command, _shell_single_quote, _ssh_target, _terminal_profile_flag, _terminal_title_flag, build_wt_command, parse_session_key
 from ssh_manager_app.models import AppSettings, Session, SourceVisibilitySettings, color_tag
@@ -2450,15 +2451,30 @@ def test_layout_toolbar_buttons_places_only_enabled_buttons_in_order():
     for button in app._toolbar_buttons.values():
         button.grid_forget.assert_called_once()
 
-    assert app._toolbar_buttons["show_select_all"].grid.call_args.kwargs == {"row": 0, "column": 2, "padx": (2, 2)}
+    assert app._toolbar_buttons["show_select_all"].grid.call_args.kwargs == {"row": 0, "column": 0, "padx": (0, 6)}
     app._toolbar_buttons["show_deselect_all"].grid.assert_not_called()
-    assert app._toolbar_buttons["show_expand_all"].grid.call_args.kwargs == {"row": 0, "column": 3, "padx": (2, 2)}
+    assert app._toolbar_buttons["show_expand_all"].grid.call_args.kwargs == {"row": 0, "column": 1, "padx": (0, 6)}
     app._toolbar_buttons["show_collapse_all"].grid.assert_not_called()
-    assert app._toolbar_buttons["show_add_connection"].grid.call_args.kwargs == {"row": 0, "column": 4, "padx": (8, 2)}
-    assert app._toolbar_buttons["show_reload"].grid.call_args.kwargs == {"row": 0, "column": 5, "padx": (2, 2)}
+    assert app._toolbar_buttons["show_add_connection"].grid.call_args.kwargs == {"row": 0, "column": 1, "padx": (8, 0)}
+    assert app._toolbar_buttons["show_reload"].grid.call_args.kwargs == {"row": 0, "column": 2, "padx": (0, 6)}
     app._toolbar_buttons["show_open_tunnel"].grid.assert_not_called()
-    assert app._toolbar_buttons["show_check_hosts"].grid.call_args.kwargs == {"row": 0, "column": 6, "padx": (2, 2)}
-    assert app._toolbar_buttons["show_restart_servers"].grid.call_args.kwargs == {"row": 0, "column": 7, "padx": (2, 0)}
+    assert app._toolbar_buttons["show_check_hosts"].grid.call_args.kwargs == {"row": 0, "column": 3, "padx": (0, 6)}
+    assert app._toolbar_buttons["show_restart_servers"].grid.call_args.kwargs == {"row": 0, "column": 4, "padx": (0, 6)}
+
+
+def test_toolbar_capacity_moves_actions_to_overflow_at_small_widths():
+    assert toolbar_direct_capacity(600) == 2
+    assert toolbar_direct_capacity(750) == 4
+    assert toolbar_direct_capacity(1000) == 6
+    assert toolbar_direct_capacity(1400) == len(TOOLBAR_BUTTON_ORDER)
+
+
+def test_persisted_default_and_modern_light_use_same_new_design():
+    assert palette_for_theme("default") == palette_for_theme("modern_light")
+    assert bootstrap_theme_for("default") == "bootstrap-light"
+    assert bootstrap_theme_for("modern_light") == "bootstrap-light"
+    assert bootstrap_theme_for("dark_neutral") == "bootstrap-dark"
+    assert bootstrap_theme_for("midnight") == "nord-dark"
 
 
 def test_export_and_import_settings_dialog_delegate_only_when_view_exists():

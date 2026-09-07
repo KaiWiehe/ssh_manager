@@ -83,8 +83,8 @@ class SettingsView(ttk.Frame):
     """Einstellungsansicht im Hauptfenster."""
 
     THEME_LABELS = {
-        "default": "Default",
-        "modern_light": "Modern Light",
+        "default": "Modern Light (Standard)",
+        "modern_light": "Modern Light (bisheriges Profil)",
         "dark_neutral": "Dark Neutral",
         "midnight": "Midnight",
     }
@@ -152,17 +152,17 @@ class SettingsView(ttk.Frame):
         self.configure(style="SettingsRoot.TFrame")
         root = ttk.Frame(self, style="SettingsRoot.TFrame", padding=0)
         root.grid(row=0, column=0, sticky="nsew")
-        root.columnconfigure(0, minsize=260)
+        root.columnconfigure(0, minsize=210)
         root.columnconfigure(1, weight=1)
         root.rowconfigure(0, weight=1)
         self._root_frame = root
 
-        nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(16, 20))
+        nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(12, 16))
         nav.grid(row=0, column=0, sticky="nsew")
-        nav.columnconfigure(0, minsize=230)
+        nav.columnconfigure(0, minsize=184)
         self._nav = nav
 
-        content_wrap = ttk.Frame(root, style="SettingsContent.TFrame", padding=(28, 22, 28, 16))
+        content_wrap = ttk.Frame(root, style="SettingsContent.TFrame", padding=(20, 18, 20, 14))
         content_wrap.grid(row=0, column=1, sticky="nsew")
         content_wrap.columnconfigure(0, weight=1)
         content_wrap.rowconfigure(1, weight=1)
@@ -214,7 +214,7 @@ class SettingsView(ttk.Frame):
         ]
         ttk.Label(nav, text="Bereiche", style="SettingsNavTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 10))
         for idx, (key, label) in enumerate(sections, start=1):
-            btn = ttk.Button(nav, text=f"  {label}", command=lambda k=key: self._show_section(k), style="SettingsNav.TButton", width=26)
+            btn = ttk.Button(nav, text=f"  {label}", command=lambda k=key: self._show_section(k), style="SettingsNav.TButton", width=22)
             btn.grid(row=idx, column=0, sticky="ew", pady=4)
             self._nav_buttons[key] = btn
 
@@ -290,7 +290,7 @@ class SettingsView(ttk.Frame):
         self._content_canvas.yview_scroll(delta, "units")
 
     def _build_section_frame(self, title: str, description: str) -> ttk.Frame:
-        frame = ttk.Frame(self._content_host, style="SettingsPanel.TFrame", padding=22)
+        frame = ttk.Frame(self._content_host, style="SettingsPanel.TFrame", padding=18)
         frame.grid(row=0, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
         ttk.Label(frame, text=title, style="SettingsSectionTitle.TLabel").grid(row=0, column=0, sticky="w")

@@ -191,7 +191,6 @@ class SSHManagerApp(tk.Tk):
         self.title(APP_NAME or WINDOW_TITLE)
         set_window_icon(self)
         self.minsize(*WINDOW_MIN_SIZE)
-        self.geometry("750x550")
 
         self.settings = load_settings()
         self._persisted_settings = self.settings
@@ -238,6 +237,9 @@ class SSHManagerApp(tk.Tk):
         self._main_frame: ttk.Frame | None = None
         self._settings_view: SettingsView | None = None
         build_main_ui(self)
+        # Apply the initial window size after the widgets exist. Wide Treeview
+        # columns otherwise become the window's implicit minimum at high DPI.
+        self.geometry("750x550")
         # Rebuild once after the tree exists so virtual folders (Favoriten/Zuletzt)
         # are rendered from the fully initialized persisted UI state.
         self._sessions = build_visible_sessions(self)
