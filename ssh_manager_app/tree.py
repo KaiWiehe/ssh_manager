@@ -376,12 +376,13 @@ class SessionTree(ttk.Frame):
         # Hintergrundfarbe des Treeview-Headers ermitteln (Fallback grau)
         try:
             style = ttk.Style(self)
-            header_bg = style.lookup("Treeview.Heading", "background") or "#f0f0f0"
+            header_bg = style.lookup("Treeview.Heading", "background") or "#f8fafc"
+            idle_fg = style.lookup("Muted.TLabel", "foreground") or "#687386"
+            hover_fg = style.lookup("TLabel", "foreground") or "#172033"
         except tk.TclError:
-            header_bg = "#f0f0f0"
-        # dezente Farbe: leicht abgedunkeltes Grau, kein hartes Schwarz
-        idle_fg = "#9aa0a6"
-        hover_fg = "#202124"
+            header_bg = "#f8fafc"
+            idle_fg = "#687386"
+            hover_fg = "#172033"
         for column in self._HIDEABLE_COLUMNS:
             lbl = tk.Label(
                 self,
@@ -641,7 +642,23 @@ class SessionTree(ttk.Frame):
         self._tooltip = tk.Toplevel(self)
         self._tooltip.wm_overrideredirect(True)
         self._tooltip.attributes("-topmost", True)
-        label = tk.Label(self._tooltip, text=text, justify="left", background="#fff8dc", relief="solid", borderwidth=1, padx=8, pady=6, wraplength=420)
+        style = ttk.Style(self)
+        background = style.lookup("TFrame", "background") or "#ffffff"
+        foreground = style.lookup("TLabel", "foreground") or "#172033"
+        border = style.lookup("TEntry", "bordercolor") or "#d8dee8"
+        label = tk.Label(
+            self._tooltip,
+            text=text,
+            justify="left",
+            background=background,
+            foreground=foreground,
+            relief="solid",
+            borderwidth=1,
+            highlightbackground=border,
+            padx=8,
+            pady=6,
+            wraplength=420,
+        )
         label.pack()
         self._tooltip.geometry(f"+{x + 12}+{y + 12}")
 

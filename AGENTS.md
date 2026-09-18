@@ -24,7 +24,7 @@ $files = @('ssh_manager.py') + (Get-ChildItem -Path ssh_manager_app -Filter *.py
 powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 ```
 
-App-Laufzeit: keine externen Abhängigkeiten – nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `pathlib`, `socket`, `threading`, `xml.etree.ElementTree`).  
+App-Laufzeit: Python-Standardbibliothek plus `ttkbootstrap` und `Pillow`; feste Versionen stehen in `requirements.txt`.
 Aus tkinter genutzte Module: `tk`, `ttk`, `messagebox`, `simpledialog`, `filedialog`.
 
 ## Architektur
@@ -122,6 +122,7 @@ notes.json / settings  ──┘
 - `APP_NAME` / `APP_VERSION` für App-Name und Packaging
 
 **Packaging**
+- `requirements.txt` / `requirements-dev.txt` – feste Laufzeit-, Test- und Build-Abhängigkeiten
 - `assets/ssh-manager.ico` – App-/EXE-Icon
 - `assets/ssh-manager.png` – 256px Runtime-Icon für `iconphoto()`
 - `assets/SSH-Logo.svg` – maßgebliche Icon-Quelle, aktuell ein simples schwarzes `>_`-Prompt-Logo

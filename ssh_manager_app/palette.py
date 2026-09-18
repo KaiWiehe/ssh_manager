@@ -221,14 +221,19 @@ class _PaletteTooltip:
             tip.attributes("-topmost", True)
         except tk.TclError:
             pass
+        style = ttk.Style(self._master)
+        background = style.lookup("TFrame", "background") or "#ffffff"
+        foreground = style.lookup("TLabel", "foreground") or "#172033"
+        border = style.lookup("TEntry", "bordercolor") or "#d8dee8"
         label = tk.Label(
             tip,
             text=text,
             justify="left",
-            background="#fff8dc",
-            foreground="#1f1f1f",
+            background=background,
+            foreground=foreground,
             relief="solid",
             borderwidth=1,
+            highlightbackground=border,
             padx=8,
             pady=6,
             wraplength=520,
@@ -302,11 +307,14 @@ class CommandPaletteDialog(tk.Toplevel):
 
     # ------------------------------------------------------------ build
     def _build(self) -> None:
-        self.configure(background="#1f1f1f")
+        style = ttk.Style(self)
+        surface = style.lookup("TFrame", "background") or "#ffffff"
+        border = style.lookup("TEntry", "bordercolor") or "#d8dee8"
+        self.configure(background=border)
 
         # Outer container hosts left/right resize handles + the actual content
         # frame in the middle.
-        outer = tk.Frame(self, background="#1f1f1f", bd=0, highlightthickness=0)
+        outer = tk.Frame(self, background=border, bd=0, highlightthickness=0)
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(1, weight=1)
         outer.rowconfigure(0, weight=1)
@@ -314,14 +322,14 @@ class CommandPaletteDialog(tk.Toplevel):
         self._left_handle = tk.Frame(
             outer,
             width=self._RESIZE_HANDLE_PX,
-            background="#1f1f1f",
+            background=border,
             cursor="sb_h_double_arrow",
         )
         self._left_handle.grid(row=0, column=0, sticky="ns")
         self._right_handle = tk.Frame(
             outer,
             width=self._RESIZE_HANDLE_PX,
-            background="#1f1f1f",
+            background=border,
             cursor="sb_h_double_arrow",
         )
         self._right_handle.grid(row=0, column=2, sticky="ns")
@@ -343,7 +351,7 @@ class CommandPaletteDialog(tk.Toplevel):
         self._placeholder_label = ttk.Label(
             frame,
             text=self.PLACEHOLDER,
-            foreground="#888888",
+            style="Muted.TLabel",
         )
         self._placeholder_label.grid(row=2, column=0, sticky="ew", padx=2, pady=(6, 0))
 

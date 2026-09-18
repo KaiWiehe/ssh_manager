@@ -314,7 +314,7 @@ def edit_session_details(app, session: Session) -> None:
     user_entry.grid(row=3, column=1, sticky="ew", pady=(0, 6))
     user_entry.select_range(0, "end")
     active_text = f"Aktiv gesetzt: {session.username}" if session.username else "Aktiv gesetzt: keiner — beim Verbinden fragen"
-    ttk.Label(frame, text=active_text, foreground="#666666").grid(row=4, column=1, sticky="w", pady=(0, 10))
+    ttk.Label(frame, text=active_text, style="Muted.TLabel").grid(row=4, column=1, sticky="w", pady=(0, 10))
     ttk.Label(frame, text="Notiz:").grid(row=5, column=0, sticky="nw", padx=(0, 8))
     note_text = tk.Text(frame, width=42, height=6)
     note_text.grid(row=5, column=1, sticky="ew")

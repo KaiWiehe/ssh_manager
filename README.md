@@ -12,12 +12,21 @@ Unterstützte Quellen:
 
 - Windows 10/11
 - Python 3.10+ empfohlen; getestet wird aktuell mit Python 3.14.2 auf Windows
+- Python-Pakete aus `requirements.txt` (`ttkbootstrap` und `Pillow`)
 - [Windows Terminal](https://aka.ms/terminal) installiert
 - Git Bash-Profil in Windows Terminal vorhanden (Standard bei Git for Windows)
 - optional: WinSCP mit gespeicherten Sessions
 - optional: FileZilla mit gespeicherten Sites
 
 ## Starten
+
+```bat
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python ssh_manager.py
+```
+
+Alternativ mit bereits installierten Abhängigkeiten:
 
 ```bat
 python ssh_manager.py
@@ -37,7 +46,8 @@ python ssh_manager.py
 - fester Benutzer pro Verbindung, Bulk-Benutzer setzen/entfernen und Quickselect-Benutzer
 - Toolbar und sichtbare Spalten getrennt konfigurierbar
 - Spaltenreihenfolge per Drag & Drop anpassbar
-- Themes inkl. Dark Mode und Akzentfarben
+- modernes, kompaktes Light-Design auf Basis von ttkbootstrap; Dark Neutral und Midnight bleiben verfügbar
+- responsive Aktionsleiste mit gruppierten Menüs und Überlauf für kleine Fenster
 - leerer Startscreen mit „Verbindung hinzufügen“
 - Einstellungen direkt in der App bearbeiten
 - Einstellungen als JSON exportieren / importieren
@@ -144,8 +154,15 @@ Dort liegen z. B.:
 
 ## Abhängigkeiten
 
-Die App selbst nutzt nur Python-Standardbibliothek (`tkinter`, `winreg`, `subprocess`, `xml.etree.ElementTree` usw.).
-Für Tests brauchst du `pytest`. Für den EXE-Build installiert das Build-Script bei Bedarf `PyInstaller`.
+Die App nutzt neben der Python-Standardbibliothek `ttkbootstrap` und `Pillow` für Themes, Icons und skalierbare Widget-Grafiken. Die festgelegten Laufzeitversionen stehen in `requirements.txt`; Test- und Build-Werkzeuge in `requirements-dev.txt`.
+
+Ein direkter Start mit `python ssh_manager.py` bleibt auch ohne installiertes `ttkbootstrap` möglich. In diesem Fall verwendet die App das integrierte ttk-Theme mit der SSH-Manager-Farbpalette; für das vollständige Design einschließlich Bootstrap-Icons wird die Projektumgebung aus den Installationsschritten oben empfohlen.
+
+Eine isolierte Vorschau mit Beispieldaten lässt sich ohne Zugriff auf Registry oder App-Daten öffnen:
+
+```bat
+.venv\Scripts\python scripts\ui_preview.py
+```
 
 ## Portable Windows-EXE bauen
 
@@ -161,10 +178,11 @@ Für eine richtige Windows-App als portable Einzel-EXE:
 powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 ```
 
-Das Script nutzt die aktuell aktive Python-Version, installiert bei Bedarf PyInstaller und erzeugt:
+Das Script nutzt die aktuell aktive Python-Version, installiert die festgelegten Build-Abhängigkeiten und erzeugt:
 
 ```text
 dist\SSH Manager.exe
 ```
 
 Die EXE läuft ohne Terminalfenster, nutzt das App-Icon aus `assets/ssh-manager.ico` und speichert Daten weiterhin unter `%APPDATA%\SSH-Manager\`.
+Die Paket-Metadaten einschließlich der Lizenzdateien von ttkbootstrap und Pillow werden in die portable Anwendung aufgenommen.

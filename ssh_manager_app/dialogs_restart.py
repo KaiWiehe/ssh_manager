@@ -28,7 +28,7 @@ class ServerRestartDialog(tk.Toplevel):
         self.bind("<Escape>", lambda _event: self._on_cancel())
 
     def _build(self, session_users: list[tuple[Session, str]]) -> None:
-        frame = ttk.Frame(self, padding=16)
+        frame = ttk.Frame(self, padding=20)
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(2, weight=1)
@@ -36,12 +36,12 @@ class ServerRestartDialog(tk.Toplevel):
         ttk.Label(
             frame,
             text=f"{len(session_users)} Server parallel neu starten?",
-            font=("Segoe UI", 11, "bold"),
+            style="DialogTitle.TLabel",
         ).grid(row=0, column=0, sticky="w")
         ttk.Label(
             frame,
             text="Achtung: Bereits ausgelöste Neustarts können nicht rückgängig gemacht werden.",
-            foreground="#b45309",
+            style="Warning.TLabel",
         ).grid(row=1, column=0, sticky="w", pady=(4, 12))
 
         hosts = ttk.LabelFrame(frame, text="Server", padding=8)
@@ -78,7 +78,7 @@ class ServerRestartDialog(tk.Toplevel):
         ttk.Label(
             options,
             text="Leer lassen, um nur Neustart und SSH-Rückkehr zu prüfen; Beispiel: wildfly.service",
-            foreground="#666666",
+            style="Muted.TLabel",
         ).grid(row=2, column=1, columnspan=2, sticky="w", pady=(0, 5))
 
         ttk.Label(options, text="Maximale Wartezeit:").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=5)
@@ -88,7 +88,7 @@ class ServerRestartDialog(tk.Toplevel):
         ttk.Label(
             options,
             text="Das Passwort wird nur für diesen Lauf verwendet und nicht gespeichert.",
-            foreground="#666666",
+            style="Muted.TLabel",
         ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         buttons = ttk.Frame(frame)
@@ -182,9 +182,9 @@ class ServerRestartProgressDialog(tk.Toplevel):
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
         self._summary_var = tk.StringVar(value=f"Neustart läuft… 0 von {len(session_users)} abgeschlossen")
-        ttk.Label(header, textvariable=self._summary_var, font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(header, textvariable=self._summary_var, style="DialogTitle.TLabel").grid(row=0, column=0, sticky="w")
         hint = "Nach SSH wird zusätzlich geprüft: " + self._service if self._service else "Nach dem Neustart wird die SSH-Rückkehr geprüft."
-        ttk.Label(header, text=hint, foreground="#666666").grid(row=1, column=0, sticky="w", pady=(3, 8))
+        ttk.Label(header, text=hint, style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(3, 8))
         self._progress = ttk.Progressbar(header, mode="indeterminate")
         self._progress.grid(row=2, column=0, sticky="ew")
         self._progress.start(12)

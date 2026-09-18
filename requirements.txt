@@ -1,0 +1,2 @@
+ttkbootstrap==2.2.2
+Pillow==12.3.0

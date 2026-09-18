@@ -180,8 +180,14 @@ def invert_selection(app) -> None:
 def on_selection_changed(app, count: int) -> None:
     if count > 0:
         app._connect_btn.config(text=f"Verbinden ({count} ausgewählt)", state=tk.NORMAL)
+        status_var = app.__dict__.get("_selection_status_var")
+        if status_var is not None:
+            status_var.set(f"{count} Verbindung{'en' if count != 1 else ''} ausgewählt")
     else:
         app._connect_btn.config(text="Verbinden", state=tk.DISABLED)
+        status_var = app.__dict__.get("_selection_status_var")
+        if status_var is not None:
+            status_var.set("Keine Verbindung ausgewählt")
 
 
 
