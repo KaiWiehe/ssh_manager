@@ -53,7 +53,7 @@ class JumpHostDialog(tk.Toplevel):
             "Jumphost frei eingeben oder unten im Baum eine bestehende Verbindung auswählen.\n"
             "Aus einer Verbindung werden Host, User und Port übernommen, wenn vorhanden."
         )
-        ttk.Label(frame, text=help_text, foreground="#555555", justify="left").grid(row=1, column=0, sticky="w", pady=(0, 10))
+        ttk.Label(frame, text=help_text, style="Muted.TLabel", justify="left").grid(row=1, column=0, sticky="w", pady=(0, 10))
 
         form = ttk.Frame(frame)
         form.grid(row=2, column=0, sticky="ew")
@@ -255,7 +255,7 @@ class SshCopyIdDialog(tk.Toplevel):
             ttk.Label(
                 frame,
                 text=f"Key wird auf {self._target_count} Host(s) übertragen.",
-                foreground="#555555",
+                style="Muted.TLabel",
             ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
         # Key-Auswahl
@@ -267,7 +267,7 @@ class SshCopyIdDialog(tk.Toplevel):
         )
         key_cb.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4))
         if not pub_keys:
-            ttk.Label(frame, text="Keine *.pub-Dateien in ~/.ssh gefunden.", foreground="red").grid(
+            ttk.Label(frame, text="Keine *.pub-Dateien in ~/.ssh gefunden.", style="Error.TLabel").grid(
                 row=2, column=0, columnspan=2, sticky="w"
             )
 
@@ -363,7 +363,7 @@ class SshRemoveKeyDialog(tk.Toplevel):
             ttk.Label(
                 frame,
                 text=f"Key wird von {self._target_count} Host(s) entfernt.",
-                foreground="#555555",
+                style="Muted.TLabel",
             ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
         ttk.Label(frame, text="Public Key:").grid(row=1, column=0, sticky="w", pady=(0, 4))
@@ -374,7 +374,7 @@ class SshRemoveKeyDialog(tk.Toplevel):
         )
         key_cb.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4))
         if not pub_keys:
-            ttk.Label(frame, text="Keine *.pub-Dateien in ~/.ssh gefunden.", foreground="red").grid(
+            ttk.Label(frame, text="Keine *.pub-Dateien in ~/.ssh gefunden.", style="Error.TLabel").grid(
                 row=2, column=0, columnspan=2, sticky="w"
             )
 
@@ -544,7 +544,7 @@ class RemoteCommandDialog(tk.Toplevel):
         root.columnconfigure(0, weight=1)
         root.rowconfigure(2, weight=1)
         ttk.Label(root, text=f"Remote-Ausführung für {target_count} Host(s)", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(root, text="Ablauf: optionaler Vor-Befehl → optionales Skript mit Argumenten → optionaler Nach-Befehl.", foreground="#666666").grid(row=1, column=0, sticky="w", pady=(2, 10))
+        ttk.Label(root, text="Ablauf: optionaler Vor-Befehl → optionales Skript mit Argumenten → optionaler Nach-Befehl.", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 10))
 
         body = ttk.PanedWindow(root, orient="horizontal")
         body.grid(row=2, column=0, sticky="nsew")
@@ -589,14 +589,14 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Label(
             self._command_settings_frame,
             text="Keine weiteren Einstellungen nötig. Trage den Befehl unten im Feld 'Remote-Befehl' ein.",
-            foreground="#666666",
+            style="Muted.TLabel",
         ).grid(row=0, column=0, sticky="w")
 
         self._local_settings_frame = ttk.LabelFrame(self._settings_container, text="Lokales Skript", padding=10)
         self._local_settings_frame.columnconfigure(1, weight=1)
         self._local_path_var = tk.StringVar(value="Keine lokale Datei ausgewählt")
         ttk.Label(self._local_settings_frame, text="Datei:").grid(row=0, column=0, sticky="w", padx=(0, 8))
-        self._local_file_label = ttk.Label(self._local_settings_frame, textvariable=self._local_path_var, foreground="#555555", wraplength=520)
+        self._local_file_label = ttk.Label(self._local_settings_frame, textvariable=self._local_path_var, style="Muted.TLabel", wraplength=520)
         self._local_file_label.grid(row=0, column=1, sticky="w")
         self._file_button = ttk.Button(self._local_settings_frame, text="Lokale Datei…", command=self._choose_file)
         self._file_button.grid(row=0, column=2, sticky="e", padx=(8, 0))
@@ -609,7 +609,7 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Label(self._local_settings_frame, text="Argumente:").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
         self._local_arguments_entry = ttk.Entry(self._local_settings_frame, textvariable=self._arguments_var)
         self._local_arguments_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=(8, 0))
-        ttk.Label(self._local_settings_frame, text="Die Datei wird nach /tmp hochgeladen, ausgeführt und danach gelöscht.", foreground="#666666").grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Label(self._local_settings_frame, text="Die Datei wird nach /tmp hochgeladen, ausgeführt und danach gelöscht.", style="Muted.TLabel").grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         self._remote_settings_frame = ttk.LabelFrame(self._settings_container, text="Skript auf Server", padding=10)
         self._remote_settings_frame.columnconfigure(1, weight=1)
@@ -623,7 +623,7 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Label(self._remote_settings_frame, text="Argumente:").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
         self._remote_arguments_entry = ttk.Entry(self._remote_settings_frame, textvariable=self._arguments_var)
         self._remote_arguments_entry.grid(row=2, column=1, sticky="ew", pady=(8, 0))
-        ttk.Label(self._remote_settings_frame, text="Das Skript muss bereits auf dem Zielhost vorhanden sein.", foreground="#666666").grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(self._remote_settings_frame, text="Das Skript muss bereits auf dem Zielhost vorhanden sein.", style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         self._help_var = tk.StringVar()
 
@@ -916,7 +916,7 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
         ).grid(row=0, column=0, sticky="w", pady=(0, 8))
 
         behavior = "Tabs schließen sich bei Erfolg direkt." if close_on_success else "Tabs bleiben nach dem Befehl offen."
-        ttk.Label(frame, text=behavior, foreground="#666666").grid(row=1, column=0, sticky="w", pady=(0, 12))
+        ttk.Label(frame, text=behavior, style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 12))
 
         hosts_frame = ttk.LabelFrame(frame, text="Hosts", padding=8)
         hosts_frame.grid(row=2, column=0, sticky="nsew", pady=(0, 12))
@@ -1040,7 +1040,7 @@ class SshTunnelDialog(tk.Toplevel):
         ttk.Label(
             frame,
             text="SSH verbindet sich zum Server und leitet einen lokalen Port weiter.\nDirekt (kein Jumphost) oder zu einem internen Server dahinter.",
-            foreground="#555555",
+            style="Muted.TLabel",
             justify="left",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
 
@@ -1051,7 +1051,7 @@ class SshTunnelDialog(tk.Toplevel):
         ttk.Entry(frame, textvariable=self._jumphost_var, width=30).grid(
             row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
         )
-        ttk.Label(frame, text="Server, zu dem SSH sich verbindet.", foreground="#888888").grid(
+        ttk.Label(frame, text="Server, zu dem SSH sich verbindet.", style="Muted.TLabel").grid(
             row=2, column=0, columnspan=2, sticky="w", pady=(0, 10)
         )
 
@@ -1063,7 +1063,7 @@ class SshTunnelDialog(tk.Toplevel):
         ttk.Entry(frame, textvariable=self._local_port_var, width=10).grid(
             row=4, column=1, sticky="w", padx=(8, 0), pady=(0, 4)
         )
-        ttk.Label(frame, text="Port auf deinem PC (z. B. 3306).", foreground="#888888").grid(
+        ttk.Label(frame, text="Port auf deinem PC (z. B. 3306).", style="Muted.TLabel").grid(
             row=5, column=0, columnspan=2, sticky="w", pady=(0, 8)
         )
 
@@ -1081,7 +1081,7 @@ class SshTunnelDialog(tk.Toplevel):
         ttk.Label(
             frame,
             text="Leer lassen = direkter Tunnel (Port des SSH-Servers selbst).\nFür Jumphost-Tunnel: z. B. db.intern / 3306",
-            foreground="#888888",
+            style="Muted.TLabel",
         ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
         ttk.Separator(frame, orient="horizontal").grid(row=9, column=0, columnspan=2, sticky="ew", pady=(0, 10))

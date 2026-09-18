@@ -112,7 +112,7 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self._folders = tk.Listbox(root, height=12)
         self._folders.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(10, 0))
         self._folders.bind("<Double-Button-1>", lambda _event: self._open_selected())
-        ttk.Label(root, textvariable=self._status_var, foreground="#666666", wraplength=620).grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(root, textvariable=self._status_var, style="Muted.TLabel", wraplength=620).grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
         controls = ttk.Frame(root)
         controls.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         ttk.Button(controls, text="Eine Ebene hoch", command=self._up).pack(side="left")
@@ -237,7 +237,7 @@ class CertificateDeployDialog(tk.Toplevel):
         root.rowconfigure(2, weight=1)
 
         ttk.Label(root, text=f"Dateien für {target_count} Host(s)", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(root, text="Dateien werden zuerst nach /tmp hochgeladen und erst danach per sudo in den Zielordner kopiert.", foreground="#666666").grid(row=1, column=0, sticky="w", pady=(2, 10))
+        ttk.Label(root, text="Dateien werden zuerst nach /tmp hochgeladen und erst danach per sudo in den Zielordner kopiert.", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 10))
 
         files_frame = ttk.LabelFrame(root, text="Lokale Dateien", padding=10)
         files_frame.grid(row=2, column=0, sticky="nsew")
@@ -260,7 +260,7 @@ class CertificateDeployDialog(tk.Toplevel):
         self._browse_button.grid(row=0, column=2, padx=(8, 0))
         if not self._reference_sessions:
             self._browse_button.configure(state="disabled")
-        ttk.Label(destination, text="Ein absoluter Linux-Pfad pro Zeile. Alle ausgewählten Dateien behalten ihren Namen.", foreground="#666666").grid(row=1, column=1, sticky="w", pady=(4, 0))
+        ttk.Label(destination, text="Ein absoluter Linux-Pfad pro Zeile. Alle ausgewählten Dateien behalten ihren Namen.", style="Muted.TLabel").grid(row=1, column=1, sticky="w", pady=(4, 0))
         ttk.Checkbutton(destination, text="Vorhandene Dateien überschreiben", variable=self._overwrite_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         security = ttk.LabelFrame(root, text="sudo", padding=10)
@@ -270,7 +270,7 @@ class CertificateDeployDialog(tk.Toplevel):
         self._password_entry = ttk.Entry(security, textvariable=self._sudo_password_var, show="•")
         self._password_entry.grid(row=0, column=1, sticky="ew")
         ttk.Checkbutton(security, text="anzeigen", variable=self._show_password_var, command=self._toggle_password).grid(row=0, column=2, padx=(8, 0))
-        ttk.Label(security, text="Wird nur für diesen Lauf verwendet und nicht gespeichert.", foreground="#666666").grid(row=1, column=1, sticky="w", pady=(4, 0))
+        ttk.Label(security, text="Wird nur für diesen Lauf verwendet und nicht gespeichert.", style="Muted.TLabel").grid(row=1, column=1, sticky="w", pady=(4, 0))
 
         after = ttk.LabelFrame(root, text="Befehl nach erfolgreichem Upload (optional)", padding=10)
         after.grid(row=5, column=0, sticky="ew", pady=(10, 0))
@@ -286,7 +286,7 @@ class CertificateDeployDialog(tk.Toplevel):
         self._favorite_combo.bind("<<ComboboxSelected>>", lambda _event: self._apply_favorite())
         if not self._favorites:
             self._favorite_combo.configure(state="disabled")
-            ttk.Label(favorite_bar, text="Keine Befehl-Favoriten vorhanden.", foreground="#666666").grid(row=0, column=2, sticky="w", padx=(8, 0))
+            ttk.Label(favorite_bar, text="Keine Befehl-Favoriten vorhanden.", style="Muted.TLabel").grid(row=0, column=2, sticky="w", padx=(8, 0))
         self._post_command = scrolledtext.ScrolledText(after, wrap="word", height=4)
         self._post_command.grid(row=1, column=0, sticky="ew")
 
@@ -294,7 +294,7 @@ class CertificateDeployDialog(tk.Toplevel):
         options.grid(row=6, column=0, sticky="w", pady=(10, 0))
         self._close_on_success_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(options, text="Terminal-Tab nach erfolgreicher Übertragung schließen", variable=self._close_on_success_var).pack(side="left")
-        ttk.Label(options, text="Standard: offen lassen für eine interaktive Bash-Konsole.", foreground="#666666").pack(side="left", padx=(10, 0))
+        ttk.Label(options, text="Standard: offen lassen für eine interaktive Bash-Konsole.", style="Muted.TLabel").pack(side="left", padx=(10, 0))
 
         actions = ttk.Frame(root)
         actions.grid(row=7, column=0, sticky="e", pady=(12, 0))

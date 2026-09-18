@@ -31,6 +31,9 @@ TOOLBAR_BUTTON_ORDER = [
     "show_restart_servers",
 ]
 
+# Keep a small, non-collapsing gap between menu labels and ttk's arrow indicator.
+_MENU_ARROW_GAP = "\N{NO-BREAK SPACE}"
+
 
 def toolbar_direct_capacity(width: int) -> int:
     """Keep the command strip compact and move the rest into overflow."""
@@ -493,6 +496,7 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     selected = palette.selected
     button_active = palette.button_active
     dark_mode = int(bg[1:3], 16) < 80
+    warning_text = "#fbbf24" if dark_mode else "#9a5b00"
     danger_text = "#fca5a5" if dark_mode else "#b42318"
     danger_border = "#7f1d1d" if dark_mode else "#e5a9a4"
     danger_active = "#4a2525" if dark_mode else "#fff1f0"
@@ -528,6 +532,17 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("StatusBar.TLabel", background=surface_alt, foreground=muted)
     style.configure("Muted.TLabel", foreground=muted)
     style.configure("DialogTitle.TLabel", foreground=text, font=(ui_font[0], ui_font[1] + 3, "bold"))
+    style.configure("Warning.TLabel", background=bg, foreground=warning_text)
+    style.configure("Error.TLabel", background=bg, foreground=danger_text)
+    style.configure("DialogPanel.TLabelframe", background=surface, bordercolor=border, lightcolor=border, darkcolor=border, relief="solid")
+    style.configure("DialogPanel.TLabelframe.Label", background=surface, foreground=text, font=(ui_font[0], ui_font[1], "bold"))
+    style.configure("DialogPanel.TFrame", background=surface)
+    style.configure("DialogPanel.TLabel", background=surface, foreground=text)
+    style.configure("DialogPanelMuted.TLabel", background=surface, foreground=muted)
+    style.configure("DialogPanel.TCheckbutton", background=surface, foreground=text)
+    style.map("DialogPanel.TCheckbutton", background=[("active", surface)], foreground=[("disabled", muted)])
+    style.configure("DialogPanel.TRadiobutton", background=surface, foreground=text)
+    style.map("DialogPanel.TRadiobutton", background=[("active", surface)], foreground=[("disabled", muted)])
     style.configure("TButton", padding=(12, 7), background=surface, foreground=text, bordercolor=border, focusthickness=1, focuscolor=accent)
     style.map("TButton", background=[("active", button_active), ("pressed", selected)], foreground=[("active", text)], bordercolor=[("focus", accent), ("active", accent)])
     style.configure("SearchHistory.TButton", padding=(4, 1), background=surface, foreground=text, bordercolor=border, focusthickness=1, focuscolor=accent)
@@ -601,6 +616,7 @@ def _configure_classic_widgets(widget: tk.Misc, *, background: str, foreground: 
                 insertbackground=foreground,
                 disabledbackground=background,
                 disabledforeground=foreground,
+                readonlybackground=background,
                 highlightcolor=accent,
                 highlightbackground=border,
             )
@@ -641,6 +657,37 @@ def _style_dialog_actions(widget: tk.Misc) -> None:
         _style_dialog_actions(child)
 
 
+def _style_dialog_surfaces(widget: tk.Misc, *, inside_panel: bool = False) -> None:
+    """Keep default ttk controls visually attached to their dialog panel.
+
+    ttk does not inherit a parent's background.  Without panel-specific styles,
+    labels and check/radio controls therefore show the window background as
+    rectangular patches on top of a themed ``LabelFrame``.
+    """
+    for child in widget.children.values():
+        child_inside_panel = inside_panel or isinstance(child, ttk.LabelFrame)
+        try:
+            current_style = str(child.cget("style"))
+        except tk.TclError:
+            current_style = ""
+
+        if isinstance(child, ttk.LabelFrame) and current_style in {"", "TLabelframe"}:
+            child.configure(style="DialogPanel.TLabelframe")
+        elif child_inside_panel:
+            if isinstance(child, ttk.Label) and current_style in {"", "TLabel"}:
+                child.configure(style="DialogPanel.TLabel")
+            elif isinstance(child, ttk.Label) and current_style == "Muted.TLabel":
+                child.configure(style="DialogPanelMuted.TLabel")
+            elif isinstance(child, ttk.Frame) and current_style in {"", "TFrame"}:
+                child.configure(style="DialogPanel.TFrame")
+            elif isinstance(child, ttk.Checkbutton) and current_style in {"", "TCheckbutton"}:
+                child.configure(style="DialogPanel.TCheckbutton")
+            elif isinstance(child, ttk.Radiobutton) and current_style in {"", "TRadiobutton"}:
+                child.configure(style="DialogPanel.TRadiobutton")
+
+        _style_dialog_surfaces(child, inside_panel=child_inside_panel)
+
+
 def _install_combobox_popdown_style(combobox: ttk.Combobox, *, background: str, foreground: str, accent: str) -> None:
     def apply_popdown_style() -> None:
         try:
@@ -672,6 +719,7 @@ def _install_toplevel_theme_hook(app: tk.Tk) -> None:
         try:
             dialog.after_idle(
                 lambda: (
+                    _style_dialog_surfaces(dialog),
                     _configure_classic_widgets(
                         dialog,
                         background=palette.surface,
@@ -929,13 +977,13 @@ def build_main_ui(self) -> None:
     self._connect_btn.grid(row=0, column=2, padx=(0, 8))
     _decorate(self._connect_btn, icon="terminal")
 
-    selection_button = ttk.Menubutton(command_bar, text="Auswahl", menu=selection_menu)
+    selection_button = ttk.Menubutton(command_bar, text=f"Auswahl{_MENU_ARROW_GAP}", menu=selection_menu)
     selection_button.grid(row=0, column=3, padx=(0, 6))
     _decorate(selection_button, icon="check2-square")
-    view_button = ttk.Menubutton(command_bar, text="Ansicht", menu=view_menu)
+    view_button = ttk.Menubutton(command_bar, text=f"Ansicht{_MENU_ARROW_GAP}", menu=view_menu)
     view_button.grid(row=0, column=4, padx=(0, 6))
     _decorate(view_button, icon="layout-three-columns")
-    actions_button = ttk.Menubutton(command_bar, text="Aktionen", menu=actions_menu)
+    actions_button = ttk.Menubutton(command_bar, text=f"Aktionen{_MENU_ARROW_GAP}", menu=actions_menu)
     actions_button.grid(row=0, column=5)
     _decorate(actions_button, icon="lightning-charge")
     self._command_group_buttons = (selection_button, view_button, actions_button)
@@ -974,7 +1022,7 @@ def build_main_ui(self) -> None:
     self._toolbar_overflow_menu = tk.Menu(quick_bar, tearoff=False)
     self._toolbar_overflow_btn = ttk.Menubutton(
         quick_bar,
-        text="Mehr",
+        text=f"Mehr{_MENU_ARROW_GAP}",
         menu=self._toolbar_overflow_menu,
         style="Quick.TButton",
     )

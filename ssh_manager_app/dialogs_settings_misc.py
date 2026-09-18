@@ -524,7 +524,7 @@ class SettingsView(ttk.Frame):
 
         for idx, (action_id, label, default) in enumerate(DEFAULT_ACTION_ORDER):
             ttk.Label(host, text=label).grid(row=idx, column=0, sticky="w", pady=4, padx=(0, 12))
-            entry = tk.Entry(host, width=20, justify="center", readonlybackground="#ffffff")
+            entry = tk.Entry(host, width=20, justify="center")
             entry.grid(row=idx, column=1, sticky="w", pady=4, padx=(0, 12))
             entry.bind("<Button-1>", lambda _e, a=action_id: self._start_shortcut_capture(a))
             entry.bind("<FocusOut>", lambda _e, a=action_id: self._cancel_shortcut_capture(a))
