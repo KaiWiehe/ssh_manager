@@ -768,7 +768,7 @@ class HerdrLauncher:
     WORKSPACE_LABEL = "SSH Manager"
 
     @staticmethod
-    def _run_json(executable: str, args: list[str], timeout: float = 5.0) -> dict:
+    def _run(executable: str, args: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess[str]:
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         result = subprocess.run(
             [executable, *args],
@@ -780,6 +780,11 @@ class HerdrLauncher:
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "Unbekannter Fehler").strip()
             raise RuntimeError(detail)
+        return result
+
+    @classmethod
+    def _run_json(cls, executable: str, args: list[str], timeout: float = 5.0) -> dict:
+        result = cls._run(executable, args, timeout=timeout)
         try:
             payload = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
@@ -866,7 +871,7 @@ class HerdrLauncher:
     @classmethod
     def _best_effort(cls, executable: str, args: list[str]) -> None:
         try:
-            cls._run_json(executable, args)
+            cls._run(executable, args)
         except (OSError, RuntimeError, subprocess.TimeoutExpired):
             pass
 
@@ -911,7 +916,9 @@ class HerdrLauncher:
             for session, _tab_id, pane_id in created_tabs:
                 effective_user = session.username or user
                 ssh_command = _build_ssh_command(session, effective_user)
-                cls._run_json(executable, ["pane", "run", pane_id, ssh_command])
+                # pane run bestätigt Erfolg über den Exitcode, gibt dabei aber
+                # bewusst keine JSON-Nutzlast aus.
+                cls._run(executable, ["pane", "run", pane_id, ssh_command])
                 started_sessions.append(session)
 
             first_tab_id = created_tabs[0][1]

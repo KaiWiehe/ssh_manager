@@ -2,7 +2,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -74,30 +74,36 @@ def test_herdr_launcher_reuses_existing_workspace_and_does_not_open_outer_tab_fo
     ]
     settings = WindowsTerminalSettings(ssh_open_mode="herdr")
     tab_number = 0
-    calls = []
+    json_calls = []
+    command_calls = []
 
     def run_json(_executable, args, timeout=5.0):
         nonlocal tab_number
-        calls.append(args)
+        json_calls.append(args)
         if args[:2] == ["tab", "create"]:
             tab_number += 1
             return _herdr_tab_response("w7", f"w7:t{tab_number}", f"w7:p{tab_number}")
         return {"result": {}}
 
+    def run_command(_executable, args, timeout=5.0):
+        command_calls.append(args)
+        return MagicMock(returncode=0, stdout="", stderr="")
+
     with patch("ssh_manager_app.core.shutil.which", return_value=r"C:\Tools\herdr.exe"), \
          patch.object(HerdrLauncher, "_ensure_server"), \
          patch.object(HerdrLauncher, "_find_workspace", return_value="w7"), \
          patch.object(HerdrLauncher, "_run_json", side_effect=run_json), \
+         patch.object(HerdrLauncher, "_run", side_effect=run_command), \
          patch.object(HerdrLauncher, "_best_effort"), \
          patch.object(HerdrLauncher, "_has_visible_client", return_value=True), \
          patch("ssh_manager_app.core.subprocess.Popen") as popen:
         HerdrLauncher.launch(sessions, "ops", settings)
 
-    assert [call for call in calls if call[:2] == ["tab", "create"]] == [
+    assert [call for call in json_calls if call[:2] == ["tab", "create"]] == [
         ["tab", "create", "--workspace", "w7", "--label", "Server 1", "--no-focus"],
         ["tab", "create", "--workspace", "w7", "--label", "Server 2", "--no-focus"],
     ]
-    assert [call for call in calls if call[:2] == ["pane", "run"]] == [
+    assert [call for call in command_calls if call[:2] == ["pane", "run"]] == [
         ["pane", "run", "w7:p1", "ssh ops@10.0.0.1"],
         ["pane", "run", "w7:p2", "ssh deploy@10.0.0.2"],
     ]
@@ -107,28 +113,34 @@ def test_herdr_launcher_reuses_existing_workspace_and_does_not_open_outer_tab_fo
 def test_herdr_launcher_reuses_initial_workspace_pane_and_attaches_once_when_headless():
     session = Session("s1", "Production", [], "prod.example", username="root")
     settings = WindowsTerminalSettings(profile_name="Custom Bash", ssh_open_mode="herdr")
-    calls = []
+    json_calls = []
+    command_calls = []
 
     def run_json(_executable, args, timeout=5.0):
-        calls.append(args)
+        json_calls.append(args)
         if args[:2] == ["workspace", "create"]:
             return _herdr_tab_response("w8", "w8:t1", "w8:p1", include_workspace=True)
         return {"result": {}}
+
+    def run_command(_executable, args, timeout=5.0):
+        command_calls.append(args)
+        return MagicMock(returncode=0, stdout="", stderr="")
 
     with patch("ssh_manager_app.core.shutil.which", return_value=r"C:\Tools\herdr.exe"), \
          patch.object(HerdrLauncher, "_ensure_server"), \
          patch.object(HerdrLauncher, "_find_workspace", return_value=None), \
          patch.object(HerdrLauncher, "_run_json", side_effect=run_json), \
+         patch.object(HerdrLauncher, "_run", side_effect=run_command), \
          patch.object(HerdrLauncher, "_best_effort") as best_effort, \
          patch.object(HerdrLauncher, "_has_visible_client", return_value=False), \
          patch("ssh_manager_app.core.subprocess.Popen") as popen:
         HerdrLauncher.launch([session], "ignored", settings)
 
-    assert [call for call in calls if call[:2] == ["workspace", "create"]] == [
+    assert [call for call in json_calls if call[:2] == ["workspace", "create"]] == [
         ["workspace", "create", "--label", "SSH Manager", "--no-focus"],
     ]
-    assert [call for call in calls if call[:2] == ["tab", "create"]] == []
-    assert ["pane", "run", "w8:p1", "ssh root@prod.example"] in calls
+    assert [call for call in json_calls if call[:2] == ["tab", "create"]] == []
+    assert ["pane", "run", "w8:p1", "ssh root@prod.example"] in command_calls
     best_effort.assert_any_call(r"C:\Tools\herdr.exe", ["tab", "rename", "w8:t1", "Production"])
     popen.assert_called_once_with([
         "wt.exe", "new-tab", "-p", "Custom Bash", "--", r"C:\Tools\herdr.exe",
