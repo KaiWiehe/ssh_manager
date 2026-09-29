@@ -632,10 +632,15 @@ def _find_git_bash() -> str:
         bash = Path(git).parent.parent / "bin" / "bash.exe"
         if bash.exists():
             return str(bash)
-    for candidate in [
+    local_app = os.environ.get("LOCALAPPDATA", "")
+    candidates = []
+    if local_app:
+        candidates.append(Path(local_app) / "Programs" / "Git" / "bin" / "bash.exe")
+    candidates.extend([
         Path(r"C:\Program Files\Git\bin\bash.exe"),
         Path(r"C:\Program Files (x86)\Git\bin\bash.exe"),
-    ]:
+    ])
+    for candidate in candidates:
         if candidate.exists():
             return str(candidate)
     return "bash"

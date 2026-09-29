@@ -7,6 +7,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from ssh_manager_app.core import (
+    _find_git_bash,
     build_jump_wt_command,
     build_certificate_deploy_wt_command,
     build_certificate_replace_wt_command,
@@ -14,6 +15,16 @@ from ssh_manager_app.core import (
     build_ssh_tunnel_command,
 )
 from ssh_manager_app.models import Session, WindowsTerminalSettings
+
+
+def test_find_git_bash_uses_per_user_install_when_git_is_not_on_path(tmp_path):
+    bash = tmp_path / "Programs" / "Git" / "bin" / "bash.exe"
+    bash.parent.mkdir(parents=True)
+    bash.touch()
+
+    with patch("ssh_manager_app.core.shutil.which", return_value=None), \
+         patch.dict(os.environ, {"LOCALAPPDATA": str(tmp_path)}):
+        assert _find_git_bash() == str(bash)
 
 
 def test_build_jump_wt_command_with_port_and_title_mode():
