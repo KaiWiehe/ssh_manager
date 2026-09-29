@@ -80,6 +80,9 @@ def load_settings_from_path(path: Path) -> AppSettings:
     winscp_open_mode = str(winscp_raw.get("open_mode", defaults.winscp.open_mode))
     if winscp_open_mode not in {"tabs", "windows"}:
         winscp_open_mode = defaults.winscp.open_mode
+    ssh_open_mode = str(wt_raw.get("ssh_open_mode", defaults.windows_terminal.ssh_open_mode))
+    if ssh_open_mode not in {"windows_terminal", "herdr"}:
+        ssh_open_mode = defaults.windows_terminal.ssh_open_mode
 
     theme = str(appearance_raw.get("theme", defaults.appearance.theme)).strip() or defaults.appearance.theme
     if theme not in {"default", "modern_light", "dark_neutral", "midnight"}:
@@ -145,6 +148,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
             profile_name=str(wt_raw.get("profile_name", defaults.windows_terminal.profile_name)).strip() or defaults.windows_terminal.profile_name,
             use_tab_color=bool(wt_raw.get("use_tab_color", defaults.windows_terminal.use_tab_color)),
             title_mode=str(wt_raw.get("title_mode", defaults.windows_terminal.title_mode)),
+            ssh_open_mode=ssh_open_mode,
         ),
         winscp=WinSCPSettings(open_mode=winscp_open_mode),
         source_visibility=SourceVisibilitySettings(

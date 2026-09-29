@@ -1,5 +1,5 @@
 """
-SSH-Manager – öffnet mehrere WinSCP-Sessions als SSH-Tabs in Windows Terminal.
+SSH-Manager – öffnet mehrere SSH-Sessions in Windows Terminal oder optional Herdr.
 Benötigt: Python 3.8+, Windows, Windows Terminal (wt.exe), Git Bash-Profil.
 """
 from __future__ import annotations

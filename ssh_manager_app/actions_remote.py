@@ -4,6 +4,7 @@ import subprocess
 from tkinter import messagebox
 
 from .core import (
+    TerminalLaunchError,
     _append_ssh_config_alias,
     build_jump_wt_command,
     build_remote_command_wt_command,
@@ -59,6 +60,10 @@ def connect_sessions(app, sessions: list[Session]) -> None:
             terminal_settings=terminal_settings,
         )
         add_recent_sessions(app, sessions)
+    except TerminalLaunchError as exc:
+        if exc.started_sessions:
+            add_recent_sessions(app, exc.started_sessions)
+        messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
     except Exception as exc:
         messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
 
@@ -92,6 +97,10 @@ def quick_connect_session(app, session: Session) -> None:
             terminal_settings=app.settings.windows_terminal,
         )
         add_recent_session(app, session)
+    except TerminalLaunchError as exc:
+        if exc.started_sessions:
+            add_recent_session(app, session)
+        messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
     except Exception as exc:
         messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
 

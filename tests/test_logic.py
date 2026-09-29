@@ -2613,6 +2613,8 @@ def test_settings_view_collect_settings_normalizes_values():
     view._use_tab_color_var.get.return_value = True
     view._title_mode_var = MagicMock()
     view._title_mode_var.get.return_value = SettingsView.TITLE_MODE_LABELS["name_host"]
+    view._ssh_open_mode_var = MagicMock()
+    view._ssh_open_mode_var.get.return_value = SettingsView.SSH_OPEN_MODE_LABELS["herdr"]
     view._collect_toolbar_settings = MagicMock(return_value=AppSettings().toolbar)
     view._collect_source_visibility_settings = MagicMock(return_value=AppSettings().source_visibility)
 
@@ -2625,6 +2627,7 @@ def test_settings_view_collect_settings_normalizes_values():
     assert settings.windows_terminal.profile_name == "Git Bash"
     assert settings.windows_terminal.use_tab_color is True
     assert settings.windows_terminal.title_mode == "name_host"
+    assert settings.windows_terminal.ssh_open_mode == "herdr"
 
 
 def test_settings_view_collect_settings_rejects_missing_quick_users():

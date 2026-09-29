@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -7,6 +8,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import tkinter as tk
 import uuid
 from pathlib import Path
@@ -748,18 +750,205 @@ def build_ssh_tunnel_command(
 # ---------------------------------------------------------------------------
 
 
+class TerminalLaunchError(RuntimeError):
+    """Fehler nach einem teilweise erfolgreichen Terminal-Start."""
+
+    def __init__(self, message: str, started_sessions: list[Session] | None = None):
+        super().__init__(message)
+        self.started_sessions = list(started_sessions or [])
+
+
+class HerdrUnavailableError(RuntimeError):
+    """Herdr konnte vor dem Erzeugen des ersten Tabs nicht verwendet werden."""
+
+
+class HerdrLauncher:
+    """Öffnet normale SSH-Verbindungen in einem persistenten Herdr-Workspace."""
+
+    WORKSPACE_LABEL = "SSH Manager"
+
+    @staticmethod
+    def _run_json(executable: str, args: list[str], timeout: float = 5.0) -> dict:
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        result = subprocess.run(
+            [executable, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            creationflags=creationflags,
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "Unbekannter Fehler").strip()
+            raise RuntimeError(detail)
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Herdr hat keine gültige JSON-Antwort geliefert.") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError("Herdr hat ein unerwartetes Antwortformat geliefert.")
+        return payload
+
+    @classmethod
+    def _ensure_server(cls, executable: str) -> None:
+        try:
+            status = cls._run_json(executable, ["status", "server", "--json"], timeout=2.0)
+            if status.get("running") is True:
+                return
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            pass
+
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        try:
+            subprocess.Popen(
+                [executable, "server"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creationflags,
+            )
+        except OSError as exc:
+            raise HerdrUnavailableError(f"Herdr-Server konnte nicht gestartet werden: {exc}") from exc
+
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            try:
+                status = cls._run_json(executable, ["status", "server", "--json"], timeout=1.0)
+                if status.get("running") is True:
+                    return
+            except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                pass
+            time.sleep(0.1)
+        raise HerdrUnavailableError("Der Herdr-Server war nach 5 Sekunden noch nicht erreichbar.")
+
+    @classmethod
+    def _find_workspace(cls, executable: str) -> str | None:
+        payload = cls._run_json(executable, ["workspace", "list"])
+        workspaces = payload.get("result", {}).get("workspaces", [])
+        matches = [item for item in workspaces if isinstance(item, dict) and item.get("label") == cls.WORKSPACE_LABEL]
+        if not matches:
+            return None
+        matches.sort(key=lambda item: int(item.get("number", 0)))
+        workspace_id = matches[0].get("workspace_id")
+        return str(workspace_id) if workspace_id else None
+
+    @staticmethod
+    def _created_tab(payload: dict) -> tuple[str, str, str]:
+        result = payload.get("result", {})
+        workspace = result.get("workspace", {})
+        tab = result.get("tab", {})
+        root_pane = result.get("root_pane", {})
+        workspace_id = workspace.get("workspace_id") or tab.get("workspace_id")
+        tab_id = tab.get("tab_id")
+        pane_id = root_pane.get("pane_id")
+        if not workspace_id or not tab_id or not pane_id:
+            raise RuntimeError("Herdr hat für den neuen Tab keine vollständigen IDs geliefert.")
+        return str(workspace_id), str(tab_id), str(pane_id)
+
+    @classmethod
+    def _has_visible_client(cls, executable: str) -> bool:
+        """Unterscheidet interaktive Herdr-Clients von den Serverprozessen."""
+        try:
+            sessions = cls._run_json(executable, ["session", "list", "--json"])
+            running_servers = sum(1 for item in sessions.get("sessions", []) if isinstance(item, dict) and item.get("running"))
+            image_name = Path(executable).name
+            result = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            process_count = sum(1 for line in result.stdout.splitlines() if line.strip().lower().startswith(f'"{image_name.lower()}"'))
+            return process_count > running_servers
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            return False
+
+    @classmethod
+    def _best_effort(cls, executable: str, args: list[str]) -> None:
+        try:
+            cls._run_json(executable, args)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            pass
+
+    @classmethod
+    def launch(cls, sessions: list[Session], user: str, terminal_settings: WindowsTerminalSettings) -> None:
+        executable = shutil.which("herdr")
+        if not executable:
+            raise HerdrUnavailableError("Herdr wurde nicht im PATH gefunden.")
+
+        cls._ensure_server(executable)
+        try:
+            workspace_id = cls._find_workspace(executable)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            raise HerdrUnavailableError(f"Herdr-Workspace konnte nicht ermittelt werden: {exc}") from exc
+
+        created_tabs: list[tuple[Session, str, str]] = []
+        try:
+            remaining_sessions = list(sessions)
+            if workspace_id is None:
+                first_session = remaining_sessions.pop(0)
+                payload = cls._run_json(executable, ["workspace", "create", "--label", cls.WORKSPACE_LABEL, "--no-focus"])
+                workspace_id, tab_id, pane_id = cls._created_tab(payload)
+                created_tabs.append((first_session, tab_id, pane_id))
+                cls._best_effort(executable, ["tab", "rename", tab_id, first_session.display_name])
+
+            for session in remaining_sessions:
+                payload = cls._run_json(
+                    executable,
+                    ["tab", "create", "--workspace", workspace_id, "--label", session.display_name, "--no-focus"],
+                )
+                _workspace_id, tab_id, pane_id = cls._created_tab(payload)
+                created_tabs.append((session, tab_id, pane_id))
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            if created_tabs:
+                raise TerminalLaunchError(
+                    f"Herdr konnte nicht alle Tabs anlegen ({len(created_tabs)} angelegt): {exc}",
+                ) from exc
+            raise HerdrUnavailableError(f"Herdr konnte keinen SSH-Tab anlegen: {exc}") from exc
+
+        started_sessions: list[Session] = []
+        try:
+            for session, _tab_id, pane_id in created_tabs:
+                effective_user = session.username or user
+                ssh_command = _build_ssh_command(session, effective_user)
+                cls._run_json(executable, ["pane", "run", pane_id, ssh_command])
+                started_sessions.append(session)
+
+            first_tab_id = created_tabs[0][1]
+            cls._best_effort(executable, ["workspace", "focus", workspace_id])
+            cls._best_effort(executable, ["tab", "focus", first_tab_id])
+
+            if not cls._has_visible_client(executable):
+                profile = (terminal_settings.profile_name or "Git Bash").strip() or "Git Bash"
+                subprocess.Popen(["wt.exe", "new-tab", "-p", profile, "--", executable])
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            raise TerminalLaunchError(
+                f"Herdr hat {len(started_sessions)} von {len(sessions)} SSH-Verbindungen gestartet: {exc}",
+                started_sessions=started_sessions,
+            ) from exc
+
+
 class TerminalLauncher:
-    """Startet wt.exe mit mehreren SSH-Tabs."""
+    """Startet normale SSH-Verbindungen in Windows Terminal oder Herdr."""
 
     @staticmethod
     def launch(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None, terminal_settings: WindowsTerminalSettings | None = None) -> None:
         """
-        Öffnet alle Sessions als neue Tabs in einem Windows Terminal Fenster.
-        Hinweis: Da shell=True genutzt wird, wirft Popen keine Exception wenn
-        wt.exe fehlt – cmd.exe startet, aber wt.exe schlägt intern fehl.
+        Öffnet alle Sessions im konfigurierten Terminal-Ziel.
+        Der Windows-Terminal-Fallback nutzt weiterhin shell=True, damit wt.exe
+        mehrere mit Semikolon getrennte Tab-Subcommands erhält.
         """
         if not sessions:
             return
+        settings = terminal_settings or WindowsTerminalSettings()
+        if settings.ssh_open_mode == "herdr":
+            try:
+                HerdrLauncher.launch(sessions, user, settings)
+                return
+            except HerdrUnavailableError:
+                # Solange Herdr noch keinen Tab erzeugt hat, ist der bisherige
+                # Windows-Terminal-Weg der sichere und erwartete Fallback.
+                pass
         cmd = build_wt_command(sessions, user, session_colors, terminal_settings=terminal_settings)
         # shell=True nötig: wt.exe parst `;` als eigenen Subcommand-Separator,
         # cmd.exe behandelt `;` nicht als Sonderzeichen und reicht es durch.

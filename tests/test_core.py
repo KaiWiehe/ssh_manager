@@ -4,9 +4,15 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from ssh_manager_app.core import (
+    HerdrLauncher,
+    HerdrUnavailableError,
+    TerminalLaunchError,
+    TerminalLauncher,
     _find_git_bash,
     build_jump_wt_command,
     build_certificate_deploy_wt_command,
@@ -15,6 +21,118 @@ from ssh_manager_app.core import (
     build_ssh_tunnel_command,
 )
 from ssh_manager_app.models import Session, WindowsTerminalSettings
+
+
+def _herdr_tab_response(workspace_id: str, tab_id: str, pane_id: str, include_workspace: bool = False) -> dict:
+    result = {
+        "tab": {"tab_id": tab_id, "workspace_id": workspace_id},
+        "root_pane": {"pane_id": pane_id},
+    }
+    if include_workspace:
+        result["workspace"] = {"workspace_id": workspace_id}
+    return {"result": result}
+
+
+def test_terminal_launcher_uses_windows_terminal_by_default():
+    session = Session("s1", "Server", [], "10.0.0.1")
+    with patch("ssh_manager_app.core.build_wt_command", return_value="wt command") as build, \
+         patch("ssh_manager_app.core.subprocess.Popen") as popen:
+        TerminalLauncher.launch([session], "ops", {"s1": "#123456"})
+
+    build.assert_called_once()
+    popen.assert_called_once_with("wt command", shell=True)
+
+
+def test_terminal_launcher_falls_back_to_windows_terminal_before_first_herdr_tab():
+    session = Session("s1", "Server", [], "10.0.0.1")
+    settings = WindowsTerminalSettings(ssh_open_mode="herdr")
+    with patch.object(HerdrLauncher, "launch", side_effect=HerdrUnavailableError("nicht erreichbar")), \
+         patch("ssh_manager_app.core.build_wt_command", return_value="wt fallback"), \
+         patch("ssh_manager_app.core.subprocess.Popen") as popen:
+        TerminalLauncher.launch([session], "ops", terminal_settings=settings)
+
+    popen.assert_called_once_with("wt fallback", shell=True)
+
+
+def test_terminal_launcher_does_not_fallback_after_partial_herdr_start():
+    session = Session("s1", "Server", [], "10.0.0.1")
+    settings = WindowsTerminalSettings(ssh_open_mode="herdr")
+    error = TerminalLaunchError("teilweise", [session])
+    with patch.object(HerdrLauncher, "launch", side_effect=error), \
+         patch("ssh_manager_app.core.subprocess.Popen") as popen:
+        with pytest.raises(TerminalLaunchError) as raised:
+            TerminalLauncher.launch([session], "ops", terminal_settings=settings)
+
+    assert raised.value.started_sessions == [session]
+    popen.assert_not_called()
+
+
+def test_herdr_launcher_reuses_existing_workspace_and_does_not_open_outer_tab_for_visible_client():
+    sessions = [
+        Session("s1", "Server 1", [], "10.0.0.1"),
+        Session("s2", "Server 2", [], "10.0.0.2", username="deploy"),
+    ]
+    settings = WindowsTerminalSettings(ssh_open_mode="herdr")
+    tab_number = 0
+    calls = []
+
+    def run_json(_executable, args, timeout=5.0):
+        nonlocal tab_number
+        calls.append(args)
+        if args[:2] == ["tab", "create"]:
+            tab_number += 1
+            return _herdr_tab_response("w7", f"w7:t{tab_number}", f"w7:p{tab_number}")
+        return {"result": {}}
+
+    with patch("ssh_manager_app.core.shutil.which", return_value=r"C:\Tools\herdr.exe"), \
+         patch.object(HerdrLauncher, "_ensure_server"), \
+         patch.object(HerdrLauncher, "_find_workspace", return_value="w7"), \
+         patch.object(HerdrLauncher, "_run_json", side_effect=run_json), \
+         patch.object(HerdrLauncher, "_best_effort"), \
+         patch.object(HerdrLauncher, "_has_visible_client", return_value=True), \
+         patch("ssh_manager_app.core.subprocess.Popen") as popen:
+        HerdrLauncher.launch(sessions, "ops", settings)
+
+    assert [call for call in calls if call[:2] == ["tab", "create"]] == [
+        ["tab", "create", "--workspace", "w7", "--label", "Server 1", "--no-focus"],
+        ["tab", "create", "--workspace", "w7", "--label", "Server 2", "--no-focus"],
+    ]
+    assert [call for call in calls if call[:2] == ["pane", "run"]] == [
+        ["pane", "run", "w7:p1", "ssh ops@10.0.0.1"],
+        ["pane", "run", "w7:p2", "ssh deploy@10.0.0.2"],
+    ]
+    popen.assert_not_called()
+
+
+def test_herdr_launcher_reuses_initial_workspace_pane_and_attaches_once_when_headless():
+    session = Session("s1", "Production", [], "prod.example", username="root")
+    settings = WindowsTerminalSettings(profile_name="Custom Bash", ssh_open_mode="herdr")
+    calls = []
+
+    def run_json(_executable, args, timeout=5.0):
+        calls.append(args)
+        if args[:2] == ["workspace", "create"]:
+            return _herdr_tab_response("w8", "w8:t1", "w8:p1", include_workspace=True)
+        return {"result": {}}
+
+    with patch("ssh_manager_app.core.shutil.which", return_value=r"C:\Tools\herdr.exe"), \
+         patch.object(HerdrLauncher, "_ensure_server"), \
+         patch.object(HerdrLauncher, "_find_workspace", return_value=None), \
+         patch.object(HerdrLauncher, "_run_json", side_effect=run_json), \
+         patch.object(HerdrLauncher, "_best_effort") as best_effort, \
+         patch.object(HerdrLauncher, "_has_visible_client", return_value=False), \
+         patch("ssh_manager_app.core.subprocess.Popen") as popen:
+        HerdrLauncher.launch([session], "ignored", settings)
+
+    assert [call for call in calls if call[:2] == ["workspace", "create"]] == [
+        ["workspace", "create", "--label", "SSH Manager", "--no-focus"],
+    ]
+    assert [call for call in calls if call[:2] == ["tab", "create"]] == []
+    assert ["pane", "run", "w8:p1", "ssh root@prod.example"] in calls
+    best_effort.assert_any_call(r"C:\Tools\herdr.exe", ["tab", "rename", "w8:t1", "Production"])
+    popen.assert_called_once_with([
+        "wt.exe", "new-tab", "-p", "Custom Bash", "--", r"C:\Tools\herdr.exe",
+    ])
 
 
 def test_find_git_bash_uses_per_user_install_when_git_is_not_on_path(tmp_path):

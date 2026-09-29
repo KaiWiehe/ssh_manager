@@ -114,6 +114,10 @@ class SettingsView(ttk.Frame):
         "user_host": "Benutzer@Host",
         "name_host": "Name (Host)",
     }
+    SSH_OPEN_MODE_LABELS = {
+        "windows_terminal": "Windows Terminal – Verbindungen als Tabs öffnen (Standard)",
+        "herdr": "Herdr – Verbindungen als Herdr-Tabs öffnen",
+    }
     WINSCP_OPEN_MODE_LABELS = {
         "tabs": "Als Tabs im vorhandenen/gleichen Fenster",
         "windows": "Jede Verbindung in eigenem Fenster",
@@ -129,6 +133,7 @@ class SettingsView(ttk.Frame):
         self._startup_expand_var = tk.StringVar()
         self._profile_name_var = tk.StringVar()
         self._title_mode_var = tk.StringVar()
+        self._ssh_open_mode_var = tk.StringVar()
         self._winscp_open_mode_var = tk.StringVar()
         self._theme_var = tk.StringVar()
         self._accent_var = tk.StringVar()
@@ -207,7 +212,7 @@ class SettingsView(ttk.Frame):
             ("users", "Schnellauswahl-Benutzer"),
             ("toolbar", "Toolbar"),
             ("columns", "Spalten"),
-            ("terminal", "Windows Terminal"),
+            ("terminal", "Terminal"),
             ("shortcuts", "Tastenkürzel"),
             ("transfer", "Export / Import"),
             ("reset", "Zurücksetzen"),
@@ -491,17 +496,31 @@ class SettingsView(ttk.Frame):
         return frame
 
     def _build_terminal_section(self) -> ttk.Frame:
-        frame = self._build_section_frame("Windows Terminal", "Nur optische Übergaben an Windows Terminal, keine SSH-Logik.")
+        frame = self._build_section_frame("Terminal", "Legt fest, wo normale SSH-Verbindungen geöffnet werden.")
         form = ttk.Frame(frame, style="SettingsPanel.TFrame")
         form.grid(row=2, column=0, sticky="nw")
         form.columnconfigure(0, minsize=220)
         form.columnconfigure(1, weight=1)
-        ttk.Label(form, text="Profilname:").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
-        ttk.Entry(form, textvariable=self._profile_name_var, width=32).grid(row=0, column=1, sticky="ew", pady=6)
-        ttk.Checkbutton(form, text="Tab-Farben an Windows Terminal übergeben", variable=self._use_tab_color_var).grid(row=1, column=0, columnspan=2, sticky="w", pady=6)
-        ttk.Label(form, text="Tab-Titel:").grid(row=2, column=0, sticky="w", pady=6, padx=(0, 12))
+        ttk.Label(form, text="SSH-Verbindungen öffnen in:").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
+        self._ssh_open_mode_combo = ttk.Combobox(
+            form,
+            textvariable=self._ssh_open_mode_var,
+            values=list(self.SSH_OPEN_MODE_LABELS.values()),
+            state="readonly",
+            width=52,
+        )
+        self._ssh_open_mode_combo.grid(row=0, column=1, sticky="ew", pady=6)
+        ttk.Label(form, text="Windows-Terminal-Profil:").grid(row=1, column=0, sticky="w", pady=6, padx=(0, 12))
+        ttk.Entry(form, textvariable=self._profile_name_var, width=32).grid(row=1, column=1, sticky="ew", pady=6)
+        ttk.Checkbutton(form, text="Tab-Farben an Windows Terminal übergeben", variable=self._use_tab_color_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=6)
+        ttk.Label(form, text="Windows-Terminal-Tab-Titel:").grid(row=3, column=0, sticky="w", pady=6, padx=(0, 12))
         self._title_mode_combo = ttk.Combobox(form, textvariable=self._title_mode_var, values=list(self.TITLE_MODE_LABELS.values()), state="readonly", width=32)
-        self._title_mode_combo.grid(row=2, column=1, sticky="ew", pady=6)
+        self._title_mode_combo.grid(row=3, column=1, sticky="ew", pady=6)
+        ttk.Label(
+            form,
+            text="Herdr verwendet den festen Workspace „SSH Manager“ und den Session-Namen als Tab-Titel.",
+            style="SettingsHint.TLabel",
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
         return frame
 
     def _build_shortcuts_section(self) -> ttk.Frame:
@@ -773,7 +792,7 @@ class SettingsView(ttk.Frame):
             "users": "Schnellauswahl-Benutzer",
             "toolbar": "Toolbar",
             "columns": "Spalten",
-            "terminal": "Windows Terminal",
+            "terminal": "Terminal",
             "shortcuts": "Tastenkürzel",
             "transfer": "Export / Import",
             "reset": "Zurücksetzen",
@@ -802,6 +821,7 @@ class SettingsView(ttk.Frame):
         self._profile_name_var.set(settings.windows_terminal.profile_name)
         self._use_tab_color_var.set(settings.windows_terminal.use_tab_color)
         self._title_mode_var.set(self.TITLE_MODE_LABELS.get(settings.windows_terminal.title_mode, self.TITLE_MODE_LABELS["default"]))
+        self._ssh_open_mode_var.set(self.SSH_OPEN_MODE_LABELS.get(settings.windows_terminal.ssh_open_mode, self.SSH_OPEN_MODE_LABELS["windows_terminal"]))
         self._winscp_open_mode_var.set(self.WINSCP_OPEN_MODE_LABELS.get(settings.winscp.open_mode, self.WINSCP_OPEN_MODE_LABELS["tabs"]))
         self._winscp_include_username_var.set(settings.import_settings.winscp_include_username)
         self._filezilla_include_username_var.set(settings.import_settings.filezilla_include_username)
@@ -983,6 +1003,8 @@ class SettingsView(ttk.Frame):
             raise ValueError("Timeout muss eine ganze Zahl >= 1 sein.") from e
         startup_expand_mode = next((key for key, label in self.STARTUP_LABELS.items() if label == self._startup_expand_var.get()), "remember")
         title_mode = next((key for key, label in self.TITLE_MODE_LABELS.items() if label == self._title_mode_var.get()), "default")
+        ssh_open_mode_label = getattr(getattr(self, "_ssh_open_mode_var", None), "get", lambda: self.SSH_OPEN_MODE_LABELS["windows_terminal"])()
+        ssh_open_mode = next((key for key, label in self.SSH_OPEN_MODE_LABELS.items() if label == ssh_open_mode_label), "windows_terminal")
         winscp_open_mode_label = getattr(getattr(self, "_winscp_open_mode_var", None), "get", lambda: self.WINSCP_OPEN_MODE_LABELS["tabs"])()
         winscp_open_mode = next((key for key, label in self.WINSCP_OPEN_MODE_LABELS.items() if label == winscp_open_mode_label), "tabs")
         return AppSettings(
@@ -999,6 +1021,7 @@ class SettingsView(ttk.Frame):
                 profile_name=self._profile_name_var.get().strip() or "Git Bash",
                 use_tab_color=self._use_tab_color_var.get(),
                 title_mode=title_mode,
+                ssh_open_mode=ssh_open_mode,
             ),
             winscp=WinSCPSettings(open_mode=winscp_open_mode),
             source_visibility=self._collect_source_visibility_settings(),

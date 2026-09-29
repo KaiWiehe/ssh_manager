@@ -60,6 +60,7 @@ class WindowsTerminalSettings:
     profile_name: str = "Git Bash"
     use_tab_color: bool = True
     title_mode: str = "default"
+    ssh_open_mode: str = "windows_terminal"
 
 
 @dataclass

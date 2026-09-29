@@ -43,6 +43,7 @@ def test_save_settings_writes_nested_settings_payload():
         settings.default_user = "alice"
         settings.toolbar.show_notes_column = False
         settings.windows_terminal.profile_name = "PowerShell"
+        settings.windows_terminal.ssh_open_mode = "herdr"
         settings.source_visibility.show_filezilla_config = True
 
         with patch("ssh_manager_app.storage._SETTINGS_FILE", settings_file):
@@ -54,6 +55,7 @@ def test_save_settings_writes_nested_settings_payload():
     assert raw["default_user"] == "alice"
     assert raw["toolbar"]["show_notes_column"] is False
     assert raw["windows_terminal"]["profile_name"] == "PowerShell"
+    assert raw["windows_terminal"]["ssh_open_mode"] == "herdr"
     assert raw["source_visibility"]["show_filezilla_config"] is True
     assert raw["appearance"] == {
         "theme": "default",
@@ -86,6 +88,16 @@ def test_load_settings_from_path_non_object_root_falls_back_to_defaults():
         settings = load_settings_from_path(path)
 
     assert settings == default_settings()
+
+
+def test_load_settings_from_path_keeps_windows_terminal_as_default_and_rejects_invalid_ssh_mode():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(json.dumps({"windows_terminal": {"ssh_open_mode": "invalid"}}), encoding="utf-8")
+
+        settings = load_settings_from_path(path)
+
+    assert settings.windows_terminal.ssh_open_mode == "windows_terminal"
 
 
 def test_load_settings_from_path_ignores_non_object_nested_sections():

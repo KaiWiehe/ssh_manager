@@ -1,6 +1,6 @@
 # SSH-Manager
 
-Öffnet mehrere SSH-Verbindungen gleichzeitig als Tabs in Windows Terminal.
+Öffnet mehrere SSH-Verbindungen gleichzeitig als Tabs in Windows Terminal oder optional in einem persistenten Herdr-Workspace.
 
 Unterstützte Quellen:
 - **WinSCP** aus der Registry
@@ -15,6 +15,7 @@ Unterstützte Quellen:
 - Python-Pakete aus `requirements.txt` (`ttkbootstrap` und `Pillow`)
 - [Windows Terminal](https://aka.ms/terminal) installiert
 - Git Bash-Profil in Windows Terminal vorhanden (Standard bei Git for Windows)
+- optional: [Herdr](https://herdr.dev/) für persistente SSH-Tabs; Windows Terminal bleibt der Standard
 - optional: WinSCP mit gespeicherten Sessions
 - optional: FileZilla mit gespeicherten Sites
 
@@ -36,6 +37,7 @@ python ssh_manager.py
 
 - portable Windows-EXE mit eigenem Icon baubar; Python-Start bleibt möglich
 - mehrere Verbindungen gleichzeitig in **einem** Windows-Terminal-Fenster öffnen
+- optional normale SSH-Verbindungen als Tabs im Herdr-Workspace **SSH Manager** öffnen
 - Sessions aus mehreren Quellen zusammen anzeigen
 - Quellen in der Hauptansicht ein- und ausblenden
 - Ordner auf- und zuklappen, auch rekursiv per Rechtsklick
@@ -76,7 +78,7 @@ Die Statusansicht bestätigt zunächst den tatsächlichen Neustart und wartet da
 3. **Suche** – Oben im Suchfeld tippen filtert live nach Name und Hostname. Rechts daneben gibt es einen kleinen Verlauf-Button.
 4. **Verbinden** – Auf „Verbinden (N ausgewählt)" klicken.
 5. **Benutzernamen wählen** – Falls keine Verbindung einen festen Benutzer hat, im Dialog Quickselect nutzen oder eigenen Namen eingeben.
-6. Alle gewählten Server öffnen sich als neue Tabs **in einem Windows Terminal Fenster** und landen direkt unter **Zuletzt verwendet**.
+6. Alle gewählten Server öffnen sich als neue Tabs im eingestellten Ziel und landen direkt unter **Zuletzt verwendet**. Standard ist weiterhin ein Windows-Terminal-Fenster; optional nutzt die App den Herdr-Workspace **SSH Manager**.
 
 ## Remote-Befehle und Skripte
 
@@ -103,6 +105,7 @@ Die Einstellungen liegen direkt im Hauptfenster und enthalten u. a.:
 - sichtbare Spalten (`Benutzer`, `Hostname`, `Port`, `Notizen`)
 - Reihenfolge der sichtbaren Spalten per Drag & Drop, Baumspalte `Name` bleibt immer links
 - Design/Theme, Akzentfarbe, Schriftarten und Tree-Zeilenhöhe
+- Ziel für normale SSH-Verbindungen: Windows Terminal (Standard) oder Herdr
 - Windows-Terminal-Optik (Profilname, Farben, Titel)
 - Export / Import der Einstellungen
 - Reset von Einstellungen sowie Ansichtszustand
