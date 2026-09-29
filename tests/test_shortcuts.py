@@ -115,6 +115,7 @@ def test_default_shortcuts_contains_known_actions():
     defaults = default_shortcuts()
     assert "open_command_palette" in defaults
     assert defaults["open_command_palette"] == "Ctrl+P"
+    assert defaults["connect_selected"] == "Ctrl+Enter"
     assert defaults["edit"] == "F2"
     assert defaults["delete"] == "Delete"
 

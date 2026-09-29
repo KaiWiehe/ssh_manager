@@ -162,7 +162,9 @@ class SessionTree(ttk.Frame):
         self._tv = ttk.Treeview(
             self,
             columns=("username", "hostname", "port", "notes"),
-            selectmode="none",  # Selektion via Checkboxen, nicht Highlight
+            # Native selection is used only as the visible keyboard cursor.
+            # Multi-selection continues to be represented by our checkboxes.
+            selectmode="browse",
         )
         self._tv.heading("#0", text="Name", anchor="w")
         self._tv.heading("username", text="Benutzer", anchor="w")
@@ -219,6 +221,14 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<ButtonRelease-1>", self._on_left_click)
         self._tv.bind("<Double-Button-1>", self._on_double_click)
         self._tv.bind("<ButtonRelease-3>", self._on_right_click)
+        self._tv.bind("<Up>", self._on_key_up)
+        self._tv.bind("<Down>", self._on_key_down)
+        self._tv.bind("<Left>", self._on_key_left)
+        self._tv.bind("<Right>", self._on_key_right)
+        self._tv.bind("<space>", self._on_key_space)
+        self._tv.bind("<Shift-F10>", self._on_key_context_menu)
+        self._tv.bind("<Menu>", self._on_key_context_menu)
+        self._tv.bind("<FocusIn>", self._on_tree_focus_in)
         self._tv.bind("<<TreeviewOpen>>", lambda e: self._on_tree_folder_open_changed(e, True))
         self._tv.bind("<<TreeviewClose>>", lambda e: self._on_tree_folder_open_changed(e, False))
         self._tv.bind("<Motion>", self._on_tree_motion)
@@ -748,6 +758,7 @@ class SessionTree(ttk.Frame):
         update_open_state: bool = True,
     ) -> None:
         """Füllt den Baum mit Sessions. Löscht vorherige Inhalte."""
+        focus_identity = self._focused_identity()
         # Zustand merken (welche Ordner waren offen?) – falls nicht extern übergeben
         if open_folders is None:
             open_folders = self.get_open_folders()
@@ -807,6 +818,192 @@ class SessionTree(ttk.Frame):
             self._suppress_open_state_events -= 1
 
         self._update_empty_state(sessions)
+        self._restore_focus_identity(focus_identity)
+
+    def _focused_identity(self) -> tuple[str, ...] | None:
+        """Return a stable identity for the keyboard cursor across rebuilds."""
+        try:
+            item_id = self._tv.focus()
+        except (AttributeError, tk.TclError):
+            return None
+        if item_id in self._item_to_folder_key:
+            return ("folder", self._item_to_folder_key[item_id])
+        session = self._item_to_session.get(item_id)
+        if session is not None:
+            return ("session", session.key, session.folder_key)
+        return None
+
+    def _restore_focus_identity(self, identity: tuple[str, ...] | None) -> None:
+        target = ""
+        if identity and identity[0] == "folder":
+            target = next(
+                (iid for iid, key in self._item_to_folder_key.items() if key == identity[1]),
+                "",
+            )
+        elif identity and identity[0] == "session":
+            target = next(
+                (
+                    iid
+                    for iid, session in self._item_to_session.items()
+                    if session.key == identity[1] and session.folder_key == identity[2]
+                ),
+                "",
+            )
+        if target and not self._is_item_visible(target):
+            target = ""
+        if not target:
+            roots = self._tv.get_children("")
+            target = roots[0] if roots else ""
+        if target:
+            self._focus_item(target, reveal=False)
+
+    def _is_item_visible(self, item_id: str) -> bool:
+        parent = self._tv.parent(item_id)
+        while parent:
+            if not self._tv.item(parent, "open"):
+                return False
+            parent = self._tv.parent(parent)
+        return True
+
+    def _focus_item(self, item_id: str, *, reveal: bool = True) -> None:
+        if not item_id:
+            return
+        self._tv.focus(item_id)
+        self._tv.selection_set(item_id)
+        if reveal:
+            self._tv.see(item_id)
+
+    def has_keyboard_focus(self) -> bool:
+        try:
+            return self.focus_get() == self._tv
+        except (AttributeError, tk.TclError):
+            return False
+
+    def _on_tree_focus_in(self, _event: tk.Event) -> None:
+        if not self._tv.focus():
+            self._restore_focus_identity(None)
+
+    def _next_visible_item(self, item_id: str) -> str:
+        if not item_id:
+            roots = self._tv.get_children("")
+            return roots[0] if roots else ""
+        if self._tv.item(item_id, "open"):
+            children = self._tv.get_children(item_id)
+            if children:
+                return children[0]
+        current = item_id
+        while current:
+            sibling = self._tv.next(current)
+            if sibling:
+                return sibling
+            current = self._tv.parent(current)
+        return item_id
+
+    def _previous_visible_item(self, item_id: str) -> str:
+        if not item_id:
+            roots = self._tv.get_children("")
+            return roots[0] if roots else ""
+        sibling = self._tv.prev(item_id)
+        if not sibling:
+            return self._tv.parent(item_id) or item_id
+        current = sibling
+        while self._tv.item(current, "open"):
+            children = self._tv.get_children(current)
+            if not children:
+                break
+            current = children[-1]
+        return current
+
+    def _move_focus(self, direction: int) -> str:
+        current = self._tv.focus()
+        target = self._next_visible_item(current) if direction > 0 else self._previous_visible_item(current)
+        self._focus_item(target)
+        return "break"
+
+    def _on_key_up(self, _event: tk.Event) -> str:
+        return self._move_focus(-1)
+
+    def _on_key_down(self, _event: tk.Event) -> str:
+        return self._move_focus(1)
+
+    def _set_folder_open(self, item_id: str, state: bool) -> None:
+        self._suppress_open_state_events += 1
+        try:
+            self._tv.item(item_id, open=state)
+        finally:
+            self._suppress_open_state_events -= 1
+        if not self._active_filter_query.strip():
+            folder_key = self._item_to_folder_key.get(item_id, "")
+            self._set_cached_folder_open(folder_key, state)
+            self._notify_ui_state_changed()
+
+    def _on_key_right(self, _event: tk.Event) -> str:
+        item_id = self._tv.focus()
+        if item_id in self._item_to_folder_key:
+            if not self._tv.item(item_id, "open"):
+                self._set_folder_open(item_id, True)
+            else:
+                children = self._tv.get_children(item_id)
+                if children:
+                    self._focus_item(children[0])
+        return "break"
+
+    def _on_key_left(self, _event: tk.Event) -> str:
+        item_id = self._tv.focus()
+        if item_id in self._item_to_folder_key and self._tv.item(item_id, "open"):
+            self._set_folder_open(item_id, False)
+        elif item_id:
+            parent = self._tv.parent(item_id)
+            if parent:
+                self._focus_item(parent)
+        return "break"
+
+    def activate_focused(self) -> None:
+        """Toggle a focused folder or quick-connect the focused session."""
+        item_id = self._tv.focus()
+        if item_id in self._item_to_folder_key:
+            self._set_folder_open(item_id, not bool(self._tv.item(item_id, "open")))
+            return
+        session = self._item_to_session.get(item_id)
+        if session is not None and self._on_quick_connect:
+            self._on_quick_connect(session)
+
+    def _folder_session_item_ids(self, folder_item_id: str) -> list[str]:
+        result: list[str] = []
+        for child_id in self._tv.get_children(folder_item_id):
+            if child_id in self._item_to_session:
+                result.append(child_id)
+            elif child_id in self._item_to_folder_key:
+                result.extend(self._folder_session_item_ids(child_id))
+        return result
+
+    def _on_key_space(self, _event: tk.Event) -> str:
+        item_id = self._tv.focus()
+        if item_id in self._item_to_session:
+            self._toggle(item_id)
+        elif item_id in self._item_to_folder_key:
+            session_items = self._folder_session_item_ids(item_id)
+            if session_items:
+                new_state = not all(self._checked.get(iid, False) for iid in session_items)
+                self._set_folder_checked(item_id, new_state)
+        return "break"
+
+    def _on_key_context_menu(self, _event: tk.Event) -> str:
+        item_id = self._tv.focus()
+        if not item_id:
+            return "break"
+        self._tv.see(item_id)
+        bbox = self._tv.bbox(item_id)
+        if not bbox:
+            return "break"
+        x, y, width, height = bbox
+        x_root = self._tv.winfo_rootx() + x + min(max(width // 3, 24), 180)
+        y_root = self._tv.winfo_rooty() + y + height
+        if item_id in self._item_to_folder_key:
+            self._show_folder_menu(item_id, x_root=x_root, y_root=y_root)
+        elif item_id in self._item_to_session:
+            self._show_session_menu(item_id, x_root=x_root, y_root=y_root)
+        return "break"
 
     def get_visible_sessions_markdown(self) -> str:
         """Gibt die aktuell im Baum angezeigten Sessions als Markdown zurück."""
@@ -874,7 +1071,7 @@ class SessionTree(ttk.Frame):
         self._left_press_was_folder = False
         if not item_id or press_was_folder or item_id != press_item_id:
             return
-        self._tv.focus(item_id)
+        self._focus_item(item_id)
         if self.TAG_SESSION not in self._tv.item(item_id, "tags"):
             return
         self._toggle(item_id)
@@ -884,7 +1081,7 @@ class SessionTree(ttk.Frame):
         item_id = self._tv.identify_row(event.y)
         if not item_id:
             return
-        self._tv.focus(item_id)
+        self._focus_item(item_id)
         if self.TAG_SESSION not in self._tv.item(item_id, "tags"):
             return
         self._suppress_next_click = True
@@ -964,14 +1161,13 @@ class SessionTree(ttk.Frame):
     def _set_folder_checked_inner(self, folder_item_id: str, state: bool) -> None:
         """Rekursiver Kern ohne Notification – nur von _set_folder_checked aufrufen."""
         for child_id in self._tv.get_children(folder_item_id):
-            tags = self._tv.item(child_id, "tags")
-            if self.TAG_SESSION in tags:
+            if child_id in self._item_to_session:
                 self._checked[child_id] = state
                 self._tv.item(
                     child_id,
                     image=self._img_checked if state else self._img_unchecked,
                 )
-            elif self.TAG_FOLDER in tags:
+            elif child_id in self._item_to_folder_key:
                 self._set_folder_checked_inner(child_id, state)
 
     def _on_right_click(self, event: tk.Event) -> None:
@@ -979,7 +1175,7 @@ class SessionTree(ttk.Frame):
         item_id = self._tv.identify_row(event.y)
         if not item_id:
             return
-        self._tv.focus(item_id)
+        self._focus_item(item_id)
         tags = self._tv.item(item_id, "tags")
         if self.TAG_FOLDER in tags:
             self._show_folder_menu(item_id, event)
@@ -1008,7 +1204,14 @@ class SessionTree(ttk.Frame):
             self._set_cached_folder_open(folder_key, state)
         self._notify_ui_state_changed()
 
-    def _show_folder_menu(self, item_id: str, event: tk.Event) -> None:
+    def _show_folder_menu(
+        self,
+        item_id: str,
+        event: tk.Event | None = None,
+        *,
+        x_root: int | None = None,
+        y_root: int | None = None,
+    ) -> None:
         """Kontextmenü für Ordner-Zeilen."""
         folder_key = self._item_to_folder_key.get(item_id, "")
         menu = tk.Menu(self, tearoff=False)
@@ -1161,9 +1364,19 @@ class SessionTree(ttk.Frame):
                     label=f"SSH Key entfernen… ({len(folder_sessions)})",
                     command=lambda ss=list(folder_sessions): self._on_remove_ssh_key(ss),
                 )
-        menu.tk_popup(event.x_root, event.y_root)
+        menu.tk_popup(
+            event.x_root if event is not None else int(x_root or 0),
+            event.y_root if event is not None else int(y_root or 0),
+        )
 
-    def _show_session_menu(self, item_id: str, event: tk.Event) -> None:
+    def _show_session_menu(
+        self,
+        item_id: str,
+        event: tk.Event | None = None,
+        *,
+        x_root: int | None = None,
+        y_root: int | None = None,
+    ) -> None:
         """Kontextmenü für Session-Zeilen, thematisch in Sektionen sortiert."""
         session = self._item_to_session[item_id]
         selected = self.get_selected_sessions()
@@ -1479,7 +1692,10 @@ class SessionTree(ttk.Frame):
                 command=lambda s=session: self._on_delete_session(s),
             )
 
-        menu.tk_popup(event.x_root, event.y_root)
+        menu.tk_popup(
+            event.x_root if event is not None else int(x_root or 0),
+            event.y_root if event is not None else int(y_root or 0),
+        )
 
     def _add_favorite_with_dialog(self, session: Session) -> None:
         self._add_favorites_with_dialog([session])

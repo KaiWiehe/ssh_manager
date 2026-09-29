@@ -32,6 +32,7 @@ DEFAULT_ACTION_ORDER: list[tuple[str, str, str]] = [
     ("open_settings", "Einstellungen öffnen", "Ctrl+,"),
     ("refresh", "Neu laden", "F5"),
     ("connect", "Verbinden", "Return"),
+    ("connect_selected", "Auswahl verbinden", "Ctrl+Enter"),
     ("edit", "Bearbeiten", "F2"),
     ("delete", "Löschen", "Delete"),
     ("select_all", "Alle auswählen", "Ctrl+A"),

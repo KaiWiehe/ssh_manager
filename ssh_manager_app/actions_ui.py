@@ -346,15 +346,17 @@ def remove_favorite_session(app, session: Session) -> None:
 
 
 def connect_selected_or_focused(app) -> None:
-    from .actions_remote import connect_sessions, quick_connect_session
+    """Activate the focused tree row, independent of checkbox selection."""
+    app._tree.activate_focused()
+
+
+def connect_selected_sessions(app) -> None:
+    """Connect all checked sessions; do nothing when none are checked."""
+    from .actions_remote import connect_sessions
 
     selected = app._tree.get_selected_sessions()
     if selected:
         connect_sessions(app, selected)
-        return
-    focused = app._tree.get_single_context_session()
-    if focused is not None:
-        quick_connect_session(app, focused)
 
 
 def delete_focused_editable_session(app) -> None:

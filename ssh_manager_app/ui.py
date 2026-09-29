@@ -774,6 +774,7 @@ def install_shortcut_manager(app) -> None:
     from .actions_ui import (
         collapse_all,
         connect_selected_or_focused,
+        connect_selected_sessions,
         delete_focused_editable_session,
         deselect_all,
         focus_search,
@@ -788,16 +789,8 @@ def install_shortcut_manager(app) -> None:
 
     manager = ShortcutManager(app)
 
-    def in_tree() -> bool:
-        """True if the session tree currently owns focus (or no entry does)."""
-        try:
-            focused = app.focus_get()
-        except Exception:
-            focused = None
-        if focused is None:
-            return True
-        cls = focused.winfo_class() if hasattr(focused, "winfo_class") else ""
-        return cls not in {"Entry", "TEntry", "Text", "TCombobox", "Spinbox", "TSpinbox"}
+    def tree_has_focus() -> bool:
+        return app._tree.has_keyboard_focus()
 
     def open_command_palette() -> None:
         from .actions_ui import open_command_palette as _open
@@ -814,7 +807,22 @@ def install_shortcut_manager(app) -> None:
         ShortcutAction("new_session", "Neue Verbindung", "Ctrl+N", lambda: add_session(app), skip_in_entry=False),
         ShortcutAction("open_settings", "Einstellungen öffnen", "Ctrl+,", lambda: show_settings_view(app), skip_in_entry=False),
         ShortcutAction("refresh", "Neu laden", "F5", lambda: reload_sessions(app), skip_in_entry=False),
-        ShortcutAction("connect", "Verbinden", "Return", lambda: connect_selected_or_focused(app), skip_in_entry=True),
+        ShortcutAction(
+            "connect",
+            "Verbinden",
+            "Return",
+            lambda: connect_selected_or_focused(app),
+            skip_in_entry=True,
+            enabled_when=tree_has_focus,
+        ),
+        ShortcutAction(
+            "connect_selected",
+            "Auswahl verbinden",
+            "Ctrl+Enter",
+            lambda: connect_selected_sessions(app),
+            skip_in_entry=True,
+            enabled_when=tree_has_focus,
+        ),
         ShortcutAction("edit", "Bearbeiten", "F2", edit_focused, skip_in_entry=False),
         ShortcutAction("delete", "Löschen", "Delete", lambda: delete_focused_editable_session(app), skip_in_entry=True),
         ShortcutAction("select_all", "Alle auswählen", "Ctrl+A", lambda: select_all(app), skip_in_entry=True),
@@ -880,7 +888,7 @@ def build_main_ui(self) -> None:
     menubar.add_cascade(label="Ansicht", menu=view_menu)
 
     actions_menu = tk.Menu(menubar, tearoff=False)
-    actions_menu.add_command(label="Verbinden", accelerator=_acc("connect"), command=lambda: connect_selected_sessions_callback(self))
+    actions_menu.add_command(label="Auswahl verbinden", accelerator=_acc("connect_selected"), command=lambda: connect_selected_sessions_callback(self))
     actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
     actions_menu.add_command(label="Server neu starten…", command=lambda: restart_servers_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))

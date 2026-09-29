@@ -34,7 +34,7 @@ from ssh_manager_app.dialogs_toast import ToastNotification
 from ssh_manager_app.actions_sessions import add_session, delete_folder, delete_session, duplicate_app_session, duplicate_ssh_alias, edit_session, move_session, move_sessions, open_appdata_jsons_in_vscode, rename_folder
 from ssh_manager_app.actions_open import _set_winscp_external_sessions_in_existing_window, inspect_ssh_config, open_in_winscp, open_ssh_config_in_vscode
 from ssh_manager_app.actions_remote import connect_sessions, deploy_ssh_key, open_tunnel, open_via_jumphost, quick_connect_session, remove_ssh_key, resolve_single_session_user, resolve_users_for_sessions, run_remote_command
-from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, deselect_all, expand_all, on_search_changed, on_selection_changed, persist_ui_state, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
+from ssh_manager_app.actions_ui import add_search_history_entry, apply_settings, build_visible_sessions, collapse_all, connect_selected_or_focused, connect_selected_sessions, deselect_all, expand_all, on_search_changed, on_selection_changed, persist_ui_state, preview_source_visibility, preview_toolbar_visibility, reload_sessions, reset_settings, reset_session_colors, reset_view_state, select_all, show_main_view, show_settings_view
 from ssh_manager_app.ui import TOOLBAR_BUTTON_ORDER, layout_toolbar_buttons, toolbar_direct_capacity
 from ssh_manager_app.themes import bootstrap_theme_for, palette_for_theme
 from ssh_manager_app.constants import DEFAULT_USER, PALETTE, QUICK_USERS, _APP_PREFIX, _SSH_ALIAS_PREFIX, _SSH_CONFIG_DEFAULT_FOLDER
@@ -1825,6 +1825,36 @@ def test_selection_helpers_delegate_to_tree():
     app._tree.set_all_checked.assert_any_call(False)
     app._tree.expand_all.assert_called_once_with()
     app._tree.collapse_all.assert_called_once_with()
+
+
+def test_enter_action_activates_focus_without_using_checked_sessions():
+    app = MagicMock()
+    app._tree.get_selected_sessions.return_value = [Session("checked", "Checked", [], "checked.example")]
+
+    connect_selected_or_focused(app)
+
+    app._tree.activate_focused.assert_called_once_with()
+
+
+def test_ctrl_enter_action_connects_checked_sessions_only():
+    app = MagicMock()
+    selected = [Session("checked", "Checked", [], "checked.example")]
+    app._tree.get_selected_sessions.return_value = selected
+
+    with patch("ssh_manager_app.actions_remote.connect_sessions") as connect:
+        connect_selected_sessions(app)
+
+    connect.assert_called_once_with(app, selected)
+
+
+def test_ctrl_enter_action_is_noop_without_checked_sessions():
+    app = MagicMock()
+    app._tree.get_selected_sessions.return_value = []
+
+    with patch("ssh_manager_app.actions_remote.connect_sessions") as connect:
+        connect_selected_sessions(app)
+
+    connect.assert_not_called()
 
 
 def test_reload_sessions_rebuilds_and_shows_toast():
