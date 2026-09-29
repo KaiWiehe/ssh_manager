@@ -126,7 +126,8 @@ def test_herdr_launcher_reuses_initial_workspace_pane_and_attaches_once_when_hea
         command_calls.append(args)
         return MagicMock(returncode=0, stdout="", stderr="")
 
-    with patch("ssh_manager_app.core.shutil.which", return_value=r"C:\Tools\herdr.exe"), \
+    with patch.dict(os.environ, {"HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p1", "UNRELATED": "keep"}), \
+         patch("ssh_manager_app.core.shutil.which", return_value=r"C:\Tools\herdr.exe"), \
          patch.object(HerdrLauncher, "_ensure_server"), \
          patch.object(HerdrLauncher, "_find_workspace", return_value=None), \
          patch.object(HerdrLauncher, "_run_json", side_effect=run_json), \
@@ -142,9 +143,12 @@ def test_herdr_launcher_reuses_initial_workspace_pane_and_attaches_once_when_hea
     assert [call for call in json_calls if call[:2] == ["tab", "create"]] == []
     assert ["pane", "run", "w8:p1", "ssh root@prod.example"] in command_calls
     best_effort.assert_any_call(r"C:\Tools\herdr.exe", ["tab", "rename", "w8:t1", "Production"])
-    popen.assert_called_once_with([
-        "wt.exe", "new-tab", "-p", "Custom Bash", "--", r"C:\Tools\herdr.exe",
-    ])
+    attach_args, attach_kwargs = popen.call_args
+    assert attach_args[0] == [
+        "wt.exe", "new-tab", "--reloadEnvironment", "-p", "Custom Bash", "--", r"C:\Tools\herdr.exe",
+    ]
+    assert attach_kwargs["env"]["UNRELATED"] == "keep"
+    assert not any(key.upper().startswith("HERDR_") for key in attach_kwargs["env"])
 
 
 def test_find_git_bash_uses_per_user_install_when_git_is_not_on_path(tmp_path):

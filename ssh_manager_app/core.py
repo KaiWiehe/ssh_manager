@@ -927,7 +927,15 @@ class HerdrLauncher:
 
             if not cls._has_visible_client(executable):
                 profile = (terminal_settings.profile_name or "Git Bash").strip() or "Git Bash"
-                subprocess.Popen(["wt.exe", "new-tab", "-p", profile, "--", executable])
+                clean_env = {
+                    key: value
+                    for key, value in os.environ.items()
+                    if not key.upper().startswith("HERDR_")
+                }
+                subprocess.Popen(
+                    ["wt.exe", "new-tab", "--reloadEnvironment", "-p", profile, "--", executable],
+                    env=clean_env,
+                )
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             raise TerminalLaunchError(
                 f"Herdr hat {len(started_sessions)} von {len(sessions)} SSH-Verbindungen gestartet: {exc}",
