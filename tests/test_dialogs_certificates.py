@@ -1,8 +1,9 @@
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from ssh_manager_app.actions_certificates import deploy_certificate_files
 from ssh_manager_app.dialogs_certificates import _sort_remote_entries, _ssh_folder_list_command
-from ssh_manager_app.models import Session
+from ssh_manager_app.models import AppSettings, Session
 
 
 def test_remote_folder_listing_uses_ssh_stdin_for_sudo_password_not_arguments():
@@ -51,3 +52,32 @@ def test_remote_folder_entries_sort_folders_before_files_alphabetically():
         ("l", "/etc/ssl/current.pem"),
         ("f", "/etc/ssl/z-old.pem"),
     ]
+
+
+def test_certificate_deployment_uses_configured_terminal_launcher():
+    app = MagicMock()
+    app.settings = AppSettings()
+    app._initial_toolbar_search_texts = {"remote_command_favorites": []}
+    app._tree.get_session_colors.return_value = {"srv": "#123456"}
+    session = Session("srv", "Server", [], "10.0.0.9")
+    deployment = {
+        "files": [r"C:\certs\server.pem"],
+        "target_dirs": ["/etc/ssl/certs"],
+        "overwrite": True,
+        "post_command": "systemctl reload nginx",
+    }
+    dialog = MagicMock(result=deployment)
+
+    with patch("ssh_manager_app.actions_certificates.resolve_users_for_sessions", return_value=[(session, "ops")]), \
+         patch("ssh_manager_app.actions_certificates.CertificateDeployDialog", return_value=dialog), \
+         patch("ssh_manager_app.actions_certificates.messagebox.askyesno", return_value=True), \
+         patch("ssh_manager_app.actions_certificates.build_certificate_deploy_wt_command", return_value="deploy-cmd") as build, \
+         patch("ssh_manager_app.actions_certificates.TerminalLauncher.launch_built_command") as launch:
+        deploy_certificate_files(app, [session])
+
+    build.assert_called_once_with(
+        [(session, "ops", deployment)],
+        session_colors={"srv": "#123456"},
+        terminal_settings=app.settings.windows_terminal,
+    )
+    launch.assert_called_once_with("deploy-cmd", ["Server"], app.settings.windows_terminal)

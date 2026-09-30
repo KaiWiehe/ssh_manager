@@ -11,6 +11,7 @@ import tempfile
 import time
 import tkinter as tk
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote
@@ -750,6 +751,13 @@ def build_ssh_tunnel_command(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class TerminalTabSpec:
+    label: str
+    command: str
+    session: Session | None = None
+
+
 class TerminalLaunchError(RuntimeError):
     """Fehler nach einem teilweise erfolgreichen Terminal-Start."""
 
@@ -877,6 +885,20 @@ class HerdrLauncher:
 
     @classmethod
     def launch(cls, sessions: list[Session], user: str, terminal_settings: WindowsTerminalSettings) -> None:
+        tabs = [
+            TerminalTabSpec(
+                label=session.display_name,
+                command=_build_ssh_command(session, session.username or user),
+                session=session,
+            )
+            for session in sessions
+        ]
+        cls.launch_tabs(tabs, terminal_settings)
+
+    @classmethod
+    def launch_tabs(cls, tabs: list[TerminalTabSpec], terminal_settings: WindowsTerminalSettings) -> None:
+        if not tabs:
+            return
         executable = shutil.which("herdr")
         if not executable:
             raise HerdrUnavailableError("Herdr wurde nicht im PATH gefunden.")
@@ -887,23 +909,23 @@ class HerdrLauncher:
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             raise HerdrUnavailableError(f"Herdr-Workspace konnte nicht ermittelt werden: {exc}") from exc
 
-        created_tabs: list[tuple[Session, str, str]] = []
+        created_tabs: list[tuple[TerminalTabSpec, str, str]] = []
         try:
-            remaining_sessions = list(sessions)
+            remaining_tabs = list(tabs)
             if workspace_id is None:
-                first_session = remaining_sessions.pop(0)
+                first_spec = remaining_tabs.pop(0)
                 payload = cls._run_json(executable, ["workspace", "create", "--label", cls.WORKSPACE_LABEL, "--no-focus"])
                 workspace_id, tab_id, pane_id = cls._created_tab(payload)
-                created_tabs.append((first_session, tab_id, pane_id))
-                cls._best_effort(executable, ["tab", "rename", tab_id, first_session.display_name])
+                created_tabs.append((first_spec, tab_id, pane_id))
+                cls._best_effort(executable, ["tab", "rename", tab_id, first_spec.label])
 
-            for session in remaining_sessions:
+            for spec in remaining_tabs:
                 payload = cls._run_json(
                     executable,
-                    ["tab", "create", "--workspace", workspace_id, "--label", session.display_name, "--no-focus"],
+                    ["tab", "create", "--workspace", workspace_id, "--label", spec.label, "--no-focus"],
                 )
                 _workspace_id, tab_id, pane_id = cls._created_tab(payload)
-                created_tabs.append((session, tab_id, pane_id))
+                created_tabs.append((spec, tab_id, pane_id))
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             if created_tabs:
                 raise TerminalLaunchError(
@@ -913,13 +935,12 @@ class HerdrLauncher:
 
         started_sessions: list[Session] = []
         try:
-            for session, _tab_id, pane_id in created_tabs:
-                effective_user = session.username or user
-                ssh_command = _build_ssh_command(session, effective_user)
+            for spec, _tab_id, pane_id in created_tabs:
                 # pane run bestätigt Erfolg über den Exitcode, gibt dabei aber
                 # bewusst keine JSON-Nutzlast aus.
-                cls._run(executable, ["pane", "run", pane_id, ssh_command])
-                started_sessions.append(session)
+                cls._run(executable, ["pane", "run", pane_id, spec.command])
+                if spec.session is not None:
+                    started_sessions.append(spec.session)
 
             first_tab_id = created_tabs[0][1]
             cls._best_effort(executable, ["workspace", "focus", workspace_id])
@@ -938,13 +959,62 @@ class HerdrLauncher:
                 )
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             raise TerminalLaunchError(
-                f"Herdr hat {len(started_sessions)} von {len(sessions)} SSH-Verbindungen gestartet: {exc}",
+                f"Herdr hat den Terminal-Start nur teilweise abgeschlossen: {exc}",
                 started_sessions=started_sessions,
             ) from exc
 
 
 class TerminalLauncher:
-    """Startet normale SSH-Verbindungen in Windows Terminal oder Herdr."""
+    """Startet Terminal-Tabs in Windows Terminal oder Herdr."""
+
+    @staticmethod
+    def _tabs_from_windows_command(command: str | list[str], labels: list[str]) -> list[TerminalTabSpec]:
+        commands: list[str]
+        if isinstance(command, str):
+            commands = []
+            for index, part in enumerate(command.split(" ; ")):
+                part = part.strip()
+                if index == 0 and part.lower().startswith("wt.exe "):
+                    part = part[7:].lstrip()
+                _options, separator, pane_command = part.partition(" -- ")
+                if not separator or not pane_command.strip():
+                    raise ValueError("Windows-Terminal-Befehl konnte nicht in Herdr-Tabs umgewandelt werden.")
+                commands.append(pane_command.strip().replace("\\", "/"))
+        else:
+            try:
+                separator_index = command.index("--")
+            except ValueError as exc:
+                raise ValueError("Windows-Terminal-Befehl enthält keinen auszuführenden Prozess.") from exc
+            argv = [str(value).replace("\\", "/") for value in command[separator_index + 1:]]
+            commands = [" ".join(_shell_single_quote(value) for value in argv)]
+
+        if len(commands) != len(labels):
+            raise ValueError("Anzahl der Terminal-Tabs und Tab-Titel stimmt nicht überein.")
+        return [TerminalTabSpec(label=label, command=tab_command) for label, tab_command in zip(labels, commands)]
+
+    @staticmethod
+    def _launch_windows_command(command: str | list[str]) -> None:
+        if isinstance(command, str):
+            subprocess.Popen(command, shell=True)
+        else:
+            subprocess.Popen(command)
+
+    @classmethod
+    def launch_built_command(
+        cls,
+        command: str | list[str],
+        labels: list[str],
+        terminal_settings: WindowsTerminalSettings | None = None,
+    ) -> None:
+        settings = terminal_settings or WindowsTerminalSettings()
+        if settings.ssh_open_mode == "herdr":
+            tabs = cls._tabs_from_windows_command(command, labels)
+            try:
+                HerdrLauncher.launch_tabs(tabs, settings)
+                return
+            except HerdrUnavailableError:
+                pass
+        cls._launch_windows_command(command)
 
     @staticmethod
     def launch(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None, terminal_settings: WindowsTerminalSettings | None = None) -> None:
@@ -965,9 +1035,7 @@ class TerminalLauncher:
                 # Windows-Terminal-Weg der sichere und erwartete Fallback.
                 pass
         cmd = build_wt_command(sessions, user, session_colors, terminal_settings=terminal_settings)
-        # shell=True nötig: wt.exe parst `;` als eigenen Subcommand-Separator,
-        # cmd.exe behandelt `;` nicht als Sonderzeichen und reicht es durch.
-        subprocess.Popen(cmd, shell=True)
+        TerminalLauncher._launch_windows_command(cmd)
 
 
 # ---------------------------------------------------------------------------

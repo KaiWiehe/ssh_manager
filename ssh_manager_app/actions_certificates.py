@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import subprocess
 from tkinter import messagebox
 
 from .actions_remote import resolve_users_for_sessions
-from .core import build_certificate_deploy_wt_command
+from .core import TerminalLauncher, build_certificate_deploy_wt_command
 from .dialogs_certificates import CertificateDeployDialog
 from .models import Session
 
@@ -53,6 +52,10 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
             session_colors=app._tree.get_session_colors(),
             terminal_settings=app.settings.windows_terminal,
         )
-        subprocess.Popen(command, shell=True)
-    except OSError as exc:
+        TerminalLauncher.launch_built_command(
+            command,
+            [session.display_name for session, _user in session_users],
+            app.settings.windows_terminal,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
         messagebox.showerror("Übertragung fehlgeschlagen", f"Terminal konnte nicht gestartet werden:\n{exc}", parent=app)

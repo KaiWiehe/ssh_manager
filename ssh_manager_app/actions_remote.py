@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import subprocess
 from tkinter import messagebox
 
 from .core import (
     TerminalLaunchError,
+    TerminalLauncher,
     _append_ssh_config_alias,
     build_jump_wt_command,
     build_remote_command_wt_command,
@@ -115,8 +115,12 @@ def deploy_ssh_key(app, sessions: list[Session]) -> None:
     key_filename, user = dialog.result
     try:
         cmd = build_ssh_copy_id_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
-        subprocess.Popen(cmd, shell=True)
-    except OSError as exc:
+        TerminalLauncher.launch_built_command(
+            cmd,
+            [session.display_name for session in sessions],
+            app.settings.windows_terminal,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}")
 
 
@@ -129,8 +133,12 @@ def remove_ssh_key(app, sessions: list[Session]) -> None:
     key_filename, user = dialog.result
     try:
         cmd = build_ssh_remove_key_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
-        subprocess.Popen(cmd, shell=True)
-    except OSError as exc:
+        TerminalLauncher.launch_built_command(
+            cmd,
+            [session.display_name for session in sessions],
+            app.settings.windows_terminal,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}")
 
 
@@ -148,8 +156,12 @@ def open_tunnel(app, session: Session | None = None) -> None:
     jumphost, local_port, remote_host, remote_port, user = dialog.result
     try:
         cmd = build_ssh_tunnel_command(jumphost, local_port, remote_host, remote_port, user, terminal_settings=app.settings.windows_terminal)
-        subprocess.Popen(cmd)
-    except OSError as exc:
+        TerminalLauncher.launch_built_command(
+            cmd,
+            [f"SSH-Tunnel {user}@{jumphost}"],
+            app.settings.windows_terminal,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}")
 
 
@@ -261,8 +273,12 @@ def run_remote_command(app, sessions: list[Session]) -> None:
             build_kwargs["sudo_password"] = sudo_password
         cmd = build_remote_script_wt_command([(session, user, spec) for session, user in session_users], **build_kwargs)
     try:
-        subprocess.Popen(cmd, shell=True)
-    except OSError as exc:
+        TerminalLauncher.launch_built_command(
+            cmd,
+            [session.display_name for session, _user in session_users],
+            app.settings.windows_terminal,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
@@ -360,6 +376,10 @@ def open_via_jumphost(app, session: Session) -> None:
             app._tree.get_session_colors().get(session.key),
             terminal_settings=app.settings.windows_terminal,
         )
-        subprocess.Popen(cmd, shell=True)
-    except OSError as exc:
+        TerminalLauncher.launch_built_command(
+            cmd,
+            [session.display_name],
+            app.settings.windows_terminal,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)

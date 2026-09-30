@@ -1760,16 +1760,27 @@ def test_show_main_view_restores_main_frame_and_layout():
 def test_apply_settings_persists_and_focuses_search():
     app = MagicMock()
     settings = AppSettings()
+    visible_sessions = [Session("s1", "Server", [], "server.example")]
 
     with patch("ssh_manager_app.actions_ui.save_settings") as save_settings, \
+         patch("ssh_manager_app.actions_ui.configure_app_styles") as configure_styles, \
+         patch("ssh_manager_app.actions_ui.refresh_checkbox_images") as refresh_checkboxes, \
          patch("ssh_manager_app.actions_ui.layout_toolbar_buttons") as layout, \
+         patch("ssh_manager_app.actions_ui.build_visible_sessions", return_value=visible_sessions) as build_visible, \
+         patch("ssh_manager_app.ui.reapply_shortcut_bindings") as reapply_shortcuts, \
          patch("ssh_manager_app.actions_ui.ToastNotification") as toast:
         apply_settings(app, settings)
 
     assert app.settings is settings
     save_settings.assert_called_once_with(settings)
+    configure_styles.assert_called_once_with(app)
+    refresh_checkboxes.assert_called_once_with(app)
     layout.assert_called_once_with(app)
+    build_visible.assert_called_once_with(app)
+    assert app._sessions == visible_sessions
+    app._tree.refresh.assert_called_once_with(visible_sessions)
     app._search_entry.focus_set.assert_called_once_with()
+    reapply_shortcuts.assert_called_once_with(app)
     toast.assert_called_once_with(app, "Einstellungen gespeichert")
 
 
@@ -3036,7 +3047,7 @@ def test_open_tunnel_uses_app_settings_directly():
 
     with patch("ssh_manager_app.actions_remote.SshTunnelDialog", return_value=dialog) as dialog_cls, \
          patch("ssh_manager_app.actions_remote.build_ssh_tunnel_command", return_value="wt cmd") as build_cmd, \
-         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+         patch("ssh_manager_app.actions_remote.TerminalLauncher.launch_built_command") as launch:
         open_tunnel(app)
 
     dialog_cls.assert_called_once_with(
@@ -3053,7 +3064,11 @@ def test_open_tunnel_uses_app_settings_directly():
         "deploy",
         terminal_settings=app.settings.windows_terminal,
     )
-    popen.assert_called_once_with("wt cmd")
+    launch.assert_called_once_with(
+        "wt cmd",
+        ["SSH-Tunnel deploy@jump.example"],
+        app.settings.windows_terminal,
+    )
 
 
 def test_quick_connect_session_uses_terminal_settings_from_app_settings():
@@ -3085,12 +3100,12 @@ def test_deploy_ssh_key_uses_app_settings_directly():
 
     with patch("ssh_manager_app.actions_remote.SshCopyIdDialog", return_value=dialog) as dialog_cls, \
          patch("ssh_manager_app.actions_remote.build_ssh_copy_id_command", return_value="copy-cmd") as build_cmd, \
-         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+         patch("ssh_manager_app.actions_remote.TerminalLauncher.launch_built_command") as launch:
         deploy_ssh_key(app, sessions)
 
     dialog_cls.assert_called_once_with(app, target_count=1, quick_users=["root", "ops"], default_user="ops")
     build_cmd.assert_called_once_with(sessions, "id_ed25519.pub", "ops", terminal_settings=app.settings.windows_terminal)
-    popen.assert_called_once_with("copy-cmd", shell=True)
+    launch.assert_called_once_with("copy-cmd", ["srv1"], app.settings.windows_terminal)
 
 
 def test_remove_ssh_key_uses_app_settings_directly():
@@ -3103,12 +3118,12 @@ def test_remove_ssh_key_uses_app_settings_directly():
 
     with patch("ssh_manager_app.actions_remote.SshRemoveKeyDialog", return_value=dialog) as dialog_cls, \
          patch("ssh_manager_app.actions_remote.build_ssh_remove_key_command", return_value="remove-cmd") as build_cmd, \
-         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+         patch("ssh_manager_app.actions_remote.TerminalLauncher.launch_built_command") as launch:
         remove_ssh_key(app, sessions)
 
     dialog_cls.assert_called_once_with(app, target_count=1, quick_users=["root", "ops"], default_user="ops")
     build_cmd.assert_called_once_with(sessions, "id_ed25519.pub", "ops", terminal_settings=app.settings.windows_terminal)
-    popen.assert_called_once_with("remove-cmd", shell=True)
+    launch.assert_called_once_with("remove-cmd", ["srv1"], app.settings.windows_terminal)
 
 
 def test_run_remote_command_uses_app_settings_directly():
@@ -3127,7 +3142,7 @@ def test_run_remote_command_uses_app_settings_directly():
          patch("ssh_manager_app.actions_remote.resolve_users_for_sessions", return_value=[(sessions[0], "ops")]) as resolve_users, \
          patch("ssh_manager_app.actions_remote.RemoteCommandConfirmDialog", return_value=confirm) as confirm_cls, \
          patch("ssh_manager_app.actions_remote.build_remote_command_wt_command", return_value="remote-cmd") as build_cmd, \
-         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+         patch("ssh_manager_app.actions_remote.TerminalLauncher.launch_built_command") as launch:
         run_remote_command(app, sessions)
 
     dialog_cls.assert_called_once_with(
@@ -3145,7 +3160,7 @@ def test_run_remote_command_uses_app_settings_directly():
         session_colors={"s1": "#123456"},
         terminal_settings=app.settings.windows_terminal,
     )
-    popen.assert_called_once_with("remote-cmd", shell=True)
+    launch.assert_called_once_with("remote-cmd", ["srv1"], app.settings.windows_terminal)
 
 
 def test_run_remote_command_warns_when_no_runnable_hosts_are_selected():
@@ -3178,7 +3193,7 @@ def test_open_via_jumphost_uses_terminal_settings_from_app_settings():
     with patch("ssh_manager_app.actions_remote.JumpHostDialog", return_value=dialog) as dialog_cls, \
          patch("ssh_manager_app.actions_remote.resolve_single_session_user", return_value="ops") as resolve_user, \
          patch("ssh_manager_app.actions_remote.build_jump_wt_command", return_value="jump-cmd") as build_cmd, \
-         patch("ssh_manager_app.actions_remote.subprocess.Popen") as popen:
+         patch("ssh_manager_app.actions_remote.TerminalLauncher.launch_built_command") as launch:
         open_via_jumphost(app, session)
 
     dialog_cls.assert_called_once_with(app, session, app._sessions, open_folders_getter=app._tree.get_open_folders)
@@ -3192,7 +3207,7 @@ def test_open_via_jumphost_uses_terminal_settings_from_app_settings():
         "#654321",
         terminal_settings=app.settings.windows_terminal,
     )
-    popen.assert_called_once_with("jump-cmd", shell=True)
+    launch.assert_called_once_with("jump-cmd", ["srv1"], app.settings.windows_terminal)
 
 
 def test_open_via_jumphost_save_result_rebuilds_sessions_and_shows_toast():

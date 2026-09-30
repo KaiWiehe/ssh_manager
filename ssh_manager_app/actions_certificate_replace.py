@@ -12,7 +12,7 @@ from tkinter import messagebox
 
 from .actions_remote import resolve_users_for_sessions
 from .actions_ui import persist_ui_state
-from .core import build_certificate_replace_wt_command
+from .core import TerminalLauncher, build_certificate_replace_wt_command
 from .dialogs_certificate_replace import CertificateReplaceDialog, CertificateReplacePreviewDialog, CertificateReplaceScanProgressDialog
 from .models import Session
 
@@ -238,6 +238,10 @@ def _show_replace_preview(app, progress, scanned, spec, source_summary) -> None:
         return
     try:
         command = build_certificate_replace_wt_command(deployments, session_colors=app._tree.get_session_colors(), terminal_settings=app.settings.windows_terminal)
-        subprocess.Popen(command, shell=True)
-    except OSError as exc:
+        TerminalLauncher.launch_built_command(
+            command,
+            [session.display_name for session, _user, _spec in deployments],
+            app.settings.windows_terminal,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
         messagebox.showerror("Zertifikate ersetzen", f"Terminal konnte nicht gestartet werden:\n{exc}", parent=app)

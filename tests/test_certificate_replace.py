@@ -1,9 +1,9 @@
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from ssh_manager_app.actions_certificate_replace import _earliest_certificate_expiry, _format_timestamp, _scan_host, _selected_deployments
+from ssh_manager_app.actions_certificate_replace import _earliest_certificate_expiry, _format_timestamp, _scan_host, _selected_deployments, _show_replace_preview
 from ssh_manager_app.dialogs_certificate_replace import CertificateReplacePreviewDialog
-from ssh_manager_app.models import Session
+from ssh_manager_app.models import AppSettings, Session
 
 
 def test_certificate_scan_returns_regular_matches_and_reports_symlinks_without_command_password():
@@ -65,3 +65,38 @@ def test_selected_deployments_only_includes_checked_certificate_matches():
 
     assert len(deployments) == 1
     assert deployments[0][2]["matches"] == [("two.p12", "/opt/two.p12")]
+
+
+def test_certificate_replacement_uses_configured_terminal_launcher():
+    app = MagicMock()
+    app.settings = AppSettings()
+    app._tree.get_session_colors.return_value = {"srv": "#654321"}
+    progress = MagicMock()
+    session = Session("srv", "Server", [], "10.0.0.9")
+    scanned = [(
+        session,
+        "ops",
+        {
+            "matches": [("server.p12", "/opt/server.p12", "timestamp", "expiry")],
+            "symlinks": [],
+            "warnings": [],
+            "errors": [],
+        },
+    )]
+    spec = {"post_command": "", "files": ["server.p12"]}
+    preview = MagicMock(result={(0, "server.p12", "/opt/server.p12")})
+    deployments = [(session, "ops", {**spec, "matches": [("server.p12", "/opt/server.p12")]})]
+
+    with patch("ssh_manager_app.actions_certificate_replace.CertificateReplacePreviewDialog", return_value=preview), \
+         patch("ssh_manager_app.actions_certificate_replace._selected_deployments", return_value=deployments), \
+         patch("ssh_manager_app.actions_certificate_replace.build_certificate_replace_wt_command", return_value="replace-cmd") as build, \
+         patch("ssh_manager_app.actions_certificate_replace.TerminalLauncher.launch_built_command") as launch:
+        _show_replace_preview(app, progress, scanned, spec, "Quelle")
+
+    progress.close.assert_called_once_with()
+    build.assert_called_once_with(
+        deployments,
+        session_colors={"srv": "#654321"},
+        terminal_settings=app.settings.windows_terminal,
+    )
+    launch.assert_called_once_with("replace-cmd", ["Server"], app.settings.windows_terminal)

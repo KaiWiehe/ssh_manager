@@ -13,6 +13,7 @@ from ssh_manager_app.core import (
     HerdrUnavailableError,
     TerminalLaunchError,
     TerminalLauncher,
+    TerminalTabSpec,
     _find_git_bash,
     build_jump_wt_command,
     build_certificate_deploy_wt_command,
@@ -65,6 +66,58 @@ def test_terminal_launcher_does_not_fallback_after_partial_herdr_start():
 
     assert raised.value.started_sessions == [session]
     popen.assert_not_called()
+
+
+def test_terminal_launcher_extracts_multiple_herdr_tabs_from_windows_terminal_command():
+    command = (
+        'wt.exe new-tab -p "Git Bash" -- "C:\\Program Files\\Git\\bin\\bash.exe" "C:\\Temp\\one.sh" '
+        '; new-tab --title "Two" -p "Git Bash" -- ssh ops@two.example'
+    )
+
+    tabs = TerminalLauncher._tabs_from_windows_command(command, ["One", "Two"])
+
+    assert tabs == [
+        TerminalTabSpec("One", '"C:/Program Files/Git/bin/bash.exe" "C:/Temp/one.sh"'),
+        TerminalTabSpec("Two", "ssh ops@two.example"),
+    ]
+
+
+def test_terminal_launcher_uses_herdr_for_built_commands_when_selected():
+    settings = WindowsTerminalSettings(ssh_open_mode="herdr")
+    command = 'wt.exe new-tab -p "Git Bash" -- ssh ops@server.example'
+
+    with patch.object(HerdrLauncher, "launch_tabs") as launch_tabs, \
+         patch.object(TerminalLauncher, "_launch_windows_command") as launch_windows:
+        TerminalLauncher.launch_built_command(command, ["Server"], settings)
+
+    launch_tabs.assert_called_once_with(
+        [TerminalTabSpec("Server", "ssh ops@server.example")],
+        settings,
+    )
+    launch_windows.assert_not_called()
+
+
+def test_terminal_launcher_falls_back_for_built_command_before_first_herdr_tab():
+    settings = WindowsTerminalSettings(ssh_open_mode="herdr")
+    command = ["wt.exe", "new-tab", "-p", "Git Bash", "--", r"C:\Program Files\Git\bin\bash.exe", r"C:\Temp\run.sh"]
+
+    with patch.object(HerdrLauncher, "launch_tabs", side_effect=HerdrUnavailableError("nicht erreichbar")), \
+         patch.object(TerminalLauncher, "_launch_windows_command") as launch_windows:
+        TerminalLauncher.launch_built_command(command, ["Server"], settings)
+
+    launch_windows.assert_called_once_with(command)
+
+
+def test_terminal_launcher_does_not_fallback_built_command_after_partial_herdr_start():
+    settings = WindowsTerminalSettings(ssh_open_mode="herdr")
+    command = 'wt.exe new-tab -p "Git Bash" -- ssh ops@server.example'
+
+    with patch.object(HerdrLauncher, "launch_tabs", side_effect=TerminalLaunchError("teilweise")), \
+         patch.object(TerminalLauncher, "_launch_windows_command") as launch_windows:
+        with pytest.raises(TerminalLaunchError):
+            TerminalLauncher.launch_built_command(command, ["Server"], settings)
+
+    launch_windows.assert_not_called()
 
 
 def test_herdr_launcher_reuses_existing_workspace_and_does_not_open_outer_tab_for_visible_client():
