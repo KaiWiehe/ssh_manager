@@ -307,6 +307,40 @@ def test_dns_results_dialog_cell_text_covers_first_and_data_columns():
     assert dialog._cell_text("row-1", "#4") == "OK"
 
 
+def test_dns_results_dialog_marks_cell_text_with_range_selection():
+    dialog = object.__new__(DnsLookupResultsDialog)
+    dialog._selection_entry = None
+    dialog._selection_entry_var = None
+    dialog._selection_anchor = None
+    dialog._tree = MagicMock()
+    dialog._tree.identify_row.return_value = "row-1"
+    dialog._tree.identify_column.return_value = "#2"
+    dialog._tree.identify_region.return_value = "cell"
+    dialog._tree.bbox.return_value = (10, 20, 120, 24)
+    dialog._tree.item.return_value = ("DNS -> IP", "93.184.216.34", "Resolve-DnsName", "OK")
+    entry = MagicMock()
+    entry.index.side_effect = [2, 8]
+    entry.winfo_rootx.return_value = 100
+    style = MagicMock()
+    style.lookup.return_value = ""
+
+    with patch("ssh_manager_app.dialogs_dns.tk.StringVar"), \
+         patch("ssh_manager_app.dialogs_dns.tk.Entry", return_value=entry) as entry_cls, \
+         patch("ssh_manager_app.dialogs_dns.ttk.Style", return_value=style):
+        result = dialog._start_cell_selection(SimpleNamespace(x=25, y=25))
+        drag_result = dialog._extend_cell_selection(SimpleNamespace(x_root=150))
+
+    assert result == "break"
+    assert drag_result == "break"
+    assert entry_cls.call_args.kwargs["relief"] == "flat"
+    assert entry_cls.call_args.kwargs["borderwidth"] == 0
+    assert entry_cls.call_args.kwargs["highlightthickness"] == 0
+    entry.place.assert_called_once_with(x=11, y=20, width=118, height=24)
+    entry.selection_range.assert_called_once_with(2, 8)
+    entry.selection_from.assert_not_called()
+    entry.selection_to.assert_not_called()
+
+
 def test_dns_results_dialog_is_non_modal():
     result = DnsLookupResult("example.com", "forward", ["10.0.0.1"], "Python socket", "ok")
 

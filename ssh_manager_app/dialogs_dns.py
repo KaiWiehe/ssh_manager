@@ -239,8 +239,9 @@ class DnsLookupResultsDialog(tk.Toplevel):
         self.resizable(True, True)
         self._results = list(results)
         self._show_connection_names = any(result.connection_name for result in self._results)
-        self._selection_entry: ttk.Entry | None = None
+        self._selection_entry: tk.Entry | None = None
         self._selection_entry_var: tk.StringVar | None = None
+        self._selection_anchor: int | None = None
         self.geometry("1080x420" if self._show_connection_names else "900x420")
         self.transient(parent)
         self.protocol("WM_DELETE_WINDOW", self.destroy)
@@ -327,27 +328,62 @@ class DnsLookupResultsDialog(tk.Toplevel):
 
         cell_x, cell_y, cell_width, cell_height = bbox
         self._selection_entry_var = tk.StringVar(value=text)
-        entry = ttk.Entry(self._tree, textvariable=self._selection_entry_var)
-        entry.state(["readonly"])
-        entry.place(x=cell_x, y=cell_y, width=cell_width, height=cell_height)
+        style = ttk.Style(self)
+        background = style.lookup("Treeview", "background") or "SystemWindow"
+        foreground = style.lookup("Treeview", "foreground") or "SystemWindowText"
+        font = style.lookup("Treeview", "font") or "TkDefaultFont"
+        entry = tk.Entry(
+            self._tree,
+            textvariable=self._selection_entry_var,
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            readonlybackground=background,
+            background=background,
+            foreground=foreground,
+            selectbackground="SystemHighlight",
+            selectforeground="SystemHighlightText",
+            selectborderwidth=0,
+            insertwidth=0,
+            font=font,
+        )
+        entry.configure(state="readonly")
+        entry.place(x=cell_x + 1, y=cell_y, width=max(1, cell_width - 2), height=cell_height)
         entry.focus_set()
         self._selection_entry = entry
 
-        index = entry.index(f"@{max(0, event.x - cell_x)}")
+        index = int(entry.index(f"@{max(0, event.x - cell_x - 1)}"))
+        self._selection_anchor = index
         entry.icursor(index)
-        entry.selection_from(index)
+        entry.selection_clear()
+        entry.bind("<ButtonPress-1>", self._restart_cell_selection)
+        entry.bind("<B1-Motion>", self._extend_cell_selection)
         entry.bind("<Escape>", self._close_cell_selection)
         entry.bind("<Control-a>", self._select_entire_cell)
         entry.bind("<Control-A>", self._select_entire_cell)
         return "break"
 
+    def _restart_cell_selection(self, event: tk.Event) -> str:
+        entry = self._selection_entry
+        if entry is not None:
+            index = int(entry.index(f"@{event.x}"))
+            self._selection_anchor = index
+            entry.icursor(index)
+            entry.selection_clear()
+        return "break"
+
     def _extend_cell_selection(self, event: tk.Event) -> str | None:
         entry = self._selection_entry
-        if entry is None:
+        anchor = self._selection_anchor
+        if entry is None or anchor is None:
             return None
         try:
             pointer_x = event.x_root - entry.winfo_rootx()
-            entry.selection_to(entry.index(f"@{pointer_x}"))
+            index = int(entry.index(f"@{pointer_x}"))
+            entry.selection_clear()
+            if index != anchor:
+                entry.selection_range(min(anchor, index), max(anchor, index))
+            entry.icursor(index)
         except tk.TclError:
             self._close_cell_selection()
         return "break"
@@ -368,6 +404,7 @@ class DnsLookupResultsDialog(tk.Toplevel):
                 pass
         self._selection_entry = None
         self._selection_entry_var = None
+        self._selection_anchor = None
         return "break"
 
     def _cell_text(self, item_id: str, column_id: str) -> str:
