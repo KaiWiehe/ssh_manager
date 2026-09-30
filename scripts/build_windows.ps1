@@ -8,6 +8,9 @@ $Python = if (Test-Path $VenvPython) { $VenvPython } else { "python" }
 Write-Host "==> Python" -ForegroundColor Cyan
 & $Python --version
 
+Write-Host "==> Checking version metadata" -ForegroundColor Cyan
+& $Python scripts\bump_version.py --check
+
 Write-Host "==> Installing pinned build dependencies" -ForegroundColor Cyan
 & $Python -m pip install -r requirements-dev.txt
 

@@ -16,7 +16,7 @@ from .core import _create_checkbox_images
 from .shortcuts import ShortcutAction, ShortcutManager
 from .themes import ThemePalette, bootstrap_theme_for, palette_for_theme
 from .tree import SessionTree
-from .version import APP_NAME
+from .version import APP_NAME, APP_VERSION
 
 
 TOOLBAR_BUTTON_ORDER = [
@@ -521,6 +521,7 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("TLabel", background=bg, foreground=text)
     style.configure("Header.TFrame", background=surface)
     style.configure("HeaderTitle.TLabel", background=surface, foreground=text, font=(ui_font[0], ui_font[1] + 7, "bold"))
+    style.configure("HeaderVersion.TLabel", background=surface, foreground=muted, font=(ui_font[0], ui_font[1], "bold"))
     style.configure("HeaderSubtitle.TLabel", background=surface, foreground=muted)
     style.configure("CommandBar.TFrame", background=surface_alt)
     style.configure("CommandBar.TLabel", background=surface_alt, foreground=muted)
@@ -936,11 +937,18 @@ def build_main_ui(self) -> None:
     title_wrap = ttk.Frame(header, style="Header.TFrame")
     title_wrap.grid(row=0, column=0, sticky="w")
     ttk.Label(title_wrap, text=APP_NAME, style="HeaderTitle.TLabel").grid(row=0, column=0, sticky="w")
+    ttk.Label(title_wrap, text=f"v{APP_VERSION}", style="HeaderVersion.TLabel").grid(
+        row=0,
+        column=1,
+        sticky="sw",
+        padx=(8, 0),
+        pady=(0, 2),
+    )
     ttk.Label(
         title_wrap,
         text="Verbindungen zentral finden, verwalten und öffnen",
         style="HeaderSubtitle.TLabel",
-    ).grid(row=1, column=0, sticky="w", pady=(1, 0))
+    ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(1, 0))
 
     self._toolbar_buttons["show_add_connection"] = ttk.Button(
         header,

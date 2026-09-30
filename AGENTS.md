@@ -22,6 +22,12 @@ $files = @('ssh_manager.py') + (Get-ChildItem -Path ssh_manager_app -Filter *.py
 
 # Portable Windows-EXE bauen (auf Windows)
 powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+
+# Patch-Version für eine abgeschlossene Änderung erhöhen
+python scripts/bump_version.py
+
+# App- und EXE-Version auf Konsistenz prüfen
+python scripts/bump_version.py --check
 ```
 
 App-Laufzeit: Python-Standardbibliothek plus `ttkbootstrap` und `Pillow`; feste Versionen stehen in `requirements.txt`.
@@ -119,7 +125,7 @@ notes.json / settings  ──┘
 - Theme-Paletten für Light/Dark/Midnight
 
 **`ssh_manager_app/version.py`**
-- `APP_NAME` / `APP_VERSION` für App-Name und Packaging
+- `APP_NAME` / `APP_VERSION` / `APP_DISPLAY_NAME` für App-Name, UI und Packaging
 
 **Packaging**
 - `requirements.txt` / `requirements-dev.txt` – feste Laufzeit-, Test- und Build-Abhängigkeiten
@@ -291,6 +297,7 @@ Weiterhin als Konstanten relevant:
 
 ### Arbeitsweise / Abschluss
 
+- Jede abgeschlossene Code-/UI-Änderung erhöht genau einmal die Patch-Version mit `python scripts/bump_version.py`. Reine Doku-/Notizänderungen benötigen keinen Versionssprung. Das Skript hält `ssh_manager_app/version.py` und `packaging/ssh_manager_version_info.txt` synchron.
 - Nach abgeschlossenen Änderungen in diesem Repo automatisch gezielt stagen, sinnvoll committen und `main` nach `origin` pushen, sofern der User nicht ausdrücklich etwas anderes sagt.
 - Vor dem Commit mindestens Syntax-Check und relevante Tests laufen lassen. Wenn `tests/test_icon_assets.py` wegen fehlendem `PIL` in der System-Python nicht importiert, das im Abschluss nennen oder mit einer Python-Umgebung prüfen, die Pillow enthält.
 - Fallow nur ausführen, wenn ein `package.json` vorhanden ist; aktuell ist das Projekt Python-only.

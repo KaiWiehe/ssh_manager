@@ -33,7 +33,7 @@ from ssh_manager_app.core import (
 
 from ssh_manager_app.ui import build_main_ui, close_app_callback, configure_app_styles
 from ssh_manager_app.actions_ui import build_visible_sessions
-from ssh_manager_app.version import APP_NAME
+from ssh_manager_app.version import APP_DISPLAY_NAME
 
 if TYPE_CHECKING:
     from ssh_manager_app.dialogs_settings_misc import SettingsView
@@ -188,7 +188,7 @@ class SSHManagerApp(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title(APP_NAME or WINDOW_TITLE)
+        self.title(APP_DISPLAY_NAME or WINDOW_TITLE)
         set_window_icon(self)
         self.minsize(*WINDOW_MIN_SIZE)
 

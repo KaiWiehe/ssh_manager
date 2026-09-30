@@ -33,6 +33,20 @@ Alternativ mit bereits installierten Abhängigkeiten:
 python ssh_manager.py
 ```
 
+## Versionierung
+
+Die zentrale App-Version steht in `ssh_manager_app/version.py` und wird im
+Fenstertitel sowie oben im App-Header angezeigt. Für jede abgeschlossene Änderung
+wird die Patch-Version einmal erhöht:
+
+```bat
+python scripts\bump_version.py
+```
+
+Das Skript hält dabei die App-Version und die Windows-EXE-Metadaten synchron.
+Mit `python scripts\bump_version.py --check` lässt sich die Konsistenz ohne Änderung
+prüfen; der Windows-Build führt diese Prüfung automatisch aus.
+
 ## Wichtige Features
 
 - portable Windows-EXE mit eigenem Icon baubar; Python-Start bleibt möglich
