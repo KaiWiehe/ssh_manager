@@ -7,9 +7,11 @@ import re
 import socket
 import subprocess
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 
 DNS_LOOKUP_TIMEOUT_SECONDS = 8
+_URL_WITH_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,22 @@ def detect_lookup_mode(value: str) -> str:
         return "forward"
 
 
+def normalize_lookup_value(value: str) -> str:
+    """Extract the host from a URL while leaving plain host names and IPs unchanged."""
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("Leere Eingabe")
+    if not _URL_WITH_SCHEME_RE.match(cleaned):
+        return cleaned
+    try:
+        hostname = urlsplit(cleaned).hostname
+    except ValueError as exc:
+        raise ValueError("Die URL enthält keinen gültigen Hostnamen oder keine gültige IP-Adresse") from exc
+    if not hostname:
+        raise ValueError("Die URL enthält keinen Hostnamen oder keine IP-Adresse")
+    return hostname
+
+
 def normalize_lookup_mode(value: str, mode: str = "auto") -> str:
     requested = (mode or "auto").strip().lower()
     if requested == "auto":
@@ -50,9 +68,20 @@ def resolve_dns_value(
     timeout: int = DNS_LOOKUP_TIMEOUT_SECONDS,
     dns_server: str | None = None,
 ) -> DnsLookupResult:
-    query = value.strip()
-    if not query:
+    original_query = value.strip()
+    if not original_query:
         return DnsLookupResult(query=value, mode="auto", results=[], resolver="-", status="error", error="Leere Eingabe")
+    try:
+        query = normalize_lookup_value(original_query)
+    except ValueError as exc:
+        return DnsLookupResult(
+            query=original_query,
+            mode="auto",
+            results=[],
+            resolver="-",
+            status="error",
+            error=str(exc),
+        )
     lookup_mode = normalize_lookup_mode(query, mode)
     server = normalize_dns_server(dns_server)
 

@@ -53,7 +53,7 @@ class DnsLookupDialog(tk.Toplevel):
         frame.grid(row=0, column=0, sticky="nsew")
         frame.columnconfigure(1, weight=1)
 
-        ttk.Label(frame, text="IP oder DNS-Name:").grid(row=0, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
+        ttk.Label(frame, text="IP, DNS-Name oder URL:").grid(row=0, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
         self._query_var = tk.StringVar()
         entry = ttk.Entry(frame, textvariable=self._query_var, width=42)
         entry.grid(row=0, column=1, sticky="ew", pady=(0, 8))
@@ -82,7 +82,7 @@ class DnsLookupDialog(tk.Toplevel):
     def _on_ok(self) -> None:
         query = self._query_var.get().strip()
         if not query:
-            messagebox.showwarning("Leere Eingabe", "Bitte eine IP-Adresse oder einen DNS-Namen eingeben.", parent=self)
+            messagebox.showwarning("Leere Eingabe", "Bitte eine IP-Adresse, einen DNS-Namen oder eine URL eingeben.", parent=self)
             return
         try:
             dns_server = resolve_dns_server_selection(self._dns_server_var.get())
@@ -239,6 +239,8 @@ class DnsLookupResultsDialog(tk.Toplevel):
         self.resizable(True, True)
         self._results = list(results)
         self._show_connection_names = any(result.connection_name for result in self._results)
+        self._selection_entry: ttk.Entry | None = None
+        self._selection_entry_var: tk.StringVar | None = None
         self.geometry("1080x420" if self._show_connection_names else "900x420")
         self.transient(parent)
         self.protocol("WM_DELETE_WINDOW", self.destroy)
@@ -283,6 +285,8 @@ class DnsLookupResultsDialog(tk.Toplevel):
         self._tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
+        self._tree.bind("<ButtonPress-1>", self._start_cell_selection, add="+")
+        self._tree.bind("<B1-Motion>", self._extend_cell_selection, add="+")
 
         for result in self._results:
             direction = "IP -> DNS" if result.mode == "reverse" else "DNS -> IP"
@@ -305,6 +309,78 @@ class DnsLookupResultsDialog(tk.Toplevel):
         ttk.Button(btn_frame, text="Alle kopieren", command=lambda: self._copy_all(parent), width=14).pack(side="left", padx=(0, 6))
         ttk.Button(btn_frame, text="Ergebnisse kopieren", command=lambda: self._copy_values(parent), width=18).pack(side="left", padx=(0, 6))
         ttk.Button(btn_frame, text="Schließen", command=self.destroy, width=12).pack(side="right")
+
+    def _start_cell_selection(self, event: tk.Event) -> str | None:
+        item_id = self._tree.identify_row(event.y)
+        column_id = self._tree.identify_column(event.x)
+        region = self._tree.identify_region(event.x, event.y)
+        if not item_id or not column_id or region not in {"tree", "cell"}:
+            self._close_cell_selection()
+            return None
+
+        bbox = self._tree.bbox(item_id, column_id)
+        if not bbox:
+            self._close_cell_selection()
+            return None
+        text = self._cell_text(item_id, column_id)
+        self._close_cell_selection()
+
+        cell_x, cell_y, cell_width, cell_height = bbox
+        self._selection_entry_var = tk.StringVar(value=text)
+        entry = ttk.Entry(self._tree, textvariable=self._selection_entry_var)
+        entry.state(["readonly"])
+        entry.place(x=cell_x, y=cell_y, width=cell_width, height=cell_height)
+        entry.focus_set()
+        self._selection_entry = entry
+
+        index = entry.index(f"@{max(0, event.x - cell_x)}")
+        entry.icursor(index)
+        entry.selection_from(index)
+        entry.bind("<Escape>", self._close_cell_selection)
+        entry.bind("<Control-a>", self._select_entire_cell)
+        entry.bind("<Control-A>", self._select_entire_cell)
+        return "break"
+
+    def _extend_cell_selection(self, event: tk.Event) -> str | None:
+        entry = self._selection_entry
+        if entry is None:
+            return None
+        try:
+            pointer_x = event.x_root - entry.winfo_rootx()
+            entry.selection_to(entry.index(f"@{pointer_x}"))
+        except tk.TclError:
+            self._close_cell_selection()
+        return "break"
+
+    def _select_entire_cell(self, _event: tk.Event | None = None) -> str:
+        entry = self._selection_entry
+        if entry is not None:
+            entry.selection_range(0, "end")
+            entry.icursor("end")
+        return "break"
+
+    def _close_cell_selection(self, _event: tk.Event | None = None) -> str:
+        entry = getattr(self, "_selection_entry", None)
+        if entry is not None:
+            try:
+                entry.destroy()
+            except tk.TclError:
+                pass
+        self._selection_entry = None
+        self._selection_entry_var = None
+        return "break"
+
+    def _cell_text(self, item_id: str, column_id: str) -> str:
+        if column_id == "#0":
+            return str(self._tree.item(item_id, "text"))
+        try:
+            value_index = int(column_id[1:]) - 1
+        except (TypeError, ValueError):
+            return ""
+        values = self._tree.item(item_id, "values")
+        if value_index < 0 or value_index >= len(values):
+            return ""
+        return str(values[value_index])
 
     def _status_label(self, result: DnsLookupResult) -> str:
         if result.status == "ok":

@@ -14,6 +14,7 @@ from ssh_manager_app.dns_lookup import (
     DnsLookupResult,
     detect_lookup_mode,
     normalize_dns_server,
+    normalize_lookup_value,
     parse_nslookup_output,
     parse_resolve_dns_name_json,
     resolve_dns_value,
@@ -31,6 +32,37 @@ def test_detect_lookup_mode_distinguishes_ips_and_names():
     assert detect_lookup_mode("10.0.0.1") == "reverse"
     assert detect_lookup_mode("2001:4860:4860::8888") == "reverse"
     assert detect_lookup_mode("db.internal.example") == "forward"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("https://example.com/path?query=1#anchor", "example.com"),
+        ("http://user:secret@server.internal:8080/status", "server.internal"),
+        ("https://[2001:db8::1]:8443/status", "2001:db8::1"),
+        ("db.internal.example", "db.internal.example"),
+        ("10.0.0.1", "10.0.0.1"),
+    ],
+)
+def test_normalize_lookup_value_extracts_url_host(value, expected):
+    assert normalize_lookup_value(value) == expected
+
+
+def test_resolve_dns_value_uses_only_hostname_from_url():
+    with patch("ssh_manager_app.dns_lookup._resolve_with_powershell", return_value=["93.184.216.34"]) as resolver:
+        result = resolve_dns_value("https://example.com:8443/path?q=1")
+
+    assert result.query == "example.com"
+    assert result.mode == "forward"
+    assert result.results == ["93.184.216.34"]
+    resolver.assert_called_once_with("example.com", "forward", 8, None)
+
+
+def test_resolve_dns_value_reports_url_without_host():
+    result = resolve_dns_value("https:///only-a-path")
+
+    assert result.status == "error"
+    assert "Hostnamen" in result.error
 
 
 def test_parse_resolve_dns_name_json_reads_forward_addresses():
@@ -201,6 +233,8 @@ def test_dns_results_dialog_left_aligns_columns_and_headers():
         _result_label=lambda result: ", ".join(result.results),
         _copy_all=MagicMock(),
         _copy_values=MagicMock(),
+        _start_cell_selection=MagicMock(),
+        _extend_cell_selection=MagicMock(),
         destroy=MagicMock(),
     )
     parent = MagicMock()
@@ -238,6 +272,8 @@ def test_dns_results_dialog_adds_connection_name_before_hostname_for_sessions():
         _result_label=lambda lookup: ", ".join(lookup.results),
         _copy_all=MagicMock(),
         _copy_values=MagicMock(),
+        _start_cell_selection=MagicMock(),
+        _extend_cell_selection=MagicMock(),
         destroy=MagicMock(),
     )
     tree = MagicMock()
@@ -254,6 +290,21 @@ def test_dns_results_dialog_adds_connection_name_before_hostname_for_sessions():
     assert tree.heading.call_args_list[1].kwargs["text"] == "Hostname"
     assert tree.insert.call_args.kwargs["text"] == "Produktivserver"
     assert tree.insert.call_args.kwargs["values"][0] == "server.example.com"
+
+
+def test_dns_results_dialog_cell_text_covers_first_and_data_columns():
+    dialog = object.__new__(DnsLookupResultsDialog)
+    dialog._tree = MagicMock()
+    dialog._tree.item.side_effect = lambda _item, option: {
+        "text": "example.com",
+        "values": ("DNS -> IP", "93.184.216.34", "Resolve-DnsName", "OK"),
+    }[option]
+
+    assert dialog._cell_text("row-1", "#0") == "example.com"
+    assert dialog._cell_text("row-1", "#1") == "DNS -> IP"
+    assert dialog._cell_text("row-1", "#2") == "93.184.216.34"
+    assert dialog._cell_text("row-1", "#3") == "Resolve-DnsName"
+    assert dialog._cell_text("row-1", "#4") == "OK"
 
 
 def test_dns_results_dialog_is_non_modal():
