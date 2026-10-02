@@ -157,6 +157,33 @@ def test_load_settings_from_path_defaults_and_restores_restart_toolbar_button():
     assert explicit_settings.toolbar.show_restart_servers is False
 
 
+def test_load_settings_from_path_defaults_and_restores_toolbar_operations():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "settings.json"
+        path.write_text(json.dumps({"toolbar": {"show_check_hosts": False}}), encoding="utf-8")
+        old_settings = load_settings_from_path(path)
+        path.write_text(
+            json.dumps(
+                {
+                    "toolbar": {
+                        "show_run_remote_command": False,
+                        "show_deploy_certificate_files": False,
+                        "show_replace_certificates": False,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        explicit_settings = load_settings_from_path(path)
+
+    assert old_settings.toolbar.show_run_remote_command is True
+    assert old_settings.toolbar.show_deploy_certificate_files is True
+    assert old_settings.toolbar.show_replace_certificates is True
+    assert explicit_settings.toolbar.show_run_remote_command is False
+    assert explicit_settings.toolbar.show_deploy_certificate_files is False
+    assert explicit_settings.toolbar.show_replace_certificates is False
+
+
 def test_load_settings_from_path_loads_valid_appearance_settings():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "settings.json"

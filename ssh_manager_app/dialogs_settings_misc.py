@@ -476,6 +476,9 @@ class SettingsView(ttk.Frame):
             ("show_add_connection", "+ Verbindung"),
             ("show_reload", "Neu laden"),
             ("show_open_tunnel", "Tunnel öffnen…"),
+            ("show_run_remote_command", "Befehl ausführen…"),
+            ("show_deploy_certificate_files", "Dateien übertragen…"),
+            ("show_replace_certificates", "Zertifikate ersetzen…"),
             ("show_check_hosts", "Hosts prüfen"),
             ("show_restart_servers", "Server neu starten…"),
         ]

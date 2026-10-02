@@ -46,6 +46,9 @@ class ToolbarSettings:
     show_add_connection: bool = True
     show_reload: bool = True
     show_open_tunnel: bool = True
+    show_run_remote_command: bool = True
+    show_deploy_certificate_files: bool = True
+    show_replace_certificates: bool = True
     show_check_hosts: bool = True
     show_restart_servers: bool = True
     show_username_column: bool = True

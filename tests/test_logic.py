@@ -2482,6 +2482,9 @@ def test_layout_toolbar_buttons_places_only_enabled_buttons_in_order():
     app.settings.toolbar.show_add_connection = True
     app.settings.toolbar.show_reload = True
     app.settings.toolbar.show_open_tunnel = False
+    app.settings.toolbar.show_run_remote_command = False
+    app.settings.toolbar.show_deploy_certificate_files = False
+    app.settings.toolbar.show_replace_certificates = False
     app.settings.toolbar.show_check_hosts = True
     app.settings.toolbar.show_restart_servers = True
 

@@ -27,6 +27,9 @@ TOOLBAR_BUTTON_ORDER = [
     "show_add_connection",
     "show_reload",
     "show_open_tunnel",
+    "show_run_remote_command",
+    "show_deploy_certificate_files",
+    "show_replace_certificates",
     "show_check_hosts",
     "show_restart_servers",
 ]
@@ -38,6 +41,9 @@ _TOOLBAR_GROUP = {
     "show_collapse_all": "view",
     "show_reload": "view",
     "show_open_tunnel": "server",
+    "show_run_remote_command": "operations",
+    "show_deploy_certificate_files": "operations",
+    "show_replace_certificates": "operations",
     "show_check_hosts": "server",
     "show_restart_servers": "server",
 }
@@ -1081,6 +1087,9 @@ def build_main_ui(self) -> None:
         "show_add_connection": ("Neue Verbindung", lambda: add_session_callback(self)),
         "show_reload": ("Neu laden", lambda: reload_sessions_callback(self)),
         "show_open_tunnel": ("Tunnel öffnen…", lambda: open_tunnel_callback(self)),
+        "show_run_remote_command": ("Befehl ausführen…", lambda: run_remote_command_callback(self, self._tree.get_selected_sessions())),
+        "show_deploy_certificate_files": ("Dateien übertragen…", lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions())),
+        "show_replace_certificates": ("Zertifikate ersetzen…", lambda: replace_certificates_callback(self, self._tree.get_selected_sessions())),
         "show_check_hosts": ("Hosts prüfen", lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds)),
         "show_restart_servers": ("Server neu starten…", lambda: restart_servers_callback(self, self._tree.get_selected_sessions())),
     }
@@ -1091,6 +1100,9 @@ def build_main_ui(self) -> None:
         "show_collapse_all": "chevron-contract",
         "show_reload": "arrow-repeat",
         "show_open_tunnel": "ethernet",
+        "show_run_remote_command": "terminal",
+        "show_deploy_certificate_files": "cloud-upload",
+        "show_replace_certificates": "shield-lock",
         "show_check_hosts": "shield-check",
         "show_restart_servers": "power",
     }
