@@ -571,7 +571,7 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.map("TMenubutton", background=[("active", button_active), ("pressed", selected)], bordercolor=[("focus", accent), ("active", accent)])
     style.configure("Treeview", background=surface, fieldbackground=surface, foreground=text, rowheight=tree_row_height, font=tree_font, bordercolor=border, lightcolor=border, darkcolor=border)
     style.configure("Treeview.Heading", background=surface_alt, foreground=text, relief="flat", bordercolor=border, padding=(8, 7), font=(tree_font[0], tree_font[1], "bold"))
-    style.map("Treeview", background=[("selected", selected)], foreground=[("selected", text)])
+    style.map("Treeview", background=[("selected", accent)], foreground=[("selected", "#ffffff")])
     style.configure("Vertical.TScrollbar", background=surface_alt, troughcolor=bg, bordercolor=border, arrowcolor=muted)
     style.configure("Horizontal.TScrollbar", background=surface_alt, troughcolor=bg, bordercolor=border, arrowcolor=muted)
     style.configure("Toast.TFrame", background=palette.toast_bg, relief="flat")

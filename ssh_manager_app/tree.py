@@ -38,6 +38,7 @@ class SessionTree(ttk.Frame):
     # Tag-Konstanten
     TAG_SESSION = "session"
     TAG_FOLDER = "folder"
+    TAG_HOVER = "hover"
 
     def __init__(
         self,
@@ -134,6 +135,7 @@ class SessionTree(ttk.Frame):
         self._suppress_next_click = False
         self._left_press_item_id: str | None = None
         self._left_press_was_folder = False
+        self._hover_item_id: str | None = None
 
         # item_id → Session (nur für Session-Zeilen, nicht Ordner)
         self._item_to_session: dict[str, Session] = {}
@@ -236,6 +238,7 @@ class SessionTree(ttk.Frame):
         self._tv.bind("<ButtonPress>", lambda _e: self._hide_tooltip(), add="+")
 
         self._configure_color_tags()
+        self._configure_visual_tags()
         self._apply_column_visibility()
         self._build_header_hide_overlay()
         # Redistribute column widths whenever the tree itself is resized so
@@ -261,6 +264,21 @@ class SessionTree(ttk.Frame):
         """Registriert für jede Palettenfarbe einen Treeview-Tag."""
         for _, hex_color in PALETTE:
             self._tv.tag_configure(color_tag(hex_color), foreground=hex_color)
+
+    def _configure_visual_tags(self) -> None:
+        """Separates folder rows and hovered rows without changing their data."""
+        style = ttk.Style(self)
+        folder_background = style.lookup("Treeview.Heading", "background") or "#f8fafc"
+        folder_foreground = style.lookup("Treeview.Heading", "foreground") or "#172033"
+        folder_font = style.lookup("Treeview.Heading", "font") or "TkDefaultFont"
+        hover_background = style.lookup("CommandBar.TFrame", "background") or folder_background
+        self._tv.tag_configure(
+            self.TAG_FOLDER,
+            background=folder_background,
+            foreground=folder_foreground,
+            font=folder_font,
+        )
+        self._tv.tag_configure(self.TAG_HOVER, background=hover_background)
 
     # Default (preferred) column widths. Also used as proportional weights
     # when redistributing widths after a visibility change so the remaining
@@ -620,6 +638,7 @@ class SessionTree(ttk.Frame):
             messagebox.showerror("Spalte ausblenden", "Spalte konnte nicht ausgeblendet werden.")
 
     def _on_tree_leave(self, _event: tk.Event) -> None:
+        self._set_hover_item(None)
         self._hide_tooltip()
         # X nicht sofort verstecken: wenn der Mauszeiger das X-Label betritt,
         # erhaelt der Treeview ein <Leave>, aber das X soll bleiben.
@@ -629,6 +648,7 @@ class SessionTree(ttk.Frame):
         # Header-Hide-X aktualisieren (unabhaengig vom Notes-Tooltip)
         self._maybe_show_header_x(event.x, event.y)
         item_id = self._tv.identify_row(event.y)
+        self._set_hover_item(item_id or None)
         column_id = self._tv.identify_column(event.x)
         if not item_id or item_id not in self._item_to_session or column_id not in {"#0", "#3"}:
             self._hide_tooltip()
@@ -641,6 +661,19 @@ class SessionTree(ttk.Frame):
         if not note:
             return
         self._tooltip_after_id = self.after(450, lambda iid=item_id, x=event.x_root, y=event.y_root, text=note: self._show_tooltip(iid, x, y, text))
+
+    def _set_hover_item(self, item_id: str | None) -> None:
+        if item_id == self._hover_item_id:
+            return
+        previous = self._hover_item_id
+        self._hover_item_id = item_id
+        for candidate, add_hover in ((previous, False), (item_id, True)):
+            if not candidate or not self._tv.exists(candidate):
+                continue
+            tags = [tag for tag in self._tv.item(candidate, "tags") if tag != self.TAG_HOVER]
+            if add_hover:
+                tags.append(self.TAG_HOVER)
+            self._tv.item(candidate, tags=tuple(tags))
 
     def _show_tooltip(self, item_id: str, x: int, y: int, text: str) -> None:
         if item_id != self._last_tooltip_item:
@@ -746,6 +779,8 @@ class SessionTree(ttk.Frame):
             if session.key == session_key:
                 tag = color_tag(hex_color) if hex_color else None
                 tags = (self.TAG_SESSION,) + ((tag,) if tag else ())
+                if item_id == getattr(self, "_hover_item_id", None):
+                    tags += (self.TAG_HOVER,)
                 self._tv.item(item_id, tags=tags)
                 break
         self._notify_ui_state_changed()
@@ -775,6 +810,7 @@ class SessionTree(ttk.Frame):
             self._checked.clear()
             self._item_to_folder_key.clear()
             self._item_to_status.clear()
+            self._hover_item_id = None
 
             # Ordner-Nodes: folder_key → item_id
             folder_items: dict[str, str] = {}
@@ -786,7 +822,7 @@ class SessionTree(ttk.Frame):
                     folder_key = "/".join(session.folder_path[: depth + 1])
                     if folder_key not in folder_items:
                         was_open = folder_key in open_folders
-                        folder_label = f"  ⚙ {folder_name}" if folder_key == _SSH_CONFIG_DEFAULT_FOLDER else f"  {folder_name}"
+                        folder_label = f"  {folder_name}"
                         folder_id = self._tv.insert(
                             parent_id, "end",
                             text=folder_label,
@@ -1824,14 +1860,14 @@ class SessionTree(ttk.Frame):
 
     def _session_label(self, session: Session, status: str | None) -> str:
         """Baut den Anzeigetext einer Session-Zeile inkl. Status-Symbol."""
-        symbol = {"ok": "✓", "fail": "✗", "checking": "⏳"}.get(status or "", "")
+        symbol = {"ok": "✓", "fail": "✗", "checking": "…"}.get(status or "", " ")
         if session.is_ssh_config_session:
             type_icon = "⚙ "
         elif session.is_app_session:
             type_icon = "★ "
         else:
             type_icon = ""
-        prefix = f"  {symbol + ' ' if symbol else ''}"
+        prefix = f"  {symbol} "
         return f"{prefix}{type_icon}{session.display_name}"
 
     def _set_item_status(self, item_id: str, status: str | None) -> None:
