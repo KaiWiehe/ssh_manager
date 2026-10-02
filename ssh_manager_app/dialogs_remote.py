@@ -707,7 +707,7 @@ class RemoteCommandDialog(tk.Toplevel):
     def _item_label(self, item: dict) -> str:
         name = item.get("name") or item.get("label") or item.get("path") or item.get("command", "")
         note = item.get("note", "")
-        prefix = "📌 " if item.get("pinned") else ""
+        prefix = "★ " if item.get("pinned") else ""
         return (prefix + (f"{name} — {note}" if note else name))[:100]
 
     def _choose_file(self) -> None:

@@ -31,6 +31,17 @@ TOOLBAR_BUTTON_ORDER = [
     "show_restart_servers",
 ]
 
+_TOOLBAR_GROUP = {
+    "show_select_all": "selection",
+    "show_deselect_all": "selection",
+    "show_expand_all": "view",
+    "show_collapse_all": "view",
+    "show_reload": "view",
+    "show_open_tunnel": "server",
+    "show_check_hosts": "server",
+    "show_restart_servers": "server",
+}
+
 # Keep a small, non-collapsing gap between menu labels and ttk's arrow indicator.
 _MENU_ARROW_GAP = "\N{NO-BREAK SPACE}"
 
@@ -67,7 +78,9 @@ def layout_toolbar_buttons(app) -> None:
     if add_button is not None and app.settings.toolbar.show_add_connection:
         add_button.grid(row=0, column=1, padx=(8, 0))
     for column, key in enumerate(direct):
-        app._toolbar_buttons[key].grid(row=0, column=column, padx=(0, 6))
+        next_key = direct[column + 1] if column + 1 < len(direct) else None
+        end_of_group = next_key is not None and _TOOLBAR_GROUP.get(next_key) != _TOOLBAR_GROUP.get(key)
+        app._toolbar_buttons[key].grid(row=0, column=column, padx=(0, 16 if end_of_group else 6))
 
     overflow_button = app.__dict__.get("_toolbar_overflow_btn")
     overflow_menu = app.__dict__.get("_toolbar_overflow_menu")
@@ -75,9 +88,14 @@ def layout_toolbar_buttons(app) -> None:
         return
     overflow_button.grid_forget()
     overflow_menu.delete(0, "end")
+    previous_group = None
     for key in overflow:
+        group = _TOOLBAR_GROUP.get(key)
+        if previous_group is not None and group != previous_group:
+            overflow_menu.add_separator()
         label, command = app._toolbar_specs[key]
         overflow_menu.add_command(label=label, command=command)
+        previous_group = group
     if overflow:
         overflow_button.grid(row=0, column=len(direct), padx=(0, 6))
 
@@ -98,19 +116,6 @@ def _on_main_frame_resized(app, event) -> None:
     if getattr(app, "_toolbar_capacity", None) != capacity:
         app._toolbar_capacity = capacity
         layout_toolbar_buttons(app)
-    compact = event.width < 720
-    if getattr(app, "_command_bar_compact", None) == compact:
-        return
-    app._command_bar_compact = compact
-    buttons = getattr(app, "_command_group_buttons", ())
-    for button in buttons:
-        button.grid_forget()
-    if compact:
-        for column, button in enumerate(buttons, start=1):
-            button.grid(row=1, column=column, sticky="w", padx=(0, 6), pady=(8, 0))
-    else:
-        for column, button in enumerate(buttons, start=3):
-            button.grid(row=0, column=column, padx=(0, 6) if column < 5 else 0)
 
 
 def persist_ui_state_callback(app) -> None:
@@ -650,6 +655,24 @@ def _style_dialog_actions(widget: tk.Misc) -> None:
         "hinzufügen", "exportieren", "importieren", "hochladen", "server neu starten",
     )
     danger_labels = ("löschen", "entfernen", "zertifikate ersetzen")
+    action_icons = {
+        "ok": "check2",
+        "speichern": "floppy",
+        "verbinden": "terminal",
+        "ausführen": "play-fill",
+        "starten": "play-fill",
+        "übernehmen": "check2",
+        "hinzufügen": "plus-lg",
+        "exportieren": "box-arrow-up",
+        "importieren": "box-arrow-in-down",
+        "hochladen": "cloud-arrow-up",
+        "server neu starten": "power",
+        "abbrechen": "x-lg",
+        "schließen": "x-lg",
+        "löschen": "trash",
+        "entfernen": "trash",
+        "zertifikate ersetzen": "shield-exclamation",
+    }
     for child in widget.children.values():
         if isinstance(child, ttk.Button):
             label = str(child.cget("text")).strip().lower()
@@ -657,6 +680,10 @@ def _style_dialog_actions(widget: tk.Misc) -> None:
                 child.configure(style="Danger.TButton")
             elif any(label.startswith(prefix) for prefix in primary_labels):
                 child.configure(style="Accent.TButton")
+            for prefix, icon in action_icons.items():
+                if label.startswith(prefix):
+                    _decorate(child, icon=icon)
+                    break
         _style_dialog_actions(child)
 
 

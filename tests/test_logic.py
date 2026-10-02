@@ -2492,12 +2492,12 @@ def test_layout_toolbar_buttons_places_only_enabled_buttons_in_order():
     for button in app._toolbar_buttons.values():
         button.grid_forget.assert_called_once()
 
-    assert app._toolbar_buttons["show_select_all"].grid.call_args.kwargs == {"row": 0, "column": 0, "padx": (0, 6)}
+    assert app._toolbar_buttons["show_select_all"].grid.call_args.kwargs == {"row": 0, "column": 0, "padx": (0, 16)}
     app._toolbar_buttons["show_deselect_all"].grid.assert_not_called()
     assert app._toolbar_buttons["show_expand_all"].grid.call_args.kwargs == {"row": 0, "column": 1, "padx": (0, 6)}
     app._toolbar_buttons["show_collapse_all"].grid.assert_not_called()
     assert app._toolbar_buttons["show_add_connection"].grid.call_args.kwargs == {"row": 0, "column": 1, "padx": (8, 0)}
-    assert app._toolbar_buttons["show_reload"].grid.call_args.kwargs == {"row": 0, "column": 2, "padx": (0, 6)}
+    assert app._toolbar_buttons["show_reload"].grid.call_args.kwargs == {"row": 0, "column": 2, "padx": (0, 16)}
     app._toolbar_buttons["show_open_tunnel"].grid.assert_not_called()
     assert app._toolbar_buttons["show_check_hosts"].grid.call_args.kwargs == {"row": 0, "column": 3, "padx": (0, 6)}
     assert app._toolbar_buttons["show_restart_servers"].grid.call_args.kwargs == {"row": 0, "column": 4, "padx": (0, 6)}
