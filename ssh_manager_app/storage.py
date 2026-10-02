@@ -88,9 +88,13 @@ def load_settings_from_path(path: Path) -> AppSettings:
     if theme not in {"default", "modern_light", "dark_neutral", "midnight"}:
         theme = defaults.appearance.theme
     accent_color = str(appearance_raw.get("accent_color", defaults.appearance.accent_color)).strip().lower()
+    if accent_color == "#2563eb":
+        # Migrate the former, very bright default to the calmer blue introduced in 0.2.17.
+        accent_color = defaults.appearance.accent_color
     allowed_accents = {
-        "#2563eb", "#0ea5e9", "#14b8a6", "#22c55e", "#84cc16",
-        "#f59e0b", "#f97316", "#ef4444", "#a855f7", "#ec4899",
+        "#5b78a6", "#4f6f8f", "#4f8096", "#5f8a72", "#3f7d5b", "#71824a",
+        "#a37b4b", "#a76545", "#a95656", "#80658f", "#9a6079", "#5f6b7a",
+        "#2563eb", "#14b8a6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899",
     }
     if accent_color not in allowed_accents:
         accent_color = defaults.appearance.accent_color

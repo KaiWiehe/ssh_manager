@@ -46,6 +46,18 @@ _TOOLBAR_GROUP = {
 _MENU_ARROW_GAP = "\N{NO-BREAK SPACE}"
 
 
+def _blend_hex(foreground: str, background: str, amount: float) -> str:
+    """Blend a hex color into a surface for calm hover/focus treatments."""
+    amount = max(0.0, min(1.0, amount))
+    foreground_channels = tuple(int(foreground[index:index + 2], 16) for index in (1, 3, 5))
+    background_channels = tuple(int(background[index:index + 2], 16) for index in (1, 3, 5))
+    channels = (
+        round(background_channel + (foreground_channel - background_channel) * amount)
+        for foreground_channel, background_channel in zip(foreground_channels, background_channels)
+    )
+    return "#" + "".join(f"{channel:02x}" for channel in channels)
+
+
 def toolbar_direct_capacity(width: int) -> int:
     """Keep the command strip compact and move the rest into overflow."""
     if width < 700:
@@ -490,7 +502,7 @@ def collapse_all_callback(app) -> None:
 def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style = ttk.Style(app)
     appearance = getattr(getattr(app, "settings", None), "appearance", None)
-    accent = getattr(appearance, "accent_color", "#2563eb")
+    accent = getattr(appearance, "accent_color", "#5b78a6")
     bg = palette.bg
     surface = palette.surface
     surface_alt = palette.surface_alt
@@ -506,6 +518,8 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     danger_border = "#7f1d1d" if dark_mode else "#e5a9a4"
     danger_active = "#4a2525" if dark_mode else "#fff1f0"
     danger_pressed = "#5c2020" if dark_mode else "#fee4e2"
+    accent_soft = _blend_hex(accent, surface, 0.24 if dark_mode else 0.15)
+    accent_hover = _blend_hex(accent, surface, 0.38 if dark_mode else 0.24)
 
     app.configure(background=bg)
     app.option_add("*Menu.background", surface)
@@ -542,7 +556,7 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("TLabel", background=bg, foreground=text)
     style.configure("Header.TFrame", background=surface)
     style.configure("HeaderBrand.TFrame", background=surface)
-    style.configure("HeaderMark.TLabel", background=accent, foreground="#ffffff", font=("Cascadia Mono", ui_font[1] + 4, "bold"), padding=(9, 6))
+    style.configure("HeaderMark.TLabel", background=surface, foreground=accent, font=("Cascadia Mono", ui_font[1] + 4, "bold"), padding=(0, 6))
     style.configure("HeaderTitle.TLabel", background=surface, foreground=text, font=(ui_font[0], ui_font[1] + 7, "bold"))
     style.configure("HeaderVersion.TLabel", background=surface_alt, foreground=muted, font=(ui_font[0], max(8, ui_font[1] - 1), "bold"), padding=(7, 3))
     style.configure("HeaderSubtitle.TLabel", background=surface, foreground=muted)
@@ -555,6 +569,7 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("Quick.TButton", padding=(9, 6), background=surface, foreground=text, bordercolor=border)
     style.map("Quick.TButton", background=[("active", button_active), ("pressed", selected)], bordercolor=[("focus", accent), ("active", accent)])
     style.configure("TreeSurface.TFrame", background=surface)
+    style.configure("TreeHover.TFrame", background=accent_hover)
     style.configure("StatusBar.TFrame", background=surface_alt)
     style.configure("StatusBar.TLabel", background=surface_alt, foreground=muted)
     style.configure("Muted.TLabel", foreground=muted)
@@ -609,8 +624,8 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("SettingsValue.TLabel", background=surface, foreground=text)
     style.configure("SettingsNav.TButton", padding=(14, 10), anchor="w", background=nav, foreground=text, bordercolor=nav)
     style.map("SettingsNav.TButton", background=[("active", selected), ("pressed", selected)], foreground=[("active", text)])
-    style.configure("SettingsNavActive.TButton", padding=(14, 10), anchor="w", background=selected, foreground=text, bordercolor=accent, relief="solid")
-    style.map("SettingsNavActive.TButton", background=[("active", selected), ("pressed", selected)], foreground=[("active", text), ("pressed", text)], bordercolor=[("focus", accent)])
+    style.configure("SettingsNavActive.TButton", padding=(14, 10), anchor="w", background=accent_soft, foreground=text, bordercolor=accent, relief="solid")
+    style.map("SettingsNavActive.TButton", background=[("active", accent_hover), ("pressed", accent_hover)], foreground=[("active", text), ("pressed", text)], bordercolor=[("focus", accent)])
     style.configure("EmptyState.TFrame", background=surface)
     style.configure("EmptyStateContent.TFrame", background=surface)
     style.configure("EmptyStateCard.TFrame", background=surface, relief="flat")
@@ -773,7 +788,7 @@ def _install_toplevel_theme_hook(app: tk.Tk) -> None:
         dialog = event.widget
         appearance = getattr(getattr(app, "settings", None), "appearance", None)
         theme = getattr(appearance, "theme", "default")
-        accent = getattr(appearance, "accent_color", "#2563eb")
+        accent = getattr(appearance, "accent_color", "#5b78a6")
         palette = palette_for_theme(theme)
         _safe_widget_configure(dialog, background=palette.bg)
         try:
@@ -817,7 +832,7 @@ def refresh_checkbox_images(app) -> None:
     """Rebuild tree checkbox icons from the active theme palette."""
     appearance = getattr(getattr(app, "settings", None), "appearance", None)
     theme = getattr(appearance, "theme", "default")
-    accent = getattr(appearance, "accent_color", "#1a7a3a")
+    accent = getattr(appearance, "accent_color", "#5b78a6")
     palette = palette_for_theme(theme)
     background = palette.surface
     border = palette.border

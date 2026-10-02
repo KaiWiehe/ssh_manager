@@ -59,7 +59,7 @@ def test_save_settings_writes_nested_settings_payload():
     assert raw["source_visibility"]["show_filezilla_config"] is True
     assert raw["appearance"] == {
         "theme": "default",
-        "accent_color": "#2563eb",
+        "accent_color": "#5b78a6",
         "ui_font_family": "Segoe UI",
         "ui_font_size": 10,
         "tree_font_family": "Segoe UI",

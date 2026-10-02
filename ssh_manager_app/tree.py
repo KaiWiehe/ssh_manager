@@ -272,7 +272,7 @@ class SessionTree(ttk.Frame):
         folder_background = style.lookup("Treeview.Heading", "background") or "#f8fafc"
         folder_foreground = style.lookup("Treeview.Heading", "foreground") or "#172033"
         folder_font = style.lookup("Treeview.Heading", "font") or "TkDefaultFont"
-        hover_background = style.lookup("CommandBar.TFrame", "background") or folder_background
+        hover_background = style.lookup("TreeHover.TFrame", "background") or folder_background
         self._tv.tag_configure(
             self.TAG_FOLDER,
             background=folder_background,

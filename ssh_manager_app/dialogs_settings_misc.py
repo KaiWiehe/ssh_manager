@@ -89,16 +89,24 @@ class SettingsView(ttk.Frame):
         "midnight": "Midnight",
     }
     ACCENT_COLORS = [
-        ("Blau", "#2563eb", "🟦"),
-        ("Sky", "#0ea5e9", "🔷"),
-        ("Türkis", "#14b8a6", "🟩"),
-        ("Grün", "#22c55e", "🟩"),
-        ("Lime", "#84cc16", "🟩"),
-        ("Amber", "#f59e0b", "🟨"),
-        ("Orange", "#f97316", "🟧"),
-        ("Rot", "#ef4444", "🟥"),
-        ("Violett", "#a855f7", "🟪"),
-        ("Pink", "#ec4899", "💗"),
+        ("Schieferblau · dezent", "#5b78a6", ""),
+        ("Nordblau · dezent", "#4f6f8f", ""),
+        ("Rauchblau · dezent", "#4f8096", ""),
+        ("Salbei · dezent", "#5f8a72", ""),
+        ("Waldgrün · dezent", "#3f7d5b", ""),
+        ("Moos · dezent", "#71824a", ""),
+        ("Sand · dezent", "#a37b4b", ""),
+        ("Kupfer · dezent", "#a76545", ""),
+        ("Ziegel · dezent", "#a95656", ""),
+        ("Pflaume · dezent", "#80658f", ""),
+        ("Mauve · dezent", "#9a6079", ""),
+        ("Graphit · dezent", "#5f6b7a", ""),
+        ("Blau · kräftig", "#2563eb", ""),
+        ("Türkis · kräftig", "#14b8a6", ""),
+        ("Grün · kräftig", "#22c55e", ""),
+        ("Amber · kräftig", "#f59e0b", ""),
+        ("Violett · kräftig", "#a855f7", ""),
+        ("Pink · kräftig", "#ec4899", ""),
     ]
     FONT_FAMILIES = ["Segoe UI", "Arial", "Calibri", "Consolas", "Cascadia Mono", "Verdana"]
 
@@ -393,7 +401,7 @@ class SettingsView(ttk.Frame):
         self._theme_list = theme_list
 
         ttk.Label(grid, text="Akzentfarbe:", style="SettingsValue.TLabel").grid(row=1, column=0, sticky="nw", pady=(16, 6), padx=(0, 12))
-        accent_list = tk.Listbox(grid, height=10, exportselection=False, activestyle="none")
+        accent_list = tk.Listbox(grid, height=12, exportselection=False, activestyle="none")
         accent_list.grid(row=1, column=1, sticky="ew", pady=(16, 6))
         for index, (name, hex_color, _swatch) in enumerate(self.ACCENT_COLORS):
             accent_list.insert("end", f"■ {name}  {hex_color}")
