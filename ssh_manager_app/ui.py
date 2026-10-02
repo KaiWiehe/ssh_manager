@@ -993,17 +993,6 @@ def build_main_ui(self) -> None:
     self._connect_btn.grid(row=0, column=2, padx=(0, 8))
     _decorate(self._connect_btn, icon="terminal")
 
-    selection_button = ttk.Menubutton(command_bar, text=f"Auswahl{_MENU_ARROW_GAP}", menu=selection_menu)
-    selection_button.grid(row=0, column=3, padx=(0, 6))
-    _decorate(selection_button, icon="check2-square")
-    view_button = ttk.Menubutton(command_bar, text=f"Ansicht{_MENU_ARROW_GAP}", menu=view_menu)
-    view_button.grid(row=0, column=4, padx=(0, 6))
-    _decorate(view_button, icon="layout-three-columns")
-    actions_button = ttk.Menubutton(command_bar, text=f"Aktionen{_MENU_ARROW_GAP}", menu=actions_menu)
-    actions_button.grid(row=0, column=5)
-    _decorate(actions_button, icon="lightning-charge")
-    self._command_group_buttons = (selection_button, view_button, actions_button)
-
     quick_bar = ttk.Frame(self._main_frame, style="QuickBar.TFrame", padding=(18, 8, 12, 2))
     quick_bar.grid(row=2, column=0, sticky="ew")
     self._quick_bar = quick_bar
