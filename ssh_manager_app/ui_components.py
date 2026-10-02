@@ -79,3 +79,20 @@ def center_on_parent(window: tk.Toplevel, parent: tk.Misc) -> None:
         x = max(0, min(x, screen_width - width))
         y = max(0, min(y, screen_height - height))
     window.geometry(f"+{x}+{y}")
+
+
+def set_validation_state(
+    widget: ttk.Widget | None,
+    error_var: tk.StringVar | None,
+    message: str = "",
+    *,
+    normal_style: str = "TEntry",
+    invalid_style: str = "Invalid.TEntry",
+) -> None:
+    """Show an inline field error while retaining existing dialog validation behavior."""
+    if error_var is not None:
+        error_var.set(message)
+    if widget is not None:
+        widget.configure(style=invalid_style if message else normal_style)
+        if message:
+            widget.focus_set()

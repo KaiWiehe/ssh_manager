@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .dns_lookup import DnsLookupResult, normalize_dns_server
-from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent
+from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent, set_validation_state
 
 
 MODE_LABELS = {
@@ -65,6 +65,7 @@ class DnsLookupDialog(tk.Toplevel):
         self._query_var = tk.StringVar()
         entry = ttk.Entry(frame, textvariable=self._query_var, width=42)
         entry.grid(row=1, column=1, sticky="ew", pady=(0, 8))
+        self._query_entry = entry
         entry.focus_set()
 
         ttk.Label(frame, text="Richtung:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
@@ -81,10 +82,15 @@ class DnsLookupDialog(tk.Toplevel):
             width=30,
         )
         server_combo.grid(row=3, column=1, sticky="ew", pady=(0, 14))
+        self._server_combo = server_combo
+        self._validation_var = tk.StringVar()
+        ttk.Label(frame, textvariable=self._validation_var, style="ValidationError.TLabel").grid(
+            row=4, column=0, columnspan=2, sticky="w"
+        )
 
         build_dialog_actions(
             frame,
-            row=4,
+            row=5,
             columnspan=2,
             primary_text="Auflösen",
             primary_command=self._on_ok,
@@ -94,13 +100,26 @@ class DnsLookupDialog(tk.Toplevel):
     def _on_ok(self) -> None:
         query = self._query_var.get().strip()
         if not query:
+            set_validation_state(
+                getattr(self, "_query_entry", None),
+                getattr(self, "_validation_var", None),
+                "Bitte eine IP-Adresse, einen DNS-Namen oder eine URL eingeben.",
+            )
             messagebox.showwarning("Leere Eingabe", "Bitte eine IP-Adresse, einen DNS-Namen oder eine URL eingeben.", parent=self)
             return
         try:
             dns_server = resolve_dns_server_selection(self._dns_server_var.get())
         except ValueError as exc:
+            set_validation_state(
+                getattr(self, "_server_combo", None),
+                getattr(self, "_validation_var", None),
+                str(exc),
+                normal_style="TCombobox",
+                invalid_style="Invalid.TCombobox",
+            )
             messagebox.showwarning("Ungültiger DNS-Server", str(exc), parent=self)
             return
+        set_validation_state(getattr(self, "_query_entry", None), getattr(self, "_validation_var", None))
         self.result = (query, MODE_BY_LABEL.get(self._mode_var.get(), "auto"), dns_server)
         self.destroy()
 

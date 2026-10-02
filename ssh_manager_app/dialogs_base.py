@@ -5,7 +5,7 @@ from tkinter import messagebox, ttk
 from typing import Optional
 
 from .constants import DEFAULT_USER, QUICK_USERS
-from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent
+from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent, set_validation_state
 
 _USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._-]+$")
 _HOSTNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._:-]+$")
@@ -96,14 +96,19 @@ class UserDialog(tk.Toplevel):
         entry.select_range(0, "end")
         entry.focus()
 
+        self._validation_var = tk.StringVar()
+        ttk.Label(frame, textvariable=self._validation_var, style="ValidationError.TLabel").grid(
+            row=5, column=0, columnspan=quick_count, sticky="w"
+        )
+
         if self._allow_remember:
             ttk.Checkbutton(frame, text=self._remember_label, variable=self._remember_var).grid(
-                row=5, column=0, columnspan=quick_count, sticky="w", pady=(0, 12)
+                row=6, column=0, columnspan=quick_count, sticky="w", pady=(8, 4)
             )
 
         build_dialog_actions(
             frame,
-            row=6,
+            row=7,
             columnspan=quick_count,
             primary_text="Übernehmen",
             primary_command=self._on_ok,
@@ -113,14 +118,25 @@ class UserDialog(tk.Toplevel):
     def _on_ok(self) -> None:
         user = self._user_var.get().strip()
         if not user:
+            set_validation_state(
+                getattr(self, "_user_entry", None),
+                getattr(self, "_validation_var", None),
+                "Bitte einen Benutzernamen eingeben.",
+            )
             return  # Leeres Feld: Dialog bleibt offen
         if not _USERNAME_RE.match(user):
+            set_validation_state(
+                getattr(self, "_user_entry", None),
+                getattr(self, "_validation_var", None),
+                "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
+            )
             messagebox.showwarning(
                 "Ungültiger Benutzername",
                 "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
                 parent=self,
             )
             return
+        set_validation_state(getattr(self, "_user_entry", None), getattr(self, "_validation_var", None))
         self.result = (user, self._remember_var.get()) if getattr(self, "_allow_remember", False) else user
         self.destroy()
 
