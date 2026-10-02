@@ -130,3 +130,51 @@ def set_validation_state(
         widget.configure(style=invalid_style if message else normal_style)
         if message:
             widget.focus_set()
+
+
+class TooltipPopup:
+    """Theme-aware tooltip surface shared by tree rows and the command palette."""
+
+    def __init__(
+        self,
+        master: tk.Misc,
+        text: str,
+        x: int,
+        y: int,
+        *,
+        wraplength: int = 440,
+        offset: tuple[int, int] = (12, 16),
+    ) -> None:
+        self._window = tk.Toplevel(master)
+        self._window.wm_overrideredirect(True)
+        try:
+            self._window.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        style = ttk.Style(master)
+        background = style.lookup("TFrame", "background") or "SystemWindow"
+        foreground = style.lookup("TLabel", "foreground") or "SystemWindowText"
+        border = style.lookup("TEntry", "bordercolor") or background
+        label = tk.Label(
+            self._window,
+            text=text,
+            justify="left",
+            background=background,
+            foreground=foreground,
+            relief="solid",
+            borderwidth=1,
+            highlightbackground=border,
+            padx=8,
+            pady=6,
+            wraplength=wraplength,
+        )
+        label.pack()
+        self._window.update_idletasks()
+        target_x = x + offset[0]
+        target_y = y + offset[1]
+        target_x = min(target_x, max(0, self._window.winfo_screenwidth() - self._window.winfo_reqwidth() - 4))
+        target_y = min(target_y, max(0, self._window.winfo_screenheight() - self._window.winfo_reqheight() - 4))
+        self._window.geometry(f"+{max(0, target_x)}+{max(0, target_y)}")
+
+    def destroy(self) -> None:
+        self._window.destroy()

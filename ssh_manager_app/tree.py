@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 from . import PALETTE, Session, ToolbarSettings, color_tag
 from .constants import _SSH_CONFIG_DEFAULT_FOLDER
 from .core import check_host_reachable
+from .ui_components import TooltipPopup
 
 
 def _session_values_text(sessions: list[Session], attribute: str) -> str:
@@ -129,7 +130,7 @@ class SessionTree(ttk.Frame):
         self._favorite_keys_getter = favorite_keys_getter or (lambda: set())
         self._on_hide_column = on_hide_column
         self._toolbar_settings = toolbar_settings or ToolbarSettings()
-        self._tooltip: tk.Toplevel | None = None
+        self._tooltip: TooltipPopup | None = None
         self._tooltip_after_id = None
         self._last_tooltip_item: str | None = None
         self._suppress_next_click = False
@@ -682,28 +683,7 @@ class SessionTree(ttk.Frame):
             self._tooltip.destroy()
             self._tooltip = None
         self._tooltip_after_id = None
-        self._tooltip = tk.Toplevel(self)
-        self._tooltip.wm_overrideredirect(True)
-        self._tooltip.attributes("-topmost", True)
-        style = ttk.Style(self)
-        background = style.lookup("TFrame", "background") or "#ffffff"
-        foreground = style.lookup("TLabel", "foreground") or "#172033"
-        border = style.lookup("TEntry", "bordercolor") or "#d8dee8"
-        label = tk.Label(
-            self._tooltip,
-            text=text,
-            justify="left",
-            background=background,
-            foreground=foreground,
-            relief="solid",
-            borderwidth=1,
-            highlightbackground=border,
-            padx=8,
-            pady=6,
-            wraplength=420,
-        )
-        label.pack()
-        self._tooltip.geometry(f"+{x + 12}+{y + 12}")
+        self._tooltip = TooltipPopup(self, text, x, y, wraplength=420, offset=(12, 12))
 
     def _hide_tooltip(self) -> None:
         if self._tooltip_after_id:

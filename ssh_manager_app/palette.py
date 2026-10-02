@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from tkinter import ttk
 from typing import Callable, Iterable, Sequence
 
+from .ui_components import TooltipPopup
+
 
 # ---------------------------------------------------------------------------
 # Fuzzy matching
@@ -166,7 +168,7 @@ class _PaletteTooltip:
 
     def __init__(self, master: tk.Misc):
         self._master = master
-        self._toplevel: tk.Toplevel | None = None
+        self._toplevel: TooltipPopup | None = None
         self._after_id: str | None = None
         self._current_index: int | None = None
 
@@ -212,34 +214,10 @@ class _PaletteTooltip:
             return
         self._after_id = None
         try:
-            tip = tk.Toplevel(self._master)
+            tip = TooltipPopup(self._master, text, x, y, wraplength=520, offset=(14, 18))
         except tk.TclError:
             self._toplevel = None
             return
-        tip.wm_overrideredirect(True)
-        try:
-            tip.attributes("-topmost", True)
-        except tk.TclError:
-            pass
-        style = ttk.Style(self._master)
-        background = style.lookup("TFrame", "background") or "#ffffff"
-        foreground = style.lookup("TLabel", "foreground") or "#172033"
-        border = style.lookup("TEntry", "bordercolor") or "#d8dee8"
-        label = tk.Label(
-            tip,
-            text=text,
-            justify="left",
-            background=background,
-            foreground=foreground,
-            relief="solid",
-            borderwidth=1,
-            highlightbackground=border,
-            padx=8,
-            pady=6,
-            wraplength=520,
-        )
-        label.pack()
-        tip.geometry(f"+{x + 14}+{y + 18}")
         self._toplevel = tip
 
 
