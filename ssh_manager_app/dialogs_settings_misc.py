@@ -727,8 +727,28 @@ class SettingsView(ttk.Frame):
 
     def _build_reset_section(self) -> ttk.Frame:
         frame = self._build_section_frame("Zurücksetzen", "Trenne dauerhaft gespeicherte Einstellungen sauber vom aktuellen Ansichts-Zustand.")
-        ttk.Button(frame, text="Einstellungen zurücksetzen", command=self._reset_settings).grid(row=2, column=0, sticky="w", pady=(0, 8))
-        ttk.Button(frame, text="Farben und Ordner auf Startzustand zurücksetzen", command=self._reset_view_state).grid(row=3, column=0, sticky="w")
+        danger_zone = ttk.LabelFrame(frame, text="Gefahrenbereich", style="DangerZone.TLabelframe", padding=14)
+        danger_zone.grid(row=2, column=0, sticky="ew")
+        danger_zone.columnconfigure(0, weight=1)
+        ttk.Label(
+            danger_zone,
+            text="Diese Aktionen überschreiben gespeicherte Anpassungen. Verbindungen und externe Quelldaten bleiben erhalten.",
+            style="DangerZone.TLabel",
+            wraplength=680,
+            justify="left",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 12))
+        ttk.Button(
+            danger_zone,
+            text="Einstellungen zurücksetzen",
+            command=self._reset_settings,
+            style="Danger.TButton",
+        ).grid(row=1, column=0, sticky="w", pady=(0, 8))
+        ttk.Button(
+            danger_zone,
+            text="Farben und Ordner auf Startzustand zurücksetzen",
+            command=self._reset_view_state,
+            style="Danger.TButton",
+        ).grid(row=2, column=0, sticky="w")
         return frame
 
     def _export_settings(self) -> None:
