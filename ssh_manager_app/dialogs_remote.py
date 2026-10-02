@@ -736,7 +736,19 @@ class RemoteCommandDialog(tk.Toplevel):
             self._update_help()
 
     def _set_text_state(self, widget: scrolledtext.ScrolledText, enabled: bool) -> None:
-        widget.configure(state="normal" if enabled else "disabled", background="white" if enabled else "#f0f0f0")
+        style = ttk.Style(widget)
+        background = style.lookup("TEntry", "fieldbackground") or style.lookup("TFrame", "background")
+        foreground = style.lookup("TEntry", "foreground") or style.lookup("TLabel", "foreground")
+        if not enabled:
+            disabled_background = style.lookup("TEntry", "fieldbackground", ("disabled",))
+            background = disabled_background or background
+        widget.configure(
+            state="normal",
+            background=background,
+            foreground=foreground,
+            insertbackground=foreground,
+        )
+        widget.configure(state="normal" if enabled else "disabled")
 
     def _update_help(self) -> None:
         if not hasattr(self, "_help_var"):
