@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
 from .models import Session
-from .ui_components import build_dialog_header
+from .ui_components import build_dialog_header, fit_window_to_parent
 
 
 class ServerRestartDialog(tk.Toplevel):
@@ -126,12 +126,7 @@ class ServerRestartDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        width = self.winfo_width()
-        height = self.winfo_height()
-        x = parent.winfo_x() + (parent.winfo_width() - width) // 2
-        y = parent.winfo_y() + (parent.winfo_height() - height) // 2
-        self.geometry(f"{width}x{height}+{x}+{y}")
+        fit_window_to_parent(self, parent, 720, 570, min_width=580, min_height=440)
 
 
 class ServerRestartProgressDialog(tk.Toplevel):
@@ -261,9 +256,4 @@ class ServerRestartProgressDialog(tk.Toplevel):
             self._stop_button.configure(state="disabled", text="Überwachung wird beendet…")
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        width = self.winfo_width()
-        height = self.winfo_height()
-        x = parent.winfo_x() + (parent.winfo_width() - width) // 2
-        y = parent.winfo_y() + (parent.winfo_height() - height) // 2
-        self.geometry(f"{width}x{height}+{x}+{y}")
+        fit_window_to_parent(self, parent, 860, 480, min_width=640, min_height=340)

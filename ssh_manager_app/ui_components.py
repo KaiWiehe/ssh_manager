@@ -81,6 +81,40 @@ def center_on_parent(window: tk.Toplevel, parent: tk.Misc) -> None:
     window.geometry(f"+{x}+{y}")
 
 
+def fit_window_to_parent(
+    window: tk.Toplevel,
+    parent: tk.Misc,
+    preferred_width: int,
+    preferred_height: int,
+    *,
+    min_width: int = 420,
+    min_height: int = 300,
+    margin: int = 40,
+) -> None:
+    """Size complex dialogs to the usable parent/screen area and center them."""
+    window.update_idletasks()
+    try:
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+    except (AttributeError, tk.TclError):
+        screen_width = max(parent.winfo_width(), preferred_width)
+        screen_height = max(parent.winfo_height(), preferred_height)
+    parent_width = parent.winfo_width()
+    parent_height = parent.winfo_height()
+    parent_available_width = parent_width - margin if parent_width > 1 else screen_width - margin
+    parent_available_height = parent_height - margin if parent_height > 1 else screen_height - margin
+    available_width = max(320, min(screen_width - margin, parent_available_width))
+    available_height = max(240, min(screen_height - margin, parent_available_height))
+    width = min(preferred_width, available_width)
+    height = min(preferred_height, available_height)
+    window.minsize(min(min_width, width), min(min_height, height))
+    x = parent.winfo_x() + max((parent_width - width) // 2, 0)
+    y = parent.winfo_y() + max((parent_height - height) // 2, 0)
+    x = max(0, min(x, screen_width - width))
+    y = max(0, min(y, screen_height - height))
+    window.geometry(f"{width}x{height}+{x}+{y}")
+
+
 def set_validation_state(
     widget: ttk.Widget | None,
     error_var: tk.StringVar | None,

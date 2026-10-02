@@ -8,7 +8,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .models import Session
-from .ui_components import build_dialog_header
+from .ui_components import build_dialog_header, fit_window_to_parent
 
 
 def _shell_single_quote(text: str) -> str:
@@ -390,7 +390,4 @@ class CertificateDeployDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        x = parent.winfo_rootx() + max(0, (parent.winfo_width() - self.winfo_width()) // 2)
-        y = parent.winfo_rooty() + max(0, (parent.winfo_height() - self.winfo_height()) // 2)
-        self.geometry(f"+{x}+{y}")
+        fit_window_to_parent(self, parent, 760, 590, min_width=620, min_height=460)

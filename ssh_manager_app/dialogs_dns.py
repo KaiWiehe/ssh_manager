@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .dns_lookup import DnsLookupResult, normalize_dns_server
-from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent, set_validation_state
+from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent, fit_window_to_parent, set_validation_state
 
 
 MODE_LABELS = {
@@ -250,14 +250,7 @@ class DnsLookupProgressDialog(tk.Toplevel):
             pass
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        px = parent.winfo_x()
-        py = parent.winfo_y()
-        w = self.winfo_reqwidth()
-        h = self.winfo_reqheight()
-        self.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+        center_on_parent(self, parent)
 
 
 class DnsLookupResultsDialog(tk.Toplevel):
@@ -502,11 +495,5 @@ class DnsLookupResultsDialog(tk.Toplevel):
         parent.clipboard_append(text)
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        px = parent.winfo_x()
-        py = parent.winfo_y()
-        w = self.winfo_reqwidth()
-        h = self.winfo_reqheight()
-        self.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+        preferred_width = 1080 if self._show_connection_names else 900
+        fit_window_to_parent(self, parent, preferred_width, 520, min_width=680, min_height=360)

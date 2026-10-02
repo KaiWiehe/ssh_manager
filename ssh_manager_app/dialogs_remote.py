@@ -8,7 +8,7 @@ from .constants import DEFAULT_USER, QUICK_USERS, _SSH_CONFIG_FILE
 from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons, resolve_user_dialog_defaults
 from .dialogs_toast import ToastNotification
 from .models import Session
-from .ui_components import build_dialog_header
+from .ui_components import build_dialog_header, fit_window_to_parent
 
 
 def _resolve_jump_host_default_user(parent: tk.Tk) -> str:
@@ -513,10 +513,7 @@ class RemoteFavoriteEditDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width(); ph = parent.winfo_height(); px = parent.winfo_x(); py = parent.winfo_y()
-        w = self.winfo_width(); h = self.winfo_height()
-        self.geometry(f"{w}x{h}+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+        fit_window_to_parent(self, parent, 560, 420, min_width=460, min_height=340)
 
 
 class RemoteCommandDialog(tk.Toplevel):
@@ -906,10 +903,7 @@ class RemoteCommandDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width(); ph = parent.winfo_height(); px = parent.winfo_x(); py = parent.winfo_y()
-        w = self.winfo_width(); h = self.winfo_height()
-        self.geometry(f"{w}x{h}+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+        fit_window_to_parent(self, parent, 980, 760, min_width=720, min_height=540)
 
 
 class RemoteCommandConfirmDialog(tk.Toplevel):
@@ -1018,16 +1012,7 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        px = parent.winfo_x()
-        py = parent.winfo_y()
-        w = self.winfo_width()
-        h = self.winfo_height()
-        x = px + (pw - w) // 2
-        y = py + (ph - h) // 2
-        self.geometry(f"{w}x{h}+{x}+{y}")
+        fit_window_to_parent(self, parent, 760, 520, min_width=620, min_height=380)
 
 # ---------------------------------------------------------------------------
 # SshTunnelDialog
