@@ -2682,8 +2682,8 @@ def test_settings_view_show_section_raises_selected_frame_and_updates_nav_labels
     assert view._active_section == "toolbar"
     toolbar_frame.tkraise.assert_called_once_with()
     general_frame.tkraise.assert_not_called()
-    general_button.configure.assert_called_once_with(text="  Allgemein")
-    toolbar_button.configure.assert_called_once_with(text="▸ Toolbar")
+    general_button.configure.assert_called_once_with(text="  Allgemein", style="SettingsNav.TButton")
+    toolbar_button.configure.assert_called_once_with(text="▸ Toolbar", style="SettingsNavActive.TButton")
 
 
 def test_ssh_config_inspect_dialog_build_uses_stdout_and_disables_text():

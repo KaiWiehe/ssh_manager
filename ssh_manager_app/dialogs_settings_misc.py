@@ -202,8 +202,8 @@ class SettingsView(ttk.Frame):
         actions = ttk.Frame(content_wrap, style="SettingsActions.TFrame", padding=(0, 16, 0, 0))
         actions.grid(row=2, column=0, sticky="ew")
         ttk.Separator(actions, orient="horizontal").pack(fill="x", pady=(0, 14))
-        ttk.Button(actions, text="Speichern", command=self._save).pack(side="left")
-        ttk.Button(actions, text="Zurück", command=lambda: self._cancel_and_show_main_view()).pack(side="left", padx=(8, 0))
+        ttk.Button(actions, text="Speichern", command=self._save, style="Accent.TButton").pack(side="right")
+        ttk.Button(actions, text="Zurück", command=lambda: self._cancel_and_show_main_view()).pack(side="right", padx=(0, 8))
 
         sections = [
             ("general", "Allgemein"),
@@ -802,7 +802,10 @@ class SettingsView(ttk.Frame):
                 frame.tkraise()
         for section_key, button in self._nav_buttons.items():
             prefix = "▸" if section_key == key else " "
-            button.configure(text=f"{prefix} {labels[section_key]}")
+            button.configure(
+                text=f"{prefix} {labels[section_key]}",
+                style="SettingsNavActive.TButton" if section_key == key else "SettingsNav.TButton",
+            )
 
     def load_from_app(self) -> None:
         settings = getattr(self._app, "_persisted_settings", self._app.settings)
