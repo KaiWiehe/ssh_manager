@@ -520,11 +520,16 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.configure("TFrame", background=bg)
     style.configure("TLabel", background=bg, foreground=text)
     style.configure("Header.TFrame", background=surface)
+    style.configure("HeaderBrand.TFrame", background=surface)
+    style.configure("HeaderMark.TLabel", background=accent, foreground="#ffffff", font=("Cascadia Mono", ui_font[1] + 4, "bold"), padding=(9, 6))
     style.configure("HeaderTitle.TLabel", background=surface, foreground=text, font=(ui_font[0], ui_font[1] + 7, "bold"))
-    style.configure("HeaderVersion.TLabel", background=surface, foreground=muted, font=(ui_font[0], ui_font[1], "bold"))
+    style.configure("HeaderVersion.TLabel", background=surface_alt, foreground=muted, font=(ui_font[0], max(8, ui_font[1] - 1), "bold"), padding=(7, 3))
     style.configure("HeaderSubtitle.TLabel", background=surface, foreground=muted)
     style.configure("CommandBar.TFrame", background=surface_alt)
     style.configure("CommandBar.TLabel", background=surface_alt, foreground=muted)
+    style.configure("SearchBar.TFrame", background=surface, bordercolor=border, lightcolor=border, darkcolor=border, relief="solid")
+    style.configure("SearchIcon.TLabel", background=surface, foreground=muted, font=(ui_font[0], ui_font[1] + 2))
+    style.configure("SearchEntry.TEntry", fieldbackground=surface, foreground=text, borderwidth=0, relief="flat", insertcolor=text)
     style.configure("QuickBar.TFrame", background=bg)
     style.configure("Quick.TButton", padding=(9, 6), background=surface, foreground=text, bordercolor=border)
     style.map("Quick.TButton", background=[("active", button_active), ("pressed", selected)], bordercolor=[("focus", accent), ("active", accent)])
@@ -589,9 +594,6 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     style.map("Accent.TButton", background=[("active", accent), ("pressed", accent)], foreground=[("active", "#ffffff"), ("disabled", "#d9e4f4")])
     style.configure("Danger.TButton", padding=(12, 7), foreground=danger_text, background=surface, bordercolor=danger_border)
     style.map("Danger.TButton", background=[("active", danger_active), ("pressed", danger_pressed)])
-    search_label = app.__dict__.get("_search_label")
-    if search_label is not None:
-        _safe_widget_configure(search_label, background=surface_alt, foreground=muted, font=ui_font)
     _configure_classic_widgets(app, background=surface, foreground=text, accent=accent, border=border)
     _configure_combobox_popdowns(app, background=surface, foreground=text, accent=accent)
     app.update_idletasks()
@@ -934,8 +936,11 @@ def build_main_ui(self) -> None:
     header = ttk.Frame(self._main_frame, style="Header.TFrame", padding=(18, 13))
     header.grid(row=0, column=0, sticky="ew")
     header.columnconfigure(0, weight=1)
-    title_wrap = ttk.Frame(header, style="Header.TFrame")
-    title_wrap.grid(row=0, column=0, sticky="w")
+    brand_wrap = ttk.Frame(header, style="HeaderBrand.TFrame")
+    brand_wrap.grid(row=0, column=0, sticky="w")
+    ttk.Label(brand_wrap, text=">_", style="HeaderMark.TLabel").grid(row=0, column=0, rowspan=2, sticky="nsw", padx=(0, 12))
+    title_wrap = ttk.Frame(brand_wrap, style="Header.TFrame")
+    title_wrap.grid(row=0, column=1, rowspan=2, sticky="w")
     ttk.Label(title_wrap, text=APP_NAME, style="HeaderTitle.TLabel").grid(row=0, column=0, sticky="w")
     ttk.Label(title_wrap, text=f"v{APP_VERSION}", style="HeaderVersion.TLabel").grid(
         row=0,
@@ -962,26 +967,17 @@ def build_main_ui(self) -> None:
 
     command_bar = ttk.Frame(self._main_frame, style="CommandBar.TFrame", padding=(18, 10))
     command_bar.grid(row=1, column=0, sticky="ew")
-    command_bar.columnconfigure(1, weight=1)
-    active_palette = palette_for_theme(getattr(self.settings.appearance, "theme", "default"))
-    self._search_label = tk.Label(
-        command_bar,
-        text="Suche",
-        background=active_palette.surface_alt,
-        foreground=active_palette.muted,
-        borderwidth=0,
-        font=(self.settings.appearance.ui_font_family, self.settings.appearance.ui_font_size),
-    )
-    self._search_label.grid(row=0, column=0, padx=(0, 7))
-    search_wrap = ttk.Frame(command_bar, style="CommandBar.TFrame")
-    search_wrap.grid(row=0, column=1, sticky="ew", padx=(0, 10))
-    search_wrap.columnconfigure(0, weight=1)
+    command_bar.columnconfigure(0, weight=1)
+    search_wrap = ttk.Frame(command_bar, style="SearchBar.TFrame", padding=(8, 3))
+    search_wrap.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+    search_wrap.columnconfigure(1, weight=1)
+    ttk.Label(search_wrap, text="⌕", style="SearchIcon.TLabel").grid(row=0, column=0, padx=(2, 7))
     self._search_var = tk.StringVar(value=self._initial_toolbar_search_texts.get("main", ""))
     self._search_history = list(self._initial_toolbar_search_texts.get("search_history", []))
-    self._search_entry = ttk.Entry(search_wrap, textvariable=self._search_var)
-    self._search_entry.grid(row=0, column=0, sticky="ew")
+    self._search_entry = ttk.Entry(search_wrap, textvariable=self._search_var, style="SearchEntry.TEntry")
+    self._search_entry.grid(row=0, column=1, sticky="ew")
     self._search_history_btn = ttk.Button(search_wrap, text="▾", width=1, style="SearchHistory.TButton", command=lambda: show_search_history_menu_callback(self))
-    self._search_history_btn.grid(row=0, column=1, sticky="ns", padx=(2, 0))
+    self._search_history_btn.grid(row=0, column=2, sticky="ns", padx=(6, 0))
 
     self._connect_btn = ttk.Button(
         command_bar,
@@ -990,7 +986,7 @@ def build_main_ui(self) -> None:
         command=lambda: connect_selected_sessions_callback(self),
         state=tk.DISABLED,
     )
-    self._connect_btn.grid(row=0, column=2, padx=(0, 8))
+    self._connect_btn.grid(row=0, column=1)
     _decorate(self._connect_btn, icon="terminal")
 
     quick_bar = ttk.Frame(self._main_frame, style="QuickBar.TFrame", padding=(18, 8, 12, 2))
