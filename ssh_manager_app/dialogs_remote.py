@@ -8,6 +8,7 @@ from .constants import DEFAULT_USER, QUICK_USERS, _SSH_CONFIG_FILE
 from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons, resolve_user_dialog_defaults
 from .dialogs_toast import ToastNotification
 from .models import Session
+from .ui_components import build_dialog_header
 
 
 def _resolve_jump_host_default_user(parent: tk.Tk) -> str:
@@ -542,12 +543,15 @@ class RemoteCommandDialog(tk.Toplevel):
         root = ttk.Frame(self, padding=14)
         root.pack(fill="both", expand=True)
         root.columnconfigure(0, weight=1)
-        root.rowconfigure(2, weight=1)
-        ttk.Label(root, text=f"Remote-Ausführung für {target_count} Host(s)", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(root, text="Ablauf: optionaler Vor-Befehl → optionales Skript mit Argumenten → optionaler Nach-Befehl.", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 10))
+        root.rowconfigure(1, weight=1)
+        build_dialog_header(
+            root,
+            f"Remote-Ausführung für {target_count} Host(s)",
+            "Befehl oder Skript konfigurieren und optional aus Favoriten oder Verlauf übernehmen.",
+        )
 
         body = ttk.PanedWindow(root, orient="horizontal")
-        body.grid(row=2, column=0, sticky="nsew")
+        body.grid(row=1, column=0, sticky="nsew")
 
         left = ttk.Frame(body, padding=(0, 0, 10, 0))
         right = ttk.Frame(body)
@@ -557,7 +561,6 @@ class RemoteCommandDialog(tk.Toplevel):
         left.rowconfigure(3, weight=1)
         right.columnconfigure(0, weight=1)
         right.rowconfigure(0, weight=1)
-        right.rowconfigure(1, weight=1)
 
         mode_frame = ttk.LabelFrame(left, text="Benutzer", padding=10)
         mode_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
@@ -648,46 +651,57 @@ class RemoteCommandDialog(tk.Toplevel):
         self._after_text = scrolledtext.ScrolledText(flow, wrap="word", height=3)
         self._after_text.grid(row=5, column=0, sticky="nsew", pady=(2, 0))
 
-        favorites_box = ttk.LabelFrame(right, text="Favoriten", padding=8)
-        favorites_box.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
+        library = ttk.Notebook(right)
+        library.grid(row=0, column=0, sticky="nsew")
+        favorites_box = ttk.Frame(library, padding=8)
+        history_box = ttk.Frame(library, padding=8)
+        library.add(favorites_box, text="Favoriten")
+        library.add(history_box, text="Verlauf")
         favorites_box.columnconfigure(0, weight=1); favorites_box.rowconfigure(0, weight=1)
         self._favorites_list = tk.Listbox(favorites_box, height=9)
         self._favorites_list.grid(row=0, column=0, sticky="nsew")
         fav_buttons = ttk.Frame(favorites_box); fav_buttons.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-        ttk.Button(fav_buttons, text="Übernehmen", command=lambda: self._load_selected(self._favorites_list, self._favorites)).pack(side="left")
-        ttk.Button(fav_buttons, text="Neu", command=self._add_favorite).pack(side="left", padx=4)
-        ttk.Button(fav_buttons, text="Bearbeiten", command=self._edit_selected_favorite).pack(side="left")
-        ttk.Button(fav_buttons, text="Löschen", command=self._delete_selected_favorite).pack(side="left", padx=4)
-        ttk.Button(fav_buttons, text="Anpinnen", command=self._toggle_pin_selected_favorite).pack(side="left")
+        for column in range(2):
+            fav_buttons.columnconfigure(column, weight=1)
+        ttk.Button(fav_buttons, text="Übernehmen", command=lambda: self._load_selected(self._favorites_list, self._favorites)).grid(row=0, column=0, sticky="ew", padx=(0, 3), pady=(0, 4))
+        ttk.Button(fav_buttons, text="Neu", command=self._add_favorite).grid(row=0, column=1, sticky="ew", padx=(3, 0), pady=(0, 4))
+        ttk.Button(fav_buttons, text="Bearbeiten", command=self._edit_selected_favorite).grid(row=1, column=0, sticky="ew", padx=(0, 3), pady=(0, 4))
+        ttk.Button(fav_buttons, text="Anpinnen", command=self._toggle_pin_selected_favorite).grid(row=1, column=1, sticky="ew", padx=(3, 0), pady=(0, 4))
+        ttk.Button(fav_buttons, text="Löschen", command=self._delete_selected_favorite, style="Danger.TButton").grid(row=2, column=0, columnspan=2, sticky="ew")
 
-        history_box = ttk.LabelFrame(right, text="Zuletzt verwendet", padding=8)
-        history_box.grid(row=1, column=0, sticky="nsew")
         history_box.columnconfigure(0, weight=1); history_box.rowconfigure(0, weight=1)
         self._history_list = tk.Listbox(history_box, height=9)
         self._history_list.grid(row=0, column=0, sticky="nsew")
-        ttk.Button(history_box, text="Übernehmen", command=lambda: self._load_selected(self._history_list, self._history)).grid(row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Button(history_box, text="Übernehmen", command=lambda: self._load_selected(self._history_list, self._history), style="Accent.TButton").grid(row=1, column=0, sticky="ew", pady=(6, 0))
         self._history_list.bind("<Double-Button-1>", lambda _e: self._load_selected(self._history_list, self._history))
         self._favorites_list.bind("<Double-Button-1>", lambda _e: self._load_selected(self._favorites_list, self._favorites))
 
         options = ttk.Frame(root)
-        options.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        options.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        options.columnconfigure(0, weight=1)
         self._close_on_success = tk.BooleanVar(value=False)
         self._save_favorite = tk.BooleanVar(value=False)
-        ttk.Checkbutton(options, text="Tab direkt schließen, wenn erfolgreich", variable=self._close_on_success).pack(side="left")
-        ttk.Checkbutton(options, text="Diese Ausführung als Favorit speichern", variable=self._save_favorite).pack(side="left", padx=18)
+        option_checks = ttk.Frame(options)
+        option_checks.grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(option_checks, text="Tab bei Erfolg schließen", variable=self._close_on_success).pack(side="left")
+        ttk.Checkbutton(option_checks, text="Als Favorit speichern", variable=self._save_favorite).pack(side="left", padx=(18, 0))
+        credentials = ttk.Frame(options)
+        credentials.grid(row=1, column=0, sticky="w", pady=(8, 0))
         self._sudo_password_var = tk.StringVar()
         self._show_sudo_password = tk.BooleanVar(value=False)
-        ttk.Label(options, text="sudo-Passwort (optional):").pack(side="left", padx=(18, 6))
-        self._sudo_password_entry = ttk.Entry(options, textvariable=self._sudo_password_var, show="•", width=18)
+        ttk.Label(credentials, text="sudo-Passwort (optional):").pack(side="left", padx=(0, 6))
+        self._sudo_password_entry = ttk.Entry(credentials, textvariable=self._sudo_password_var, show="•", width=18)
         self._sudo_password_entry.pack(side="left")
         ttk.Checkbutton(
-            options,
+            credentials,
             text="anzeigen",
             variable=self._show_sudo_password,
             command=lambda: self._sudo_password_entry.configure(show="" if self._show_sudo_password.get() else "•"),
         ).pack(side="left", padx=(4, 0))
-        ttk.Button(options, text="Ausführen", command=self._on_ok, width=12).pack(side="right", padx=(6, 0))
-        ttk.Button(options, text="Abbrechen", command=self._on_cancel, width=10).pack(side="right")
+        actions = ttk.Frame(options)
+        actions.grid(row=0, column=1, rowspan=2, sticky="se")
+        ttk.Button(actions, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left")
+        ttk.Button(actions, text="Ausführen", command=self._on_ok, width=12, style="Accent.TButton").pack(side="left", padx=(6, 0))
 
         self._refresh_lists()
         self._update_help()
