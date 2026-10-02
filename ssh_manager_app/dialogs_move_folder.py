@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Optional
 
+from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent
+
 
 class MoveFolderDialog(tk.Toplevel):
     """
@@ -29,17 +31,28 @@ class MoveFolderDialog(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
 
-        ttk.Label(frame, text="Ordner:").grid(row=0, column=0, sticky="w", pady=4, padx=(0, 8))
+        build_dialog_header(
+            frame,
+            "In Ordner verschieben",
+            "Vorhandenen Ordner auswählen oder einen neuen Pfad eingeben.",
+            columnspan=2,
+        )
+
+        ttk.Label(frame, text="Ordner:").grid(row=1, column=0, sticky="w", pady=4, padx=(0, 8))
         self._folder_var = tk.StringVar(value=current_folder)
         ttk.Combobox(
             frame, textvariable=self._folder_var,
             values=existing_folders, width=30,
-        ).grid(row=0, column=1, sticky="ew")
+        ).grid(row=1, column=1, sticky="ew")
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=1, column=0, columnspan=2, pady=(12, 0))
-        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+        build_dialog_actions(
+            frame,
+            row=2,
+            columnspan=2,
+            primary_text="Verschieben",
+            primary_command=self._on_ok,
+            cancel_command=self._on_cancel,
+        )
 
     def _on_ok(self) -> None:
         folder = self._folder_var.get().strip()
@@ -54,13 +67,4 @@ class MoveFolderDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        px = parent.winfo_x()
-        py = parent.winfo_y()
-        w = self.winfo_reqwidth()
-        h = self.winfo_reqheight()
-        x = px + (pw - w) // 2
-        y = py + (ph - h) // 2
-        self.geometry(f"+{x}+{y}")
+        center_on_parent(self, parent)

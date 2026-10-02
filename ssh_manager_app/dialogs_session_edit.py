@@ -8,6 +8,7 @@ from typing import Optional
 from . import Session
 from .constants import QUICK_USERS, _APP_PREFIX, _SSH_ALIAS_PREFIX
 from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons
+from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent
 
 
 class SessionEditDialog(tk.Toplevel):
@@ -69,14 +70,21 @@ class SessionEditDialog(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
 
+        build_dialog_header(
+            frame,
+            self.title(),
+            "Verbindungsdaten und optionale Notizen an einem Ort pflegen.",
+            columnspan=2,
+        )
+
         self._mode_var = tk.StringVar(value=self._initial_mode)
-        content_row = 0
+        content_row = 1
 
         # Modus-Auswahl (nur wenn Aliases vorhanden und kein Bearbeitungsmodus)
         can_switch = bool(self._ssh_aliases) and not self._existing_session
         if can_switch:
             mode_frame = ttk.Frame(frame)
-            mode_frame.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+            mode_frame.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 12))
             ttk.Radiobutton(
                 mode_frame, text="Eigene Verbindung",
                 variable=self._mode_var, value="verbindung",
@@ -87,7 +95,7 @@ class SessionEditDialog(tk.Toplevel):
                 variable=self._mode_var, value="alias",
                 command=self._on_mode_changed,
             ).pack(side="left")
-            content_row = 1
+            content_row = 2
 
         s = self._existing_session
 
@@ -160,11 +168,14 @@ class SessionEditDialog(tk.Toplevel):
         if self.note_result:
             self._note_text.insert("1.0", self.note_result)
 
-        # Buttons
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=content_row + 1, column=0, columnspan=2, pady=(12, 0))
-        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+        build_dialog_actions(
+            frame,
+            row=content_row + 1,
+            columnspan=2,
+            primary_text="Speichern",
+            primary_command=self._on_ok,
+            cancel_command=self._on_cancel,
+        )
 
         # Initialen Zustand: inaktiven Frame ausblenden
         if self._initial_mode == "alias":
@@ -270,16 +281,7 @@ class SessionEditDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        px = parent.winfo_x()
-        py = parent.winfo_y()
-        w = self.winfo_reqwidth()
-        h = self.winfo_reqheight()
-        x = px + (pw - w) // 2
-        y = py + (ph - h) // 2
-        self.geometry(f"+{x}+{y}")
+        center_on_parent(self, parent)
 
 
 # ---------------------------------------------------------------------------

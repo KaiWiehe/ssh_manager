@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .dns_lookup import DnsLookupResult, normalize_dns_server
+from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent
 
 
 MODE_LABELS = {
@@ -53,18 +54,25 @@ class DnsLookupDialog(tk.Toplevel):
         frame.grid(row=0, column=0, sticky="nsew")
         frame.columnconfigure(1, weight=1)
 
-        ttk.Label(frame, text="IP, DNS-Name oder URL:").grid(row=0, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
+        build_dialog_header(
+            frame,
+            "DNS/IP auflösen",
+            "Vorwärts- oder Rückwärtsauflösung mit dem gewünschten Resolver starten.",
+            columnspan=2,
+        )
+
+        ttk.Label(frame, text="IP, DNS-Name oder URL:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
         self._query_var = tk.StringVar()
         entry = ttk.Entry(frame, textvariable=self._query_var, width=42)
-        entry.grid(row=0, column=1, sticky="ew", pady=(0, 8))
+        entry.grid(row=1, column=1, sticky="ew", pady=(0, 8))
         entry.focus_set()
 
-        ttk.Label(frame, text="Richtung:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
+        ttk.Label(frame, text="Richtung:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
         self._mode_var = tk.StringVar(value=MODE_LABELS["auto"])
         combo = ttk.Combobox(frame, textvariable=self._mode_var, values=list(MODE_LABELS.values()), state="readonly", width=18)
-        combo.grid(row=1, column=1, sticky="w", pady=(0, 8))
+        combo.grid(row=2, column=1, sticky="w", pady=(0, 8))
 
-        ttk.Label(frame, text="DNS-Server:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=(0, 14))
+        ttk.Label(frame, text="DNS-Server:").grid(row=3, column=0, sticky="w", padx=(0, 10), pady=(0, 14))
         self._dns_server_var = tk.StringVar(value=SYSTEM_DNS_LABEL)
         server_combo = ttk.Combobox(
             frame,
@@ -72,12 +80,16 @@ class DnsLookupDialog(tk.Toplevel):
             values=list(DNS_SERVER_OPTIONS),
             width=30,
         )
-        server_combo.grid(row=2, column=1, sticky="ew", pady=(0, 14))
+        server_combo.grid(row=3, column=1, sticky="ew", pady=(0, 14))
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=3, column=0, columnspan=2)
-        ttk.Button(btn_frame, text="Auflösen", command=self._on_ok, width=12).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=4)
+        build_dialog_actions(
+            frame,
+            row=4,
+            columnspan=2,
+            primary_text="Auflösen",
+            primary_command=self._on_ok,
+            cancel_command=self._on_cancel,
+        )
 
     def _on_ok(self) -> None:
         query = self._query_var.get().strip()
@@ -97,14 +109,7 @@ class DnsLookupDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        px = parent.winfo_x()
-        py = parent.winfo_y()
-        w = self.winfo_reqwidth()
-        h = self.winfo_reqheight()
-        self.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+        center_on_parent(self, parent)
 
 
 class DnsServerDialog(tk.Toplevel):
@@ -129,7 +134,11 @@ class DnsServerDialog(tk.Toplevel):
         frame.columnconfigure(0, weight=1)
 
         count_text = "eine Verbindung" if target_count == 1 else f"{target_count} Verbindungen"
-        ttk.Label(frame, text=f"DNS-Server für {count_text}:").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        build_dialog_header(
+            frame,
+            "DNS-Server auswählen",
+            f"Resolver für {count_text} festlegen.",
+        )
         self._dns_server_var = tk.StringVar(value=SYSTEM_DNS_LABEL)
         combo = ttk.Combobox(
             frame,
@@ -140,10 +149,13 @@ class DnsServerDialog(tk.Toplevel):
         combo.grid(row=1, column=0, sticky="ew", pady=(0, 14))
         combo.focus_set()
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=2, column=0)
-        ttk.Button(btn_frame, text="Auflösen", command=self._on_ok, width=12).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=4)
+        build_dialog_actions(
+            frame,
+            row=2,
+            primary_text="Auflösen",
+            primary_command=self._on_ok,
+            cancel_command=self._on_cancel,
+        )
 
     def _on_ok(self) -> None:
         try:
@@ -159,14 +171,7 @@ class DnsServerDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        px = parent.winfo_x()
-        py = parent.winfo_y()
-        w = self.winfo_reqwidth()
-        h = self.winfo_reqheight()
-        self.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+        center_on_parent(self, parent)
 
 
 class DnsLookupProgressDialog(tk.Toplevel):

@@ -5,6 +5,7 @@ from tkinter import messagebox, ttk
 from typing import Optional
 
 from .constants import DEFAULT_USER, QUICK_USERS
+from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent
 
 _USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._-]+$")
 _HOSTNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._:-]+$")
@@ -68,38 +69,45 @@ class UserDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=16)
         frame.pack(fill="both", expand=True)
 
+        build_dialog_header(
+            frame,
+            self.title(),
+            "Benutzer wählen oder einen eigenen Benutzernamen eingeben.",
+            columnspan=4,
+        )
+
         quick_count = max(len(self._quick_users), 1)
         ttk.Label(frame, text="Quickselect:").grid(
-            row=0, column=0, columnspan=quick_count, sticky="w", pady=(0, 4)
+            row=1, column=0, columnspan=quick_count, sticky="w", pady=(0, 4)
         )
 
         self._user_var = tk.StringVar(value=self._default_user)
 
         quick_frame = _build_quickselect_buttons(frame, self._quick_users, self._user_var)
-        quick_frame.grid(row=1, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
+        quick_frame.grid(row=2, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
 
         # Freitext-Eingabe
         ttk.Label(frame, text="Benutzername:").grid(
-            row=2, column=0, sticky="w", pady=(0, 4)
+            row=3, column=0, sticky="w", pady=(0, 4)
         )
         entry = ttk.Entry(frame, textvariable=self._user_var, width=36)
-        entry.grid(row=3, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
+        entry.grid(row=4, column=0, columnspan=quick_count, sticky="ew", pady=(0, 8))
+        self._user_entry = entry
         entry.select_range(0, "end")
         entry.focus()
 
         if self._allow_remember:
             ttk.Checkbutton(frame, text=self._remember_label, variable=self._remember_var).grid(
-                row=4, column=0, columnspan=quick_count, sticky="w", pady=(0, 12)
+                row=5, column=0, columnspan=quick_count, sticky="w", pady=(0, 12)
             )
 
-        # OK / Abbrechen
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=5, column=0, columnspan=quick_count)
-        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(
-            side="left", padx=4
-        )
-        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(
-            side="left", padx=4
+        build_dialog_actions(
+            frame,
+            row=6,
+            columnspan=quick_count,
+            primary_text="Übernehmen",
+            primary_command=self._on_ok,
+            cancel_command=self._on_cancel,
         )
 
     def _on_ok(self) -> None:
@@ -121,14 +129,5 @@ class UserDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        px = parent.winfo_x()
-        py = parent.winfo_y()
-        w = self.winfo_reqwidth()
-        h = self.winfo_reqheight()
-        x = px + (pw - w) // 2
-        y = py + (ph - h) // 2
-        self.geometry(f"+{x}+{y}")
+        center_on_parent(self, parent)
 

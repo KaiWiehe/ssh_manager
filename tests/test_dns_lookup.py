@@ -747,7 +747,8 @@ def test_session_context_menu_calls_dns_callback_for_single_and_selection():
         SessionTree._show_session_menu(tree, "i1", SimpleNamespace(x_root=1, y_root=2))
 
     root_menu = _FakeMenu.instances[0]
-    dns_commands = [item for item in root_menu.commands if str(item.get("label", "")).startswith("DNS/IP")]
+    tools_menu = next(item["menu"] for item in root_menu.cascades if item.get("label") == "Werkzeuge")
+    dns_commands = [item for item in tools_menu.commands if str(item.get("label", "")).startswith("DNS/IP")]
     assert [item["label"] for item in dns_commands] == [
         "DNS/IP auflösen…",
         "DNS/IP auflösen… (DNS-Auswahl)",
@@ -780,7 +781,8 @@ def test_session_context_menu_offers_dns_server_selection_for_single_session():
         SessionTree._show_session_menu(tree, "i1", SimpleNamespace(x_root=1, y_root=2))
 
     root_menu = _FakeMenu.instances[0]
-    dns_commands = [item for item in root_menu.commands if str(item.get("label", "")).startswith("DNS/IP")]
+    tools_menu = next(item["menu"] for item in root_menu.cascades if item.get("label") == "Werkzeuge")
+    dns_commands = [item for item in tools_menu.commands if str(item.get("label", "")).startswith("DNS/IP")]
     assert [item["label"] for item in dns_commands] == [
         "DNS/IP auflösen…",
         "DNS/IP auflösen… (DNS-Auswahl)",
@@ -804,8 +806,9 @@ def test_folder_context_menu_calls_dns_callback_for_folder_sessions():
         SessionTree._show_folder_menu(tree, "folder", SimpleNamespace(x_root=1, y_root=2))
 
     root_menu = _FakeMenu.instances[0]
-    dns_command = next(item for item in root_menu.commands if str(item.get("label", "")).startswith("DNS/IP"))
-    assert dns_command["label"] == "DNS/IP für Ordner auflösen… (2)"
+    tools_menu = next(item["menu"] for item in root_menu.cascades if item.get("label") == "Serveraktionen")
+    dns_command = next(item for item in tools_menu.commands if str(item.get("label", "")).startswith("DNS/IP"))
+    assert dns_command["label"] == "DNS/IP auflösen… (2)"
 
     dns_command["command"]()
     tree._on_resolve_dns.assert_called_once_with([session_a, session_b])

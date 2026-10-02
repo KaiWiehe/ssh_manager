@@ -1662,7 +1662,11 @@ class SessionTree(ttk.Frame):
         )
         menu.add_separator()
         for label, submenu in grouped_menus:
-            if submenu.index("end") is not None:
+            try:
+                has_items = submenu.index("end") is not None
+            except AttributeError:
+                has_items = bool(getattr(submenu, "commands", None) or getattr(submenu, "cascades", None))
+            if has_items:
                 menu.add_cascade(label=label, menu=submenu)
 
         # Destruktives unten.
