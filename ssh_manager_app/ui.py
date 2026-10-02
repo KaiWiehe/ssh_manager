@@ -512,6 +512,9 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     app.option_add("*Menu.foreground", text)
     app.option_add("*Menu.activeBackground", selected)
     app.option_add("*Menu.activeForeground", text)
+    app.option_add("*Menu.activeBorderWidth", 0)
+    app.option_add("*Menu.borderWidth", 1)
+    app.option_add("*Menu.relief", "flat")
     app.option_add("*Listbox.background", surface)
     app.option_add("*Listbox.foreground", text)
     app.option_add("*Listbox.selectBackground", accent)
@@ -533,6 +536,7 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     ui_font = (getattr(appearance, "ui_font_family", "Segoe UI"), getattr(appearance, "ui_font_size", 10))
     tree_font = (getattr(appearance, "tree_font_family", "Segoe UI"), getattr(appearance, "tree_font_size", 10))
     tree_row_height = getattr(appearance, "tree_row_height", 28)
+    app.option_add("*Menu.font", f"{{{ui_font[0]}}} {ui_font[1]}")
     style.configure(".", background=bg, foreground=text, font=ui_font)
     style.configure("TFrame", background=bg)
     style.configure("TLabel", background=bg, foreground=text)
@@ -909,7 +913,8 @@ def build_main_ui(self) -> None:
 
     install_shortcut_manager(self)
 
-    menubar = tk.Menu(self)
+    # Windows message boxes intentionally stay native; menus inherit the app palette above.
+    menubar = tk.Menu(self, tearoff=False)
     self.config(menu=menubar)
 
     def _acc(action_id: str) -> str:
