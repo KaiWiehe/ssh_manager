@@ -170,18 +170,18 @@ class SettingsView(ttk.Frame):
         root.rowconfigure(0, weight=1)
         self._root_frame = root
 
-        nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(12, 16))
+        nav = ttk.Frame(root, style="SettingsNav.TFrame", padding=(16, 20))
         nav.grid(row=0, column=0, sticky="nsew")
         nav.columnconfigure(0, minsize=184)
         self._nav = nav
 
-        content_wrap = ttk.Frame(root, style="SettingsContent.TFrame", padding=(20, 18, 20, 14))
+        content_wrap = ttk.Frame(root, style="SettingsContent.TFrame", padding=(28, 24, 28, 20))
         content_wrap.grid(row=0, column=1, sticky="nsew")
         content_wrap.columnconfigure(0, weight=1)
         content_wrap.rowconfigure(1, weight=1)
 
         header = ttk.Frame(content_wrap, style="SettingsContent.TFrame")
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 16))
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text="Einstellungen", style="SettingsTitle.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(header, text="Direkt im Hauptfenster, optimiert für Fullscreen.", style="SettingsSubtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
@@ -241,8 +241,20 @@ class SettingsView(ttk.Frame):
         self._section_frames["shortcuts"] = self._build_shortcuts_section()
         self._section_frames["transfer"] = self._build_transfer_section()
         self._section_frames["reset"] = self._build_reset_section()
+        self._style_content_controls(self._content_host)
         self._bind_mousewheel_recursive(self._content_host)
         self._show_section(self._active_section)
+
+    def _style_content_controls(self, widget: tk.Misc) -> None:
+        """Keep controls on white/dark setting cards instead of inheriting the page background."""
+        for child in widget.winfo_children():
+            if isinstance(child, ttk.Label) and not child.cget("style"):
+                child.configure(style="SettingsValue.TLabel")
+            elif isinstance(child, ttk.Checkbutton) and not child.cget("style"):
+                child.configure(style="Settings.TCheckbutton")
+            elif isinstance(child, ttk.Radiobutton) and not child.cget("style"):
+                child.configure(style="Settings.TRadiobutton")
+            self._style_content_controls(child)
 
     def _on_scroll_content_configured(self, _event=None) -> None:
         self._update_scroll_region()
@@ -303,17 +315,17 @@ class SettingsView(ttk.Frame):
         self._content_canvas.yview_scroll(delta, "units")
 
     def _build_section_frame(self, title: str, description: str) -> ttk.Frame:
-        frame = ttk.Frame(self._content_host, style="SettingsPanel.TFrame", padding=18)
+        frame = ttk.Frame(self._content_host, style="SettingsCard.TFrame", padding=(28, 24, 28, 28))
         frame.grid(row=0, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
         ttk.Label(frame, text=title, style="SettingsSectionTitle.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(frame, text=description, style="SettingsHint.TLabel").grid(row=1, column=0, sticky="w", pady=(6, 18))
+        ttk.Label(frame, text=description, style="SettingsHint.TLabel").grid(row=1, column=0, sticky="w", pady=(6, 22))
         return frame
 
     def _build_general_section(self) -> ttk.Frame:
         frame = self._build_section_frame("Allgemein", "Globale Vorgaben für Auswahl, Host-Checks und Baumzustand.")
-        form = ttk.Frame(frame, style="SettingsPanel.TFrame")
-        form.grid(row=2, column=0, sticky="nw")
+        form = ttk.Frame(frame, style="SettingsGroup.TFrame", padding=(16, 12))
+        form.grid(row=2, column=0, sticky="nw", pady=(0, 4))
         form.columnconfigure(0, minsize=220)
         form.columnconfigure(1, weight=1)
         ttk.Label(form, text="Standardbenutzer:").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
@@ -336,39 +348,38 @@ class SettingsView(ttk.Frame):
             ("show_favorites", "Favoriten", "Eigener Bereich oben im Tree"),
             ("show_recent", "Zuletzt verwendet", "Die letzten geöffneten Verbindungen"),
         ]
-        grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
-        grid.grid(row=2, column=0, sticky="nw")
+        grid = ttk.Frame(frame, style="SettingsGroup.TFrame", padding=(16, 14))
+        grid.grid(row=2, column=0, sticky="nw", pady=(0, 4))
         for row, (key, label, hint) in enumerate(items):
             var = tk.BooleanVar()
             self._source_visibility_vars[key] = var
             ttk.Checkbutton(grid, text=label, variable=var, command=self._on_source_visibility_changed).grid(row=row * 2, column=0, sticky="w", pady=(0, 2))
             ttk.Label(grid, text=hint, style="SettingsHint.TLabel").grid(row=row * 2 + 1, column=0, sticky="w", pady=(0, 8), padx=(24, 0))
-        import_grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
-        import_grid.grid(row=3, column=0, sticky="nw", pady=(14, 0))
-        ttk.Label(import_grid, text="Import-Optionen:", style="SettingsSectionTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        import_grid = ttk.LabelFrame(frame, text="Import-Optionen", style="SettingsGroup.TLabelframe", padding=(16, 12))
+        import_grid.grid(row=3, column=0, sticky="ew", pady=(18, 0))
         ttk.Checkbutton(
             import_grid,
             text="WinSCP-Benutzer importieren",
             variable=self._winscp_include_username_var,
             command=self._on_import_settings_changed,
-        ).grid(row=1, column=0, sticky="w")
+        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
         ttk.Checkbutton(
             import_grid,
             text="FileZilla-Benutzer importieren",
             variable=self._filezilla_include_username_var,
             command=self._on_import_settings_changed,
-        ).grid(row=2, column=0, sticky="w")
+        ).grid(row=1, column=0, sticky="w", pady=(0, 4))
         ttk.Label(
             import_grid,
             text="Aus = importierte User ignorieren; feste Benutzer kannst du danach in der App setzen.",
             style="SettingsHint.TLabel",
-        ).grid(row=3, column=0, sticky="w", pady=(2, 0), padx=(24, 0))
+        ).grid(row=2, column=0, sticky="w", pady=(4, 0), padx=(24, 0))
 
-        winscp_grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
-        winscp_grid.grid(row=4, column=0, sticky="nw", pady=(18, 0))
+        winscp_grid = ttk.LabelFrame(frame, text="WinSCP öffnen", style="SettingsGroup.TLabelframe", padding=(16, 12))
+        winscp_grid.grid(row=4, column=0, sticky="ew", pady=(18, 0))
         winscp_grid.columnconfigure(0, minsize=220)
         winscp_grid.columnconfigure(1, minsize=360)
-        ttk.Label(winscp_grid, text="WinSCP öffnen:", style="SettingsValue.TLabel").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
+        ttk.Label(winscp_grid, text="Verhalten:", style="SettingsValue.TLabel").grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
         self._winscp_open_mode_combo = ttk.Combobox(
             winscp_grid,
             textvariable=self._winscp_open_mode_var,
