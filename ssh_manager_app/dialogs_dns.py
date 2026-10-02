@@ -196,10 +196,16 @@ class DnsLookupProgressDialog(tk.Toplevel):
         frame.columnconfigure(0, weight=1)
 
         count_text = "1 Eintrag" if target_count == 1 else f"{target_count} Einträge"
-        ttk.Label(frame, text=f"DNS/IP-Auflösung läuft… ({count_text})").grid(row=0, column=0, sticky="w", pady=(0, 10))
+        build_dialog_header(frame, "DNS/IP-Auflösung läuft", count_text)
         self._progress = ttk.Progressbar(frame, mode="indeterminate", length=320)
         self._progress.grid(row=1, column=0, sticky="ew")
         self._progress.start(12)
+        ttk.Button(
+            frame,
+            text="Abbrechen",
+            command=lambda: DnsLookupProgressDialog._on_cancel(self),
+            width=12,
+        ).grid(row=2, column=0, sticky="e", pady=(12, 0))
 
     @property
     def cancelled(self) -> bool:
@@ -256,10 +262,19 @@ class DnsLookupResultsDialog(tk.Toplevel):
 
     def _build(self, parent: tk.Tk) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        successful = sum(result.status == "ok" for result in self._results)
+        header = ttk.Frame(self, padding=(10, 10, 10, 0))
+        header.grid(row=0, column=0, sticky="ew")
+        build_dialog_header(
+            header,
+            "DNS/IP-Ergebnisse",
+            f"{successful} von {len(self._results)} Abfragen erfolgreich.",
+        )
 
         frame = ttk.Frame(self, padding=(10, 10, 10, 4))
-        frame.grid(row=0, column=0, sticky="nsew")
+        frame.grid(row=1, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
 
@@ -311,10 +326,10 @@ class DnsLookupResultsDialog(tk.Toplevel):
             )
 
         btn_frame = ttk.Frame(self, padding=(10, 4, 10, 10))
-        btn_frame.grid(row=1, column=0, sticky="ew")
+        btn_frame.grid(row=2, column=0, sticky="ew")
         ttk.Button(btn_frame, text="Alle kopieren", command=lambda: self._copy_all(parent), width=14).pack(side="left", padx=(0, 6))
         ttk.Button(btn_frame, text="Ergebnisse kopieren", command=lambda: self._copy_values(parent), width=18).pack(side="left", padx=(0, 6))
-        ttk.Button(btn_frame, text="Schließen", command=self.destroy, width=12).pack(side="right")
+        ttk.Button(btn_frame, text="Schließen", command=self.destroy, width=12, style="Accent.TButton").pack(side="right")
 
     def _start_cell_selection(self, event: tk.Event) -> str | None:
         item_id = self._tree.identify_row(event.y)

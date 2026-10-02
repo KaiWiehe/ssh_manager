@@ -8,6 +8,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .models import Session
+from .ui_components import build_dialog_header
 
 
 def _shell_single_quote(text: str) -> str:
@@ -236,8 +237,11 @@ class CertificateDeployDialog(tk.Toplevel):
         root.columnconfigure(0, weight=1)
         root.rowconfigure(2, weight=1)
 
-        ttk.Label(root, text=f"Dateien für {target_count} Host(s)", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(root, text="Dateien werden zuerst nach /tmp hochgeladen und erst danach per sudo in den Zielordner kopiert.", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 10))
+        build_dialog_header(
+            root,
+            f"Dateien für {target_count} Host(s)",
+            "Dateien werden zuerst nach /tmp hochgeladen und danach per sudo in den Zielordner kopiert.",
+        )
 
         files_frame = ttk.LabelFrame(root, text="Lokale Dateien", padding=10)
         files_frame.grid(row=2, column=0, sticky="nsew")
@@ -299,7 +303,7 @@ class CertificateDeployDialog(tk.Toplevel):
         actions = ttk.Frame(root)
         actions.grid(row=7, column=0, sticky="e", pady=(12, 0))
         ttk.Button(actions, text="Abbrechen", command=self._on_cancel, width=11).pack(side="right")
-        ttk.Button(actions, text="Übertragen", command=self._on_ok, width=12).pack(side="right", padx=(0, 8))
+        ttk.Button(actions, text="Übertragen", command=self._on_ok, width=12, style="Accent.TButton").pack(side="right", padx=(0, 8))
 
     def _choose_files(self) -> None:
         paths = filedialog.askopenfilenames(parent=self, title="Dateien auswählen")

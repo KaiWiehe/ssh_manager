@@ -242,7 +242,8 @@ def test_dns_results_dialog_left_aligns_columns_and_headers():
     button_frame = MagicMock()
     tree = MagicMock()
 
-    with patch("ssh_manager_app.dialogs_dns.ttk.Frame", side_effect=[frame, button_frame]), \
+    with patch("ssh_manager_app.dialogs_dns.ttk.Frame", side_effect=[MagicMock(), frame, button_frame]), \
+         patch("ssh_manager_app.dialogs_dns.build_dialog_header"), \
          patch("ssh_manager_app.dialogs_dns.ttk.Treeview", return_value=tree), \
          patch("ssh_manager_app.dialogs_dns.ttk.Scrollbar", side_effect=[MagicMock(), MagicMock()]), \
          patch("ssh_manager_app.dialogs_dns.ttk.Button", return_value=MagicMock()):
@@ -278,7 +279,8 @@ def test_dns_results_dialog_adds_connection_name_before_hostname_for_sessions():
     )
     tree = MagicMock()
 
-    with patch("ssh_manager_app.dialogs_dns.ttk.Frame", side_effect=[MagicMock(), MagicMock()]), \
+    with patch("ssh_manager_app.dialogs_dns.ttk.Frame", side_effect=[MagicMock(), MagicMock(), MagicMock()]), \
+         patch("ssh_manager_app.dialogs_dns.build_dialog_header"), \
          patch("ssh_manager_app.dialogs_dns.ttk.Treeview", return_value=tree) as tree_cls, \
          patch("ssh_manager_app.dialogs_dns.ttk.Scrollbar", side_effect=[MagicMock(), MagicMock()]), \
          patch("ssh_manager_app.dialogs_dns.ttk.Button", return_value=MagicMock()):
@@ -403,16 +405,15 @@ def test_dns_result_label_hides_multiline_clixml_errors():
 def test_dns_progress_dialog_builds_running_indicator():
     dialog = SimpleNamespace(_progress=None)
     frame = MagicMock()
-    label = MagicMock()
     progress = MagicMock()
 
     with patch("ssh_manager_app.dialogs_dns.ttk.Frame", return_value=frame), \
-         patch("ssh_manager_app.dialogs_dns.ttk.Label", return_value=label) as label_cls, \
+         patch("ssh_manager_app.dialogs_dns.build_dialog_header") as header, \
+         patch("ssh_manager_app.dialogs_dns.ttk.Button", return_value=MagicMock()), \
          patch("ssh_manager_app.dialogs_dns.ttk.Progressbar", return_value=progress) as progress_cls:
         DnsLookupProgressDialog._build(dialog, 3)
 
-    label_cls.assert_called_once()
-    assert "3 Einträge" in label_cls.call_args.kwargs["text"]
+    header.assert_called_once_with(frame, "DNS/IP-Auflösung läuft", "3 Einträge")
     progress_cls.assert_called_once_with(frame, mode="indeterminate", length=320)
     progress.start.assert_called_once_with(12)
     assert dialog._progress is progress

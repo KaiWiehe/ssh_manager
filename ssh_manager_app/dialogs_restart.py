@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
 from .models import Session
+from .ui_components import build_dialog_header
 
 
 class ServerRestartDialog(tk.Toplevel):
@@ -33,16 +34,16 @@ class ServerRestartDialog(tk.Toplevel):
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(2, weight=1)
 
-        ttk.Label(
+        build_dialog_header(
             frame,
-            text=f"{len(session_users)} Server parallel neu starten?",
-            style="DialogTitle.TLabel",
-        ).grid(row=0, column=0, sticky="w")
+            f"{len(session_users)} Server parallel neu starten?",
+            "Optionen prüfen, bevor der Neustart auf allen ausgewählten Hosts ausgelöst wird.",
+        )
         ttk.Label(
             frame,
             text="Achtung: Bereits ausgelöste Neustarts können nicht rückgängig gemacht werden.",
             style="Warning.TLabel",
-        ).grid(row=1, column=0, sticky="w", pady=(4, 12))
+        ).grid(row=1, column=0, sticky="w", pady=(0, 12))
 
         hosts = ttk.LabelFrame(frame, text="Server", padding=8)
         hosts.grid(row=2, column=0, sticky="nsew", pady=(0, 12))
@@ -94,7 +95,7 @@ class ServerRestartDialog(tk.Toplevel):
         buttons = ttk.Frame(frame)
         buttons.grid(row=4, column=0, sticky="e", pady=(14, 0))
         ttk.Button(buttons, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="Server neu starten", command=self._on_ok, width=20).pack(side="left")
+        ttk.Button(buttons, text="Server neu starten", command=self._on_ok, width=20, style="Danger.TButton").pack(side="left")
         self._password_entry.focus()
 
     def _toggle_password(self) -> None:
@@ -138,12 +139,12 @@ class ServerRestartProgressDialog(tk.Toplevel):
 
     TERMINAL_STATES = {"online", "error", "timeout", "stopped"}
     STATUS_LABELS = {
-        "pending": "⏳ Wartet",
-        "preflight": "⏳ Vorprüfung",
-        "restarting": "⏳ Wird neu gestartet",
-        "waiting_down": "⏳ Warte auf Herunterfahren",
-        "waiting_ssh": "⏳ Warte auf SSH",
-        "waiting_service": "⏳ Warte auf Service",
+        "pending": "… Wartet",
+        "preflight": "… Vorprüfung",
+        "restarting": "… Wird neu gestartet",
+        "waiting_down": "… Warte auf Herunterfahren",
+        "waiting_ssh": "… Warte auf SSH",
+        "waiting_service": "… Warte auf Service",
         "online": "✓ Online",
         "error": "✗ Fehler",
         "timeout": "✗ Zeitüberschreitung",
@@ -211,7 +212,7 @@ class ServerRestartProgressDialog(tk.Toplevel):
 
         footer = ttk.Frame(self, padding=(14, 4, 14, 14))
         footer.grid(row=2, column=0, sticky="ew")
-        self._stop_button = ttk.Button(footer, text="Überwachung stoppen", command=self._on_stop, width=22)
+        self._stop_button = ttk.Button(footer, text="Überwachung stoppen", command=self._on_stop, width=22, style="Danger.TButton")
         self._stop_button.pack(side="right")
 
     def update_host(self, session_key: str, state: str, detail: str = "") -> None:
@@ -241,7 +242,7 @@ class ServerRestartProgressDialog(tk.Toplevel):
         if stopped:
             parts.append(f"{stopped} nicht weiter überwacht")
         self._summary_var.set("Abgeschlossen: " + ", ".join(parts))
-        self._stop_button.configure(text="Schließen", command=self.destroy)
+        self._stop_button.configure(text="Schließen", command=self.destroy, style="Accent.TButton")
         self.protocol("WM_DELETE_WINDOW", self.destroy)
 
     def _on_stop(self) -> None:
