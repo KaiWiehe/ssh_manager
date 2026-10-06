@@ -67,7 +67,7 @@ def test_protected_script_decrypts_in_memory_and_cleans_files(tmp_path):
     from ssh_manager_app.core import _find_git_bash
     from ssh_manager_app.secret_scripts import write_protected_script
     secret = 'secret ä " value'
-    script = write_protected_script(tmp_path, "offline_", "printf '%s' " + __import__('shlex').quote(secret) + "\n")
+    script = write_protected_script(tmp_path / "Benutzer ü; 'Test'", "offline_", "printf '%s' " + __import__('shlex').quote(secret) + "\n")
     assert secret not in Path(script).read_text(encoding="utf-8")
     assert secret.encode() not in Path(script).with_suffix(".payload").read_bytes()
     result = subprocess.run([_find_git_bash(), script], capture_output=True, timeout=20)
@@ -255,3 +255,20 @@ def test_local_script_has_unique_private_upload_directory():
     assert "scp -P 2222 --" in captured[0]
     assert "$(date" not in captured[0]
     assert "rm -rf --" in captured[0]
+
+
+def test_failed_certificate_upload_removes_its_private_directory(tmp_path):
+    import re
+    from ssh_manager_app.core import _find_git_bash, build_certificate_deploy_wt_command
+    captured = {}
+    with patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda prefix, content: captured.update(content=content) or "offline.sh"):
+        build_certificate_deploy_wt_command([(Session("s", "Server", [], "host"), "ops", {"files": ["private.key"], "target_dir": "/etc/test"})])
+    content = captured["content"]
+    directory = re.search(r"/tmp/ssh-manager-cert-[a-f0-9]+", content).group()
+    assert "mkdir -m 700" in content
+    script = tmp_path / "offline.sh"
+    script.write_text('ssh() { eval "${@: -1}"; }\nscp() { return 1; }\n' + content, encoding="utf-8")
+    result = subprocess.run([_find_git_bash(), str(script)], capture_output=True, timeout=10)
+    assert result.returncode != 0
+    check = subprocess.run([_find_git_bash(), "-c", '[ ! -d "$1" ]', "offline-check", directory], capture_output=True, timeout=10)
+    assert check.returncode == 0

@@ -402,6 +402,23 @@ def build_remote_script_wt_command(
     return TerminalCommand(parts)
 
 
+def _private_upload_start(session: Session, user: str, directory: str) -> list[str]:
+    ssh = _build_ssh_command(session, user)
+    mkdir = _shell_single_quote(f"umask 077; mkdir -m 700 -- {_shell_single_quote(directory)}")
+    cleanup = shell_command(ssh_argv(session, user, ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"])) + " " + _shell_single_quote(f"rm -rf -- {_shell_single_quote(directory)}")
+    return [
+        f"{ssh} {mkdir}",
+        "if [ $? -ne 0 ]; then echo 'FEHLER: Privates Upload-Verzeichnis konnte nicht erstellt werden.'; exit 1; fi",
+        "cleanup_upload() {",
+        "  status=$?",
+        f"  {cleanup} >/dev/null 2>&1 || true",
+        '  rm -f -- "$0"',
+        '  return "$status"',
+        "}",
+        "trap cleanup_upload EXIT",
+    ]
+
+
 @managed_scripts
 def build_certificate_deploy_wt_command(
     session_deployments: list[tuple[Session, str, dict]],
@@ -425,7 +442,8 @@ def build_certificate_deploy_wt_command(
         close_on_success = bool(spec.get("close_on_success"))
         delimiter = _here_doc_delimiter(str(spec))
         run_id = uuid.uuid4().hex
-        remote_tmp_files = [f"/tmp/ssh-manager-cert-{run_id}-{file_index}" for file_index in range(len(files))]
+        remote_dir = f"/tmp/ssh-manager-cert-{run_id}"
+        remote_tmp_files = [f"{remote_dir}/{file_index}" for file_index in range(len(files))]
 
         if session.is_ssh_config_session:
             upload_target = scp_target(session, user)
@@ -443,6 +461,7 @@ def build_certificate_deploy_wt_command(
             f"printf '%s\\n' {_shell_single_quote('Zielordner: ' + ', '.join(target_dirs))}",
             "printf '%s\\n' 'Upload nach /tmp:'",
         ]
+        script_lines.extend(_private_upload_start(session, user, remote_dir))
         for local_path, remote_tmp in zip(files, remote_tmp_files):
             script_lines.append(f"printf '%s\\n' {_shell_single_quote('  - ' + Path(local_path).name)}")
             script_lines.append(f"scp {scp_port}-- {_shell_single_quote(local_path)} {_shell_single_quote(upload_target + ":" + remote_tmp)}")
@@ -460,7 +479,7 @@ def build_certificate_deploy_wt_command(
             "  printf ' %s\\n' \"$1\"",
             "  printf '==================================================\\n'",
             "}",
-            "cleanup() { rm -f -- " + " ".join(_shell_single_quote(path) for path in remote_tmp_files) + "; }",
+            "cleanup() { rm -rf -- " + _shell_single_quote(remote_dir) + "; }",
             "trap cleanup EXIT",
             "header 'Dateien installieren'",
             "target_dirs=(" + " ".join(_shell_single_quote(path) for path in target_dirs) + ")",
@@ -566,7 +585,8 @@ def build_certificate_replace_wt_command(
         close_on_success = bool(spec.get("close_on_success"))
         delimiter = _here_doc_delimiter(str(spec))
         run_id = uuid.uuid4().hex
-        temp_paths = {name: f"/tmp/ssh-manager-replace-{run_id}-{item_index}" for item_index, name in enumerate(files_by_name)}
+        remote_dir = f"/tmp/ssh-manager-replace-{run_id}"
+        temp_paths = {name: f"{remote_dir}/{item_index}" for item_index, name in enumerate(files_by_name)}
         ssh_cmd = _build_ssh_command(session, user)
         if session.is_ssh_config_session:
             upload_target, scp_port = scp_target(session, user), ""
@@ -575,6 +595,7 @@ def build_certificate_replace_wt_command(
             scp_port = f"-P {session.port} " if session.port != 22 else ""
 
         script_lines = ["#!/usr/bin/env bash", "trap 'rm -f \"$0\"' EXIT", "set -u", "echo 'Zertifikate ersetzen'"]
+        script_lines.extend(_private_upload_start(session, user, remote_dir))
         for name, local_path in files_by_name.items():
             script_lines.extend([
                 f"scp {scp_port}-- {_shell_single_quote(local_path)} {_shell_single_quote(upload_target + ":" + temp_paths[name])}",
@@ -583,7 +604,7 @@ def build_certificate_replace_wt_command(
         remote_lines = [
             "set -u",
             *(_sudo_password_prelude(sudo_password)),
-            "cleanup() { rm -f -- " + " ".join(_shell_single_quote(path) for path in temp_paths.values()) + "; }",
+            "cleanup() { rm -rf -- " + _shell_single_quote(remote_dir) + "; }",
             "trap cleanup EXIT",
             "echo 'Ersetze gefundene Zertifikate …'",
         ]
@@ -600,13 +621,13 @@ def build_certificate_replace_wt_command(
         if post_command:
             remote_lines.extend(["echo 'Führe Nach-Befehl aus …'", post_command, "post_status=$?", "[ $post_status -eq 0 ] || exit $post_status"])
         remote_lines.append("echo 'ZUSAMMENFASSUNG: Zertifikate erfolgreich ersetzt.'")
-        cleanup_paths = " ".join(temp_paths.values())
+        cleanup_paths = remote_dir
         script_lines.extend([
             f"{ssh_cmd} <<'{delimiter}'",
             *remote_lines,
             delimiter,
             "status=$?",
-            f"if [ $status -ne 0 ]; then {ssh_cmd} \"rm -f -- {cleanup_paths}\" >/dev/null 2>&1 || true; fi",
+            f"if [ $status -ne 0 ]; then {ssh_cmd} \"rm -rf -- {cleanup_paths}\" >/dev/null 2>&1 || true; fi",
         ])
         if close_on_success:
             script_lines.append("if [ $status -eq 0 ]; then exit 0; fi")

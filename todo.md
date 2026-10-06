@@ -2,6 +2,7 @@
 
 Erstellt: 2026-10-02
 Geprüft: Frontend + Backend + Package-Scan
+Umsetzung 06.10.2026: Freigegebene Gruppen 1–8 abgeschlossen (Version 0.2.28). Offene Punkte stehen oben, erledigte Audit-Funde unten in Done. S-H2 und BP-M2 behalten jeweils ihren offenen Rest.
 
 > Kontext: Python/Tkinter-Desktop-App. „Frontend“ = Tkinter-UI (`tree.py`, `ui*.py`, `dialogs_*.py`, `palette.py`, `shortcuts.py`), „Backend“ = Logik-/Prozess-/Datei-Schicht (`core.py`, `storage.py`, `actions_*.py`, `dns_lookup.py`, `exports.py`, `ssh_manager.py`, `scripts/`). Zeilennummern beziehen sich auf Commit `21f78f7`. Die Funde DC-C1 und DC-C2 sind manuell verifiziert.
 
@@ -10,10 +11,9 @@ Geprüft: Frontend + Backend + Package-Scan
 ## 🔒 Security
 
 ### HOCH
-#### [S-H2] Zertifikate und private Keys liegen auf dem Zielhost weltlesbar in `/tmp`, Deploy setzt keine Rechte
-**Datei:** `ssh_manager_app/core.py` (Z. 440–444, 489, 574, 589)
-**Problem:** Der Upload per `scp` nach `/tmp/ssh-manager-cert-<uuid>-N` passiert ohne `umask` und `chmod`. Je nach Remote-umask können andere lokale User die Dateien lesen. Bei fehlgeschlagenem Upload wird nicht aufgeräumt. Das Deploy mit `sudo cp -f` erzeugt neue Zieldateien mit Default-Rechten (typisch 0644), private Keys in `/etc/ssl/private` wären dann lesbar.
-**Fix:** Vor dem Upload `ssh host 'umask 077; mkdir -m 700 /tmp/ssh-manager-cert-<uuid>'` ausführen und dorthin hochladen. Beim Deploy `sudo install -m 0600 -o root -g root -- src dst` verwenden (Mode wählbar, Default restriktiv). Aufräumen auch im Fehlerpfad.
+#### [S-H2] Endgültige Zertifikatsrechte und Besitzer beim Deploy
+**Offen, Entscheidung erforderlich:** Neue Zieldateien werden weiterhin mit dem bisherigen cp-Verhalten installiert. Pauschal 0600/root:root kann Dienste ausschließen. Die gewünschte Rechte-/Besitzerregel für private Keys und öffentliche Zertifikate muss separat festgelegt werden.
+**Bereits erledigt:** Private temporäre Upload-Verzeichnisse und Cleanup; siehe Done.
 
 ### MITTEL
 #### [S-M4] CSV-/Formula-Injection im Export
@@ -208,7 +208,8 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 ## 🖥️ Design — UI/UX
 
 ### KRITISCH
-#### [DX-C1] Kein `report_callback_exception`, Fehler in der EXE sind unsichtbar
+#### [DX-C1] Allgemeine Callback-Fehler in der EXE sichtbar machen
+**Teilweise umgesetzt:** Speicher-/Zugriffsfehler (OSError) werden bereits angezeigt. Andere Exceptions und ein begrenztes Logfile bleiben offen. Die folgende Beschreibung dokumentiert den ursprünglichen Befund.
 **Datei:** `ssh_manager.py` (Z. 189–254, Klasse `SSHManagerApp`)
 **Problem:** Jede unbehandelte Exception in einem Tk-Callback geht nur nach stderr. Die portable EXE hat keine Konsole. Der User klickt, und es passiert nichts.
 **Fix:**
@@ -351,6 +352,8 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 
 ## 📦 Package-Scan
 
+> Paketangaben sind der historische Stand vom 02.10.2026; kein neuer Paket-Scan im Rahmen der Gruppen 1–8.
+
 ### CVEs
 Keine bekannten Schwachstellen. `pip-audit` (PyPI/OSV) meldet für alle direkten und transitiven Abhängigkeiten (ttkbootstrap 2.2.2, Pillow 12.3.0, pytest 9.1.1, pyinstaller 6.22.2) keine Funde.
 
@@ -367,17 +370,6 @@ Keine bekannten Schwachstellen. `pip-audit` (PyPI/OSV) meldet für alle direkten
 Keine.
 
 ---
-
-## Ursprüngliche Audit-Zusammenfassung (historisch)
-
-| Sektion | KRITISCH | HOCH | MITTEL | NIEDRIG | Total |
-|---|---|---|---|---|---|
-| 🔒 Security | 2 | 4 | 6 | 2 | 14 |
-| 🎨 Design — Architektur | 4 | 8 | 14 | 6 | 32 |
-| 🖥️ Design — UI/UX | 1 | 5 | 9 | 2 | 17 |
-| ✅ Best Practice | 0 | 2 | 4 | 2 | 8 |
-| 📦 Package-Scan | 0 | 0 | 0 | 3 | 3 |
-| **Total** | **7** | **19** | **33** | **15** | **74** |
 
 ## Done
 
@@ -545,3 +537,22 @@ tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.s
 **Datei:** `ssh_manager_app/core.py` (Z. 345–359)
 **Problem:** `remote_tmp = f"/tmp/ssh-manager-$(date +%s)-$$-{basename}"` wird anschließend single-quoted, `$(date)` und `$$` werden also nie expandiert. Der Pfad ist fest und vorhersagbar (Symlink- und Race-Risiko auf Multi-User-Hosts). `basename` geht ungefiltert ein.
 **Fix:** Den Namen lokal erzeugen: `f"/tmp/ssh-manager-{uuid.uuid4().hex}-{re.sub(r'[^A-Za-z0-9._-]', '_', basename)}"`, remote `umask 077` setzen.
+
+#### ~~[S-H2a] Private temporäre Zertifikats-Uploads~~
+
+**Erledigt am 06.10.2026.**
+
+**Umgesetzt:** Je Lauf ein exklusiv angelegtes Verzeichnis mit Modus 0700 und umask 077; Upload-Fehler und reguläres Ende räumen auf. Bereits vorhandene Zielrechte und Besitzer beim Replace bleiben erhalten. Cleanup bei unerreichbarem SSH-Ziel ist best effort; verbliebene Staging-Dateien liegen weiterhin im privaten Verzeichnis.
+
+---
+
+## Ursprüngliche Audit-Zusammenfassung (historisch)
+
+| Sektion | KRITISCH | HOCH | MITTEL | NIEDRIG | Total |
+|---|---|---|---|---|---|
+| 🔒 Security | 2 | 4 | 6 | 2 | 14 |
+| 🎨 Design — Architektur | 4 | 8 | 14 | 6 | 32 |
+| 🖥️ Design — UI/UX | 1 | 5 | 9 | 2 | 17 |
+| ✅ Best Practice | 0 | 2 | 4 | 2 | 8 |
+| 📦 Package-Scan | 0 | 0 | 0 | 3 | 3 |
+| **Total** | **7** | **19** | **33** | **15** | **74** |

@@ -396,7 +396,7 @@ def test_build_certificate_replace_uploads_only_files_with_matches_and_forces_tt
     assert "needed.jks" in script
     assert "unused.p12" not in script
     assert "ssh -- deploy@10.0.0.9 <<'__SSH_MANAGER_" in script
-    assert "rm -f -- /tmp/ssh-manager-replace-" in script
+    assert "rm -rf -- /tmp/ssh-manager-replace-" in script
 
 
 def test_build_ssh_tunnel_command_returns_expected_wt_args():

@@ -66,9 +66,10 @@ def write_protected_script(directory: Path, prefix: str, content: str) -> str:
         )
         encoded = base64.b64encode(ps.encode("utf-16le")).decode("ascii")
         powershell = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe").replace("\\", "/")
+        cleanup_command = 'rm -f -- "$0" ' + shlex.quote(str(payload).replace(chr(92), '/'))
         wrapper.write_text(
             "#!/usr/bin/env bash\n"
-            f"trap 'rm -f -- \"$0\" {shlex.quote(str(payload).replace(chr(92), '/'))}' EXIT\n"
+            f"trap {shlex.quote(cleanup_command)} EXIT\n"
             # eval is a Bash builtin; no decrypted bytes become process argv.
             f'SSH_MANAGER_SCRIPT="$({shlex.quote(powershell)} -NoProfile -NonInteractive -EncodedCommand {encoded})" || exit $?\n'
             '[[ "$SSH_MANAGER_SCRIPT" == "# SSH_MANAGER_PROTECTED_SCRIPT"* ]] || exit 1\n'
