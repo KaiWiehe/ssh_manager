@@ -19,6 +19,7 @@ class Session:
     username: str = ""
     port: int = 22
     source: str = "winscp"
+    legacy_key: str = ""
 
     @property
     def folder_key(self) -> str:

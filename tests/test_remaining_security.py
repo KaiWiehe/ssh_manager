@@ -112,3 +112,58 @@ def test_restart_limit_bounds_running_hosts_and_cancel_skips_waiting(cancel):
     assert peak <= (1 if cancel else 2)
     assert len(called) == (1 if cancel else 5)
     assert progress.update_host.call_count == 5
+
+
+def _filezilla_source(tmp_path, monkeypatch, payload):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    source = tmp_path / "FileZilla" / "sitemanager.xml"
+    source.parent.mkdir(exist_ok=True)
+    source.write_bytes(payload)
+    return source
+
+
+def test_filezilla_rejects_large_and_declaration_documents_unchanged(tmp_path, monkeypatch):
+    from ssh_manager_app import storage
+    monkeypatch.setattr(storage, "FILEZILLA_MAX_BYTES", 1000)
+    for payload in (b"x" * 1001, b'<!DOCTYPE FileZilla3 [<!ENTITY x "host">]><FileZilla3/>',
+                    '<!DOCTYPE FileZilla3><FileZilla3/>'.encode("utf-16")):
+        source = _filezilla_source(tmp_path, monkeypatch, payload)
+        assert storage.load_filezilla_config_sessions() == []
+        assert storage.take_load_warnings()
+        assert source.read_bytes() == payload
+
+
+def test_filezilla_unique_stable_ids_and_metadata_migration_with_backup(tmp_path, monkeypatch):
+    from ssh_manager_app import storage
+    import json
+    server = '<Server><Name>Prod</Name><Host>host</Host><User>{}</User><Protocol>1</Protocol></Server>'
+    def xml(users):
+        return ('<FileZilla3><Servers>' + ''.join(server.format(user) for user in users) + '</Servers></FileZilla3>').encode()
+    source = _filezilla_source(tmp_path, monkeypatch, xml(["ops", "ops", "root"]))
+    sessions = storage.load_filezilla_config_sessions()
+    keys = [session.key for session in sessions]
+    assert len(set(keys)) == 3
+    source.write_bytes(xml(["other", "ops", "ops", "root"]))
+    assert [session.key for session in storage.load_filezilla_config_sessions()][1:] == keys
+    old = sessions[0].legacy_key
+    notes = {old: "important", keys[1]: "independent", "other": "untouched"}
+    colors = {old: "#123456"}
+    toolbar = {"favorite_sessions": {old: True}, "recent_sessions": [old], "session_user_overrides": {old: "deploy"}}
+    migrated = storage.migrate_filezilla_metadata(sessions, notes, colors, toolbar)
+    assert old not in migrated[0]
+    assert migrated[0][keys[1]] == "independent"
+    assert migrated[0][keys[2]] == "important"
+    assert set(migrated[1]) == set(keys)
+    assert migrated[2]["recent_sessions"] == keys
+    assert set(migrated[2]["favorite_sessions"]) == set(keys)
+    assert storage.migrate_filezilla_metadata(sessions, *migrated) == migrated
+    monkeypatch.setattr(storage, "_NOTES_FILE", tmp_path / "notes.json")
+    monkeypatch.setattr(storage, "_STATE_FILE", tmp_path / "state.json")
+    monkeypatch.setattr(storage, "_APPDATA_DIR", tmp_path, raising=False)
+    monkeypatch.setattr(storage, "_recover_session_transaction", lambda: None)
+    storage._NOTES_FILE.write_text(json.dumps({"notes": notes}))
+    storage._STATE_FILE.write_text("{}")
+    storage.save_filezilla_migration({"Folder"}, *migrated)
+    assert storage.load_notes() == migrated[0]
+    assert storage.load_ui_state() == ({"Folder"}, migrated[1], {**migrated[2], "search_history": []})
+    assert json.loads((tmp_path / "notes.json.filezilla-v1.bak").read_text())["notes"] == notes

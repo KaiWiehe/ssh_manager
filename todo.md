@@ -16,13 +16,6 @@ Umsetzung 06.10.2026: Freigegebene Gruppen 1–18 abgeschlossen (Version 0.2.38)
 **Bereits erledigt:** Private temporäre Upload-Verzeichnisse und Cleanup; siehe Done.
 
 ### MITTEL
-#### [S-M6] FileZilla-XML ohne Entity-Schutz und Größenlimit
-**Datei:** `ssh_manager_app/storage.py` (Z. 321–367)
-**Problem:** `ET.fromstring` expandiert interne Entities (Billion-Laughs-Risiko). Die Datei hat kein Größenlimit. `session_key` enthält `name`, `host` und `port` unescaped, gleiche Einträge kollidieren.
-**Fix:** DOCTYPE/ENTITY ablehnen und die Größe begrenzen (`st_size < 5_000_000`), alternativ `defusedxml`. Den Key um einen Index ergänzen.
-
----
-
 ## 🎨 Design — Code-Architektur
 
 ### KRITISCH
@@ -171,6 +164,17 @@ Keine.
 ---
 
 ## Done
+
+~~#### [S-M6] FileZilla-XML ohne Entity-Schutz und Größenlimit~~
+~~**Datei:** `ssh_manager_app/storage.py` (Z. 321–367)~~
+~~**Problem:** `ET.fromstring` expandiert interne Entities (Billion-Laughs-Risiko). Die Datei hat kein Größenlimit. `session_key` enthält `name`, `host` und `port` unescaped, gleiche Einträge kollidieren.~~
+~~**Fix:** DOCTYPE/ENTITY ablehnen und die Größe begrenzen (`st_size < 5_000_000`), alternativ `defusedxml`. Den Key um einen Index ergänzen.~~
+
+~~---~~
+
+**Umgesetzt 06.10.2026:** XML begrenzt auf 5 MB, DOCTYPE/ENTITY auch in UTF-16/32 abgelehnt. Versionierte Hash-IDs unterscheiden Benutzer und gleiche Einträge; unrelated Einfügungen ändern IDs nicht. Alte Notizen, Farben, Favoriten, Recent und User-Overrides migriert, Original-Metadaten vor Schreiben gesichert. Gemeinsame alte IDs übertragen Zuordnungen an alle Treffer.
+
+
 
 ~~#### [BP-M4] Unbegrenzte Parallelität bei Restart und serieller Zertifikat-Scan~~
 ~~**Datei:** `ssh_manager_app/actions_restart.py` (Z. 17–19, 286), `ssh_manager_app/actions_certificate_replace.py`~~

@@ -24,6 +24,7 @@ from ssh_manager_app import (
 )
 
 from ssh_manager_app.constants import _SSH_CONFIG_DEFAULT_FOLDER
+from ssh_manager_app.storage import migrate_filezilla_metadata, save_filezilla_migration
 
 from ssh_manager_app.core import (
     RegistryReader,
@@ -226,6 +227,13 @@ class SSHManagerApp(tk.Tk):
         self._notes = load_notes()
         self._ssh_config_sessions = load_ssh_config_sessions()
         self._initial_open_folders, self._initial_session_colors, self._initial_toolbar_search_texts = load_ui_state()
+        migrated = migrate_filezilla_metadata(self._filezilla_sessions, self._notes, self._initial_session_colors, self._initial_toolbar_search_texts)
+        if migrated != (self._notes, self._initial_session_colors, self._initial_toolbar_search_texts):
+            self._notes, self._initial_session_colors, self._initial_toolbar_search_texts = migrated
+            try:
+                save_filezilla_migration(self._initial_open_folders, *migrated)
+            except OSError:
+                messagebox.showwarning("FileZilla-Migration", "Zuordnungen wurden in der Ansicht übernommen, konnten aber nicht gespeichert werden. Die alten Dateien und gegebenenfalls Sicherungen bleiben erhalten.", parent=self)
         self._favorite_sessions: dict[str, bool] = dict(self._initial_toolbar_search_texts.get("favorite_sessions", {}))
         self._recent_sessions: list[str] = list(self._initial_toolbar_search_texts.get("recent_sessions", []))
         self._session_user_overrides: dict[str, str] = dict(self._initial_toolbar_search_texts.get("session_user_overrides", {}))

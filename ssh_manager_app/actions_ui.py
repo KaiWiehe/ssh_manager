@@ -290,9 +290,38 @@ def build_visible_sessions(app) -> list[Session]:
 
 
 
+def _migrate_filezilla_in_app(app) -> None:
+    if not any(session.legacy_key for session in app._filezilla_sessions):
+        return
+    from .storage import migrate_filezilla_metadata, save_filezilla_migration
+    toolbar = dict(app._initial_toolbar_search_texts)
+    toolbar.update(favorite_sessions=dict(app._favorite_sessions), recent_sessions=list(app._recent_sessions),
+                   session_user_overrides=dict(app._session_user_overrides))
+    colors = app._tree.get_session_colors()
+    migrated = migrate_filezilla_metadata(app._filezilla_sessions, app._notes, colors, toolbar)
+    if migrated != (app._notes, colors, toolbar):
+        app._notes, new_colors, new_toolbar = migrated
+        app._initial_toolbar_search_texts = new_toolbar
+        app._favorite_sessions = new_toolbar.get("favorite_sessions", {})
+        app._recent_sessions = new_toolbar.get("recent_sessions", [])
+        app._session_user_overrides = new_toolbar.get("session_user_overrides", {})
+        previous_suppression = app._tree._suppress_open_state_events
+        app._tree._suppress_open_state_events = previous_suppression + 1
+        try:
+            for key in colors.keys() - new_colors.keys():
+                app._tree.set_session_color(key, None)
+            for key, value in new_colors.items():
+                if colors.get(key) != value:
+                    app._tree.set_session_color(key, value)
+        finally:
+            app._tree._suppress_open_state_events = previous_suppression
+        save_filezilla_migration(app._tree.get_open_folders(), *migrated)
+
+
 def rebuild_sessions(app, *, reload_winscp: bool = False) -> None:
     app._ssh_config_sessions = load_ssh_config_sessions()
     app._filezilla_sessions = load_filezilla_config_sessions()
+    _migrate_filezilla_in_app(app)
     success = True
     if reload_winscp:
         from tkinter import messagebox

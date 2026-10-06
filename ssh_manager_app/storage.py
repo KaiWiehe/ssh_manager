@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import tempfile
 import shutil
@@ -454,6 +455,46 @@ def save_app_sessions(sessions: list[Session]) -> None:
     _atomic_write_json(_APP_SESSIONS_FILE, _session_payload(sessions))
 
 
+FILEZILLA_MAX_BYTES = 5_000_000
+
+
+def migrate_filezilla_metadata(sessions: list[Session], notes: dict, colors: dict, toolbar: dict) -> tuple[dict, dict, dict]:
+    """Move old references; ambiguous old IDs transfer metadata to every match."""
+    aliases: dict[str, list[str]] = {}
+    for session in sessions:
+        if session.legacy_key:
+            aliases.setdefault(session.legacy_key, []).append(session.key)
+    if not aliases:
+        return notes, colors, toolbar
+
+    def mapping(values):
+        result = dict(values)
+        for old, keys in aliases.items():
+            if old in result:
+                value = result.pop(old)
+                for key in keys:
+                    result.setdefault(key, value)
+        return result
+
+    updated = dict(toolbar)
+    for name in ("favorite_sessions", "session_user_overrides"):
+        if isinstance(updated.get(name), dict):
+            updated[name] = mapping(updated[name])
+    if isinstance(updated.get("recent_sessions"), list):
+        updated["recent_sessions"] = list(dict.fromkeys(key for old in updated["recent_sessions"] for key in aliases.get(old, [old])))
+    return mapping(notes), mapping(colors), updated
+
+
+def save_filezilla_migration(expanded: set[str], notes: dict, colors: dict, toolbar: dict) -> None:
+    """Keep the exact old files as backups before migrating either store."""
+    for path in (_NOTES_FILE, _STATE_FILE):
+        backup = path.with_name(path.name + ".filezilla-v1.bak")
+        if path.exists() and not backup.exists():
+            shutil.copy2(path, backup)
+    save_notes(notes)
+    save_ui_state(expanded, colors, toolbar)
+
+
 def load_filezilla_config_sessions() -> list[Session]:
     appdata = Path(os.environ.get("APPDATA", Path.home()))
     candidates = [appdata / "FileZilla" / "sitemanager.xml", appdata / "filezilla" / "sitemanager.xml"]
@@ -461,12 +502,22 @@ def load_filezilla_config_sessions() -> list[Session]:
     if file_path is None:
         return []
     try:
-        root = ET.fromstring(file_path.read_bytes())
+        with file_path.open("rb") as stream:
+            payload = stream.read(FILEZILLA_MAX_BYTES + 1)
+        if len(payload) > FILEZILLA_MAX_BYTES:
+            _load_warnings[file_path] = "FileZilla: Quelldatei überschreitet das Größenlimit von 5 MB. Bitte ungenutzte Sites in FileZilla archivieren; Quelldatei unverändert."
+            return []
+        # Removing NUL bytes also exposes declaration tokens in UTF-16/32 input.
+        declarations = payload.replace(b"\x00", b"").upper()
+        if b"<!DOCTYPE" in declarations or b"<!ENTITY" in declarations:
+            raise ValueError("XML declarations are not supported")
+        root = ET.fromstring(payload)
     except (OSError, ET.ParseError, ValueError):
         _load_warnings[file_path] = f"FileZilla-Quelle konnte nicht gelesen werden: {file_path}. Original unverändert."
         return []
 
     sessions: list[Session] = []
+    occurrences: dict[str, int] = {}
 
     def walk_folder(node: ET.Element, folder_path: list[str]) -> None:
         for child in list(node):
@@ -489,7 +540,11 @@ def load_filezilla_config_sessions() -> list[Session]:
                     _load_warnings[file_path] = "FileZilla: Verbindungen mit ungültigem Port wurden übersprungen. Erlaubt sind 1–65535; Quelldatei unverändert."
                     continue
                 full_folder = [_FILEZILLA_CONFIG_DEFAULT_FOLDER] + folder_path
-                session_key = f"__filezilla__{'/'.join(full_folder)}/{name}/{host}/{port}"
+                legacy_key = f"__filezilla__{'/'.join(full_folder)}/{name}/{host}/{port}"
+                identity = json.dumps([full_folder, name, host, port, user, protocol], ensure_ascii=False, separators=(",", ":"))
+                digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+                occurrences[digest] = occurrences.get(digest, 0) + 1
+                session_key = f"__filezilla_v2__{digest}:{occurrences[digest]}"
                 sessions.append(Session(
                     key=session_key,
                     display_name=name,
@@ -498,6 +553,7 @@ def load_filezilla_config_sessions() -> list[Session]:
                     username=user,
                     port=port,
                     source="filezilla_config",
+                    legacy_key=legacy_key,
                 ))
 
     for servers in root.findall("Servers"):
