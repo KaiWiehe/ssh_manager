@@ -854,10 +854,10 @@ def test_build_ssh_helpers_cover_regular_and_ssh_config_sessions():
     regular = Session("s1", "srv1", [], "10.0.0.1", username="deploy", port=2222, source="app")
     ssh_cfg = Session("s2", "prod-alias", [], "prod-alias", username="root", source="ssh_config")
 
-    assert _build_ssh_command(regular, "ops") == "ssh -p 2222 ops@10.0.0.1"
-    assert _build_ssh_command(ssh_cfg, "ignored") == "ssh prod-alias"
-    assert _build_jump_ssh_command(regular, "ops", "jump.example", "jumper", 2200) == "ssh -J -p 2200 jumper@jump.example -p 2222 ops@10.0.0.1"
-    assert _build_jump_ssh_command(ssh_cfg, "ops", "jump.example") == "ssh -J jump.example prod-alias"
+    assert _build_ssh_command(regular, "ops") == "ssh -p 2222 -- ops@10.0.0.1"
+    assert _build_ssh_command(ssh_cfg, "ignored") == "ssh -- prod-alias"
+    assert _build_jump_ssh_command(regular, "ops", "jump.example", "jumper", 2200) == "ssh -J jumper@jump.example:2200 -p 2222 -- ops@10.0.0.1"
+    assert _build_jump_ssh_command(ssh_cfg, "ops", "jump.example") == "ssh -J jump.example -- prod-alias"
 
 
 def test_shell_quote_and_ssh_target_helpers_escape_and_format():
@@ -905,13 +905,13 @@ def test_parse_session_key_strips_encoded_bom_from_root_folder():
 
 
 def test_build_wt_command_empty_sessions():
-    assert build_wt_command([], "tool-admin") == ""
+    assert build_wt_command([], "tool-admin").tabs == []
 
 
 def test_build_wt_command_single_session():
     sessions = [Session("k", "srv1", [], "10.0.0.1")]
     cmd = build_wt_command(sessions, "tool-admin")
-    assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh tool-admin@10.0.0.1'
+    assert cmd.argv == ['wt.exe', 'new-tab', '-p', 'Git Bash', '--', 'ssh', '--', 'tool-admin@10.0.0.1']
 
 
 def test_build_wt_command_multiple_sessions():
@@ -920,16 +920,13 @@ def test_build_wt_command_multiple_sessions():
         Session("k2", "srv2", [], "10.0.0.2"),
     ]
     cmd = build_wt_command(sessions, "tool-admin")
-    assert cmd == (
-        'wt.exe new-tab -p "Git Bash" -- ssh tool-admin@10.0.0.1'
-        ' ; new-tab -p "Git Bash" -- ssh tool-admin@10.0.0.2'
-    )
+    assert cmd.argv == ['wt.exe', 'new-tab', '-p', 'Git Bash', '--', 'ssh', '--', 'tool-admin@10.0.0.1', ';', 'new-tab', '-p', 'Git Bash', '--', 'ssh', '--', 'tool-admin@10.0.0.2']
 
 
 def test_build_wt_command_non_standard_port():
     sessions = [Session("k", "srv", [], "10.0.0.1", port=2222)]
     cmd = build_wt_command(sessions, "dev-sys")
-    assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh -p 2222 dev-sys@10.0.0.1'
+    assert cmd.argv == ['wt.exe', 'new-tab', '-p', 'Git Bash', '--', 'ssh', '-p', '2222', '--', 'dev-sys@10.0.0.1']
 
 
 def test_build_wt_command_mixed_ports():
@@ -938,10 +935,7 @@ def test_build_wt_command_mixed_ports():
         Session("k2", "s2", [], "10.0.0.2", port=2222),
     ]
     cmd = build_wt_command(sessions, "tool-admin")
-    assert cmd == (
-        'wt.exe new-tab -p "Git Bash" -- ssh tool-admin@10.0.0.1'
-        ' ; new-tab -p "Git Bash" -- ssh -p 2222 tool-admin@10.0.0.2'
-    )
+    assert cmd.argv == ['wt.exe', 'new-tab', '-p', 'Git Bash', '--', 'ssh', '--', 'tool-admin@10.0.0.1', ';', 'new-tab', '-p', 'Git Bash', '--', 'ssh', '-p', '2222', '--', 'tool-admin@10.0.0.2']
 
 
 def test_registry_reader_loads_sessions():
@@ -1286,19 +1280,19 @@ def test_load_ssh_config_sessions_invalid_port_falls_back_to_22():
 def test_build_wt_command_ssh_config_session():
     s = Session("__sshcfg__devbox", "devbox", [_SSH_CONFIG_DEFAULT_FOLDER], "devbox", source="ssh_config")
     cmd = build_wt_command([s], "ignored-user")
-    assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh devbox'
+    assert cmd.argv == ['wt.exe', 'new-tab', '-p', 'Git Bash', '--', 'ssh', '--', 'devbox']
 
 
 def test_build_wt_command_ssh_alias_session():
     s = Session("__sshalias__abc", "prodbox", ["Prod"], "prodbox", source="ssh_alias")
     cmd = build_wt_command([s], "ignored-user")
-    assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh prodbox'
+    assert cmd.argv == ['wt.exe', 'new-tab', '-p', 'Git Bash', '--', 'ssh', '--', 'prodbox']
 
 
 def test_build_wt_command_prefers_session_username_for_regular_sessions():
     s = Session("s1", "srv1", [], "10.0.0.1", username="deploy")
     cmd = build_wt_command([s], "ignored-user")
-    assert cmd == 'wt.exe new-tab -p "Git Bash" -- ssh deploy@10.0.0.1'
+    assert cmd.argv == ['wt.exe', 'new-tab', '-p', 'Git Bash', '--', 'ssh', '--', 'deploy@10.0.0.1']
 
 
 def test_load_settings_falls_back_to_defaults_on_invalid_json():
@@ -2708,7 +2702,7 @@ def test_ssh_config_inspect_dialog_build_uses_stdout_and_disables_text():
          patch("ssh_manager_app.dialogs_settings_misc.subprocess.run", return_value=SimpleNamespace(stdout="host x\n", stderr="")) as run:
         SshConfigInspectDialog._build(dialog, "prod")
 
-    run.assert_called_once_with(["ssh", "-G", "prod"], capture_output=True, text=True, timeout=5)
+    run.assert_called_once_with(["ssh", "-G", "--", "prod"], capture_output=True, text=True, timeout=5)
     text_cls.assert_called_once_with(txt_frame, wrap="none", font=("Consolas", 9))
     txt.insert.assert_called_once_with("1.0", "host x\n")
     txt.configure.assert_any_call(yscrollcommand=vsb.set, xscrollcommand=hsb.set)

@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
+from .ssh_utils import connection_value
 from .models import Session
 from .ui_components import build_dialog_header, fit_window_to_parent
 
@@ -18,12 +19,12 @@ def _shell_single_quote(text: str) -> str:
 def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_password: str) -> tuple[list[tuple[str, str]], str]:
     """Read direct child entries over SSH without exposing the password in args."""
     if session.is_ssh_config_session:
-        command = ["ssh", "-o", "BatchMode=yes", session.display_name, "bash", "-s"]
+        command = ["ssh", "-o", "BatchMode=yes", "--", connection_value(session.display_name), "bash", "-s"]
     else:
         command = ["ssh", "-o", "BatchMode=yes"]
         if session.port != 22:
             command.extend(["-p", str(session.port)])
-        command.extend([f"{user}@{session.hostname}", "bash", "-s"])
+        command.extend(["--", f"{connection_value(user)}@{connection_value(session.hostname)}", "bash", "-s"])
 
     script = ["set -u"]
     if sudo_password:

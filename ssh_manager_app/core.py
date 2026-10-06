@@ -19,6 +19,7 @@ import winreg
 
 from . import PALETTE, REGISTRY_PATH, SKIP_SESSIONS, Session, WindowsTerminalSettings
 from .constants import _SSH_CONFIG_FILE, _STATE_FILE
+from .ssh_utils import connection_value, ssh_argv, shell_command, scp_target, valid_color, valid_port
 
 def parse_session_key(key: str) -> tuple[list[str], str]:
     """
@@ -41,13 +42,7 @@ def parse_session_key(key: str) -> tuple[list[str], str]:
 
 
 def _build_ssh_command(session: Session, user: str | None = None) -> str:
-    """Erzeugt das passende ssh-Kommando für eine Session."""
-    if session.is_ssh_config_session:
-        return f"ssh {session.display_name}"
-    effective_user = (user or session.username).strip()
-    if session.port != 22:
-        return f"ssh -p {session.port} {effective_user}@{session.hostname}"
-    return f"ssh {effective_user}@{session.hostname}"
+    return shell_command(ssh_argv(session, user))
 
 
 def _terminal_profile_flag(profile_name: str) -> str:
@@ -75,7 +70,7 @@ def _terminal_title_flag(session: Session, user: str, title_mode: str) -> str:
     return f'--title "{title}" ' if title else ""
 
 
-def build_wt_command(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None, terminal_settings: WindowsTerminalSettings | None = None) -> str:
+def build_wt_command(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None, terminal_settings: WindowsTerminalSettings | None = None) -> TerminalCommand:
     """
     Erzeugt den wt.exe-Befehl, der alle Sessions als neue Tabs öffnet.
     Alle Tabs landen im selben Windows Terminal Fenster.
@@ -85,20 +80,12 @@ def build_wt_command(sessions: list[Session], user: str, session_colors: dict[st
         ; new-tab -p "Git Bash" -- ssh -p PORT USER@HOST2
         ...
     """
-    colors = session_colors or {}
     settings = terminal_settings or WindowsTerminalSettings()
-    profile_flag = _terminal_profile_flag(settings.profile_name)
-    parts = []
-    for i, session in enumerate(sessions):
-        effective_user = session.username or user
-        ssh_cmd = _build_ssh_command(session, effective_user)
-        color = colors.get(session.key) if settings.use_tab_color else None
-        color_flag = f'--tabColor "{color}" ' if color else ""
-        title_flag = _terminal_title_flag(session, effective_user, settings.title_mode)
-        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- {ssh_cmd}'
-        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
-
-    return " ; ".join(parts)
+    colors = session_colors or {}
+    return TerminalCommand([
+        _make_tab(session, session.username or user, ssh_argv(session, session.username or user), settings, colors.get(session.key))
+        for session in sessions
+    ])
 
 
 def _shell_single_quote(text: str) -> str:
@@ -134,13 +121,13 @@ def _ssh_target(hostname: str, user: str | None = None, port: int = 22) -> str:
 
 def _build_jump_ssh_command(session: Session, target_user: str, jump_host: str, jump_user: str | None = None, jump_port: int = 22) -> str:
     """Erzeugt ein ssh-Kommando mit ProxyJump für eine Session."""
-    jump_target = _ssh_target(jump_host, jump_user, jump_port)
-    if session.is_ssh_config_session:
-        return f"ssh -J {jump_target} {session.display_name}"
-    effective_user = (target_user or session.username).strip()
-    if session.port != 22:
-        return f"ssh -J {jump_target} -p {session.port} {effective_user}@{session.hostname}"
-    return f"ssh -J {jump_target} {effective_user}@{session.hostname}"
+    host = connection_value(jump_host, "Jumphost")
+    if ':' in host and not host.startswith('['):
+        host = f"[{host}]"
+    jump_target = f"{connection_value(jump_user, 'Jumphost-Benutzer')}@{host}" if jump_user else host
+    if jump_port != 22:
+        jump_target += f":{valid_port(jump_port)}"
+    return shell_command(ssh_argv(session, target_user, ["-J", jump_target]))
 
 
 def build_jump_wt_command(
@@ -151,15 +138,12 @@ def build_jump_wt_command(
     jump_port: int = 22,
     session_color: str | None = None,
     terminal_settings: WindowsTerminalSettings | None = None,
-) -> str:
+) -> TerminalCommand:
     """Erzeugt den WT-Befehl für eine einzelne Session über ProxyJump."""
     settings = terminal_settings or WindowsTerminalSettings()
-    ssh_cmd = _build_jump_ssh_command(session, target_user, jump_host, jump_user, jump_port)
-    color = session_color if settings.use_tab_color else None
-    color_flag = f'--tabColor "{color}" ' if color else ""
-    title_flag = _terminal_title_flag(session, target_user, settings.title_mode)
-    profile_flag = _terminal_profile_flag(settings.profile_name)
-    return f'wt.exe new-tab {color_flag}{title_flag}{profile_flag}-- {ssh_cmd}'
+    import shlex
+    argv = shlex.split(_build_jump_ssh_command(session, target_user, jump_host, jump_user, jump_port))
+    return TerminalCommand([_make_tab(session, target_user, argv, settings, session_color)])
 
 
 def _append_ssh_config_alias(alias: str, target: Session, target_user: str, jump_host: str, jump_user: str | None = None, jump_port: int = 22) -> None:
@@ -168,6 +152,12 @@ def _append_ssh_config_alias(alias: str, target: Session, target_user: str, jump
     if not alias or ' ' in alias or '*' in alias or '?' in alias:
         raise ValueError('Alias darf keine Leerzeichen oder Wildcards enthalten.')
 
+    for value in (alias, target.hostname or target.display_name, target_user, jump_host):
+        connection_value(value)
+    if jump_user:
+        connection_value(jump_user)
+    valid_port(target.port)
+    valid_port(jump_port)
     existing = {s.display_name.lower() for s in load_ssh_config_sessions()}
     if alias.lower() in existing:
         raise ValueError(f"Alias '{alias}' existiert bereits in ~/.ssh/config.")
@@ -194,8 +184,10 @@ def _append_ssh_config_alias(alias: str, target: Session, target_user: str, jump
             prefix = "\n\n"
         elif existing_text:
             prefix = "\n"
-    with _SSH_CONFIG_FILE.open('a', encoding='utf-8') as f:
-        f.write(prefix + "\n".join(lines) + "\n")
+    if _SSH_CONFIG_FILE.exists():
+        shutil.copy2(_SSH_CONFIG_FILE, _SSH_CONFIG_FILE.with_suffix('.bak'))
+    from .storage import atomic_write_text
+    atomic_write_text(_SSH_CONFIG_FILE, (_SSH_CONFIG_FILE.read_text(encoding='utf-8') if _SSH_CONFIG_FILE.exists() else '') + prefix + "\n".join(lines) + "\n")
 
 
 
@@ -206,13 +198,13 @@ def build_remote_command_wt_command(
     session_colors: dict[str, str] | None = None,
     terminal_settings: WindowsTerminalSettings | None = None,
     sudo_password: str | None = None,
-) -> str:
+) -> TerminalCommand:
     """Erzeugt WT-Tabs, die pro Host ein lokales Bash-Skript starten."""
     settings = terminal_settings or WindowsTerminalSettings()
     settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
     colors = session_colors or {}
-    profile_flag = _terminal_profile_flag(settings.profile_name)
+
     parts = []
     for i, (session, user, remote_script) in enumerate(session_commands):
         ssh_cmd = _build_ssh_command(session, user)
@@ -242,12 +234,8 @@ def build_remote_command_wt_command(
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
         script_path = _write_temp_bash_script("remote_cmd_", "\n".join(script_lines) + "\n")
-        color = colors.get(session.key) if settings.use_tab_color else None
-        color_flag = f'--tabColor "{color}" ' if color else ""
-        title_flag = _terminal_title_flag(session, user, settings.title_mode)
-        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
-        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
-    return " ; ".join(parts)
+        parts.append(_make_tab(session, user, [git_bash, script_path], settings, colors.get(session.key)))
+    return TerminalCommand(parts)
 
 
 
@@ -318,12 +306,12 @@ def build_remote_script_wt_command(
     session_colors: dict[str, str] | None = None,
     terminal_settings: WindowsTerminalSettings | None = None,
     sudo_password: str | None = None,
-) -> str:
+) -> TerminalCommand:
     """Erzeugt WT-Tabs für Remote-Befehle sowie lokale/remote Python- oder Shell-Skripte."""
     settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
     colors = session_colors or {}
-    profile_flag = _terminal_profile_flag(settings.profile_name)
+
     parts = []
     for i, (session, user, spec) in enumerate(session_commands):
         ssh_cmd = _build_ssh_command(session, user)
@@ -345,12 +333,12 @@ def build_remote_script_wt_command(
             basename = Path(local_path).name or "script"
             remote_tmp = f"/tmp/ssh-manager-$(date +%s)-$$-{basename}"
             if session.is_ssh_config_session:
-                scp_target = session.display_name
+                upload_target = scp_target(session, user)
                 scp_port = ""
             else:
-                scp_target = _ssh_target(session.hostname or session.display_name, user, session.port)
+                upload_target = scp_target(session, user)
                 scp_port = f"-P {session.port} " if session.port != 22 else ""
-            upload = f"scp {scp_port}{_shell_single_quote(local_path)} {scp_target}:{_shell_single_quote(remote_tmp)}"
+            upload = f"scp {scp_port}-- {_shell_single_quote(local_path)} {_shell_single_quote(upload_target + ":" + remote_tmp)}"
             script_line = f"chmod +x {_shell_single_quote(remote_tmp)} && "
             script_line += f"{interpreter} {_shell_single_quote(remote_tmp)} {arguments}" if interpreter != "direct" else f"{_shell_single_quote(remote_tmp)} {arguments}"
             remote_script = _join_remote_steps(before_command, script_line, after_command)
@@ -388,12 +376,8 @@ def build_remote_script_wt_command(
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
         script_path = _write_temp_bash_script("remote_script_", "\n".join(script_lines) + "\n")
-        color = colors.get(session.key) if settings.use_tab_color else None
-        color_flag = f'--tabColor "{color}" ' if color else ""
-        title_flag = _terminal_title_flag(session, user, settings.title_mode)
-        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
-        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
-    return " ; ".join(parts)
+        parts.append(_make_tab(session, user, [git_bash, script_path], settings, colors.get(session.key)))
+    return TerminalCommand(parts)
 
 
 def build_certificate_deploy_wt_command(
@@ -401,13 +385,13 @@ def build_certificate_deploy_wt_command(
     *,
     session_colors: dict[str, str] | None = None,
     terminal_settings: WindowsTerminalSettings | None = None,
-) -> str:
+) -> TerminalCommand:
     """Build one Windows Terminal tab per host for a certificate deployment."""
     settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
     colors = session_colors or {}
-    profile_flag = _terminal_profile_flag(settings.profile_name)
-    parts: list[str] = []
+
+    parts = []
 
     for index, (session, user, spec) in enumerate(session_deployments):
         files = [str(path) for path in spec["files"]]
@@ -420,10 +404,10 @@ def build_certificate_deploy_wt_command(
         remote_tmp_files = [f"/tmp/ssh-manager-cert-{run_id}-{file_index}" for file_index in range(len(files))]
 
         if session.is_ssh_config_session:
-            scp_target = session.display_name
+            upload_target = scp_target(session, user)
             scp_port = ""
         else:
-            scp_target = _ssh_target(session.hostname or session.display_name, user, session.port)
+            upload_target = scp_target(session, user)
             scp_port = f"-P {session.port} " if session.port != 22 else ""
 
         script_lines = [
@@ -437,7 +421,7 @@ def build_certificate_deploy_wt_command(
         ]
         for local_path, remote_tmp in zip(files, remote_tmp_files):
             script_lines.append(f"printf '%s\\n' {_shell_single_quote('  - ' + Path(local_path).name)}")
-            script_lines.append(f"scp {scp_port}{_shell_single_quote(local_path)} {scp_target}:{_shell_single_quote(remote_tmp)}")
+            script_lines.append(f"scp {scp_port}-- {_shell_single_quote(local_path)} {_shell_single_quote(upload_target + ":" + remote_tmp)}")
             script_lines.append("if [ $? -ne 0 ]; then")
             script_lines.append("  echo 'FEHLER: Upload fehlgeschlagen. Der Nach-Befehl wird nicht ausgeführt.'")
             script_lines.append("  exit 1")
@@ -532,12 +516,8 @@ def build_certificate_deploy_wt_command(
             "exit $status",
         ])
         script_path = _write_temp_bash_script("certificate_deploy_", "\n".join(script_lines) + "\n")
-        color = colors.get(session.key) if settings.use_tab_color else None
-        color_flag = f'--tabColor "{color}" ' if color else ""
-        title_flag = _terminal_title_flag(session, user, settings.title_mode)
-        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
-        parts.append(f"wt.exe {tab_cmd}" if index == 0 else tab_cmd)
-    return " ; ".join(parts)
+        parts.append(_make_tab(session, user, [git_bash, script_path], settings, colors.get(session.key)))
+    return TerminalCommand(parts)
 
 
 def build_certificate_replace_wt_command(
@@ -545,13 +525,13 @@ def build_certificate_replace_wt_command(
     *,
     session_colors: dict[str, str] | None = None,
     terminal_settings: WindowsTerminalSettings | None = None,
-) -> str:
+) -> TerminalCommand:
     """Create per-host terminal tabs that replace scanned certificate matches."""
     settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
     colors = session_colors or {}
-    profile_flag = _terminal_profile_flag(settings.profile_name)
-    parts: list[str] = []
+
+    parts = []
     for index, (session, user, spec) in enumerate(session_replacements):
         all_files_by_name = {Path(path).name: str(path) for path in spec["files"]}
         matches = [(str(name), str(path)) for name, path in spec["matches"]]
@@ -563,15 +543,15 @@ def build_certificate_replace_wt_command(
         temp_paths = {name: f"/tmp/ssh-manager-replace-{run_id}-{item_index}" for item_index, name in enumerate(files_by_name)}
         ssh_cmd = _build_ssh_command(session, user)
         if session.is_ssh_config_session:
-            scp_target, scp_port = session.display_name, ""
+            upload_target, scp_port = scp_target(session, user), ""
         else:
-            scp_target = _ssh_target(session.hostname or session.display_name, user, session.port)
+            upload_target = scp_target(session, user)
             scp_port = f"-P {session.port} " if session.port != 22 else ""
 
         script_lines = ["#!/usr/bin/env bash", "trap 'rm -f \"$0\"' EXIT", "set -u", "echo 'Zertifikate ersetzen'"]
         for name, local_path in files_by_name.items():
             script_lines.extend([
-                f"scp {scp_port}{_shell_single_quote(local_path)} {scp_target}:{_shell_single_quote(temp_paths[name])}",
+                f"scp {scp_port}-- {_shell_single_quote(local_path)} {_shell_single_quote(upload_target + ":" + temp_paths[name])}",
                 "if [ $? -ne 0 ]; then echo 'FEHLER: Upload fehlgeschlagen.'; exit 1; fi",
             ])
         remote_lines = [
@@ -608,12 +588,8 @@ def build_certificate_replace_wt_command(
             script_lines.append(f"if [ $status -eq 0 ]; then rm -f \"$0\"; exec {ssh_cmd}; fi")
         script_lines.extend(["echo \"Ersetzen fehlgeschlagen (Exit-Code: $status).\"", "read", "exit $status"])
         script_path = _write_temp_bash_script("certificate_replace_", "\n".join(script_lines) + "\n")
-        color = colors.get(session.key) if settings.use_tab_color else None
-        color_flag = f'--tabColor "{color}" ' if color else ""
-        title_flag = _terminal_title_flag(session, user, settings.title_mode)
-        tab_cmd = f'new-tab {color_flag}{title_flag}{profile_flag}-- "{git_bash}" "{script_path}"'
-        parts.append(f"wt.exe {tab_cmd}" if index == 0 else tab_cmd)
-    return " ; ".join(parts)
+        parts.append(_make_tab(session, user, [git_bash, script_path], settings, colors.get(session.key)))
+    return TerminalCommand(parts)
 
 def _write_temp_bash_script(prefix: str, content: str) -> str:
     """Schreibt ein temporäres Bash-Skript für WT/Git Bash und gibt den Windows-Pfad zurück."""
@@ -663,7 +639,7 @@ def _find_winscp() -> str | None:
     return found if found else None
 
 
-def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: str, terminal_settings: WindowsTerminalSettings | None = None) -> str:
+def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: str, terminal_settings: WindowsTerminalSettings | None = None) -> TerminalCommand:
     """
     Erzeugt den wt.exe-Befehl für ssh-copy-id. Pro Host ein eigener WT-Tab.
     - Expliziter Git-Bash-Pfad statt 'bash' (System-bash = WSL unter Windows).
@@ -673,19 +649,16 @@ def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: 
     """
     settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
-    profile_flag = _terminal_profile_flag(settings.profile_name)
+
     parts = []
     for i, session in enumerate(sessions):
-        target = f"{user}@{session.hostname}"
+        target = connection_value(user, "Benutzer") + "@" + connection_value(session.hostname, "Hostname")
         inner = f"ssh-copy-id -i ~/.ssh/{key_filename} {target} && read || read"
-        bash_cmd = f'"{git_bash}" -c "{inner}"'
-        title_flag = _terminal_title_flag(session, user, settings.title_mode)
-        tab_cmd = f'new-tab {title_flag}{profile_flag}-- {bash_cmd}'
-        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
-    return " ; ".join(parts)
+        parts.append(_make_tab(session, user, [git_bash, "-c", inner], settings))
+    return TerminalCommand(parts)
 
 
-def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, user: str, terminal_settings: WindowsTerminalSettings | None = None) -> str:
+def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, user: str, terminal_settings: WindowsTerminalSettings | None = None) -> TerminalCommand:
     """
     Erzeugt den wt.exe-Befehl zum Entfernen eines SSH Public Keys aus authorized_keys.
     Pro Host ein eigener WT-Tab.
@@ -696,10 +669,10 @@ def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, use
     """
     settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
-    profile_flag = _terminal_profile_flag(settings.profile_name)
+
     parts = []
     for i, session in enumerate(sessions):
-        target = f"{user}@{session.hostname}"
+        target = connection_value(user, "Benutzer") + "@" + connection_value(session.hostname, "Hostname")
         remote_cmd = (
             "grep -vxFf /dev/stdin ~/.ssh/authorized_keys > /tmp/ak_tmp "
             "&& mv /tmp/ak_tmp ~/.ssh/authorized_keys"
@@ -708,11 +681,8 @@ def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, use
             f"ssh {target} '{remote_cmd}' "
             f"< ~/.ssh/{key_filename} && echo OK || echo FEHLER && read"
         )
-        bash_cmd = f'"{git_bash}" -c "{inner}"'
-        title_flag = _terminal_title_flag(session, user, settings.title_mode)
-        tab_cmd = f'new-tab {title_flag}{profile_flag}-- {bash_cmd}'
-        parts.append(f"wt.exe {tab_cmd}" if i == 0 else tab_cmd)
-    return " ; ".join(parts)
+        parts.append(_make_tab(session, user, [git_bash, "-c", inner], settings))
+    return TerminalCommand(parts)
 
 
 def check_host_reachable(hostname: str, port: int = 22, timeout: int = 3) -> bool:
@@ -726,24 +696,26 @@ def check_host_reachable(hostname: str, port: int = 22, timeout: int = 3) -> boo
 
 def build_ssh_tunnel_command(
     ssh_server: str, local_port: int, remote_host: str, remote_port: int, user: str, terminal_settings: WindowsTerminalSettings | None = None
-) -> list[str]:
+) -> TerminalCommand:
     """Erzeugt den wt.exe-Aufruf für SSH Local Port Forwarding."""
     settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
     tunnel_target = f"{local_port} -> {remote_host}:{remote_port} via {user}@{ssh_server}"
+    connection_value(ssh_server)
+    connection_value(remote_host)
+    connection_value(user, "Benutzer")
+    valid_port(local_port)
+    valid_port(remote_port)
     script = "\n".join([
         "#!/usr/bin/env bash",
         f"printf '%s\\n' {_shell_single_quote('SSH-Tunnel aktiv')}",
         f"printf '%s\\n\\n' {_shell_single_quote(tunnel_target)}",
-        f"ssh -N -L {local_port}:{remote_host}:{remote_port} {user}@{ssh_server}",
+        shell_command(["ssh", "-N", "-L", f"{local_port}:{remote_host}:{remote_port}", "--", f"{user}@{ssh_server}"]),
         "read",
     ]) + "\n"
     script_path = _write_temp_bash_script("ssh_tunnel_", script)
-    cmd = ["wt.exe", "new-tab"]
-    if settings.title_mode != "default":
-        cmd.extend(["--title", f"{user}@{ssh_server}"])
-    cmd.extend(["-p", settings.profile_name or "Git Bash", "--", git_bash, script_path])
-    return cmd
+    session = Session("tunnel", f"{user}@{ssh_server}", [], ssh_server, username=user)
+    return TerminalCommand([_make_tab(session, user, [git_bash, script_path], settings)])
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +728,49 @@ class TerminalTabSpec:
     label: str
     command: str
     session: Session | None = None
+    argv: tuple[str, ...] = ()
+    options: tuple[str, ...] = ()
+
+
+class TerminalCommand:
+    """A launch plan; never parse an already-rendered shell command."""
+    def __init__(self, tabs: list[TerminalTabSpec]):
+        self.tabs = tabs
+
+    @property
+    def argv(self) -> list[str]:
+        result = ["wt.exe"]
+        for index, tab in enumerate(self.tabs):
+            if index:
+                result.append(";")
+            # WT itself treats semicolons as separators, even without cmd.exe.
+            values = ["new-tab", *tab.options, "--", *tab.argv]
+            result.extend(value.replace(";", r"\;") for value in values)
+        return result
+
+
+def _make_tab(session: Session, user: str, argv: list[str], settings: WindowsTerminalSettings, color: str | None = None) -> TerminalTabSpec:
+    title = ""
+    if settings.title_mode == "name":
+        title = session.display_name
+    elif settings.title_mode == "host":
+        title = session.hostname or session.display_name
+    elif settings.title_mode == "user_host":
+        title = f"{user}@{session.hostname or session.display_name}"
+    elif settings.title_mode == "name_host":
+        title = f"{session.display_name} ({session.hostname or session.display_name})"
+    options = []
+    color = valid_color(color) if settings.use_tab_color else None
+    if color:
+        options.extend(["--tabColor", color])
+    if title:
+        options.extend(["--title", title])
+    profile = (settings.profile_name or "Git Bash").strip() or "Git Bash"
+    if any(ord(c) < 32 for c in profile):
+        raise ValueError("Terminal-Profil enthält Steuerzeichen.")
+    options.extend(["-p", profile])
+    pane_argv = [value.replace("\\", "/") if i == 0 or (i == 1 and argv[0].lower().endswith(('bash.exe', 'bash'))) else value for i, value in enumerate(argv)]
+    return TerminalTabSpec(session.display_name, shell_command(pane_argv), session, tuple(argv), tuple(options))
 
 
 class TerminalLaunchError(RuntimeError):
@@ -968,41 +983,23 @@ class TerminalLauncher:
     """Startet Terminal-Tabs in Windows Terminal oder Herdr."""
 
     @staticmethod
-    def _tabs_from_windows_command(command: str | list[str], labels: list[str]) -> list[TerminalTabSpec]:
-        commands: list[str]
-        if isinstance(command, str):
-            commands = []
-            for index, part in enumerate(command.split(" ; ")):
-                part = part.strip()
-                if index == 0 and part.lower().startswith("wt.exe "):
-                    part = part[7:].lstrip()
-                _options, separator, pane_command = part.partition(" -- ")
-                if not separator or not pane_command.strip():
-                    raise ValueError("Windows-Terminal-Befehl konnte nicht in Herdr-Tabs umgewandelt werden.")
-                commands.append(pane_command.strip().replace("\\", "/"))
-        else:
-            try:
-                separator_index = command.index("--")
-            except ValueError as exc:
-                raise ValueError("Windows-Terminal-Befehl enthält keinen auszuführenden Prozess.") from exc
-            argv = [str(value).replace("\\", "/") for value in command[separator_index + 1:]]
-            commands = [" ".join(_shell_single_quote(value) for value in argv)]
-
-        if len(commands) != len(labels):
-            raise ValueError("Anzahl der Terminal-Tabs und Tab-Titel stimmt nicht überein.")
-        return [TerminalTabSpec(label=label, command=tab_command) for label, tab_command in zip(labels, commands)]
+    def _tabs_from_windows_command(command: TerminalCommand, labels: list[str]) -> list[TerminalTabSpec]:
+        if not isinstance(command, TerminalCommand) or len(command.tabs) != len(labels):
+            raise ValueError("Ungültiger Terminal-Startplan.")
+        from dataclasses import replace
+        return [replace(tab, label=label) for tab, label in zip(command.tabs, labels)]
 
     @staticmethod
-    def _launch_windows_command(command: str | list[str]) -> None:
-        if isinstance(command, str):
-            subprocess.Popen(command, shell=True)
-        else:
-            subprocess.Popen(command)
+    def _launch_windows_command(command: TerminalCommand) -> None:
+        if not isinstance(command, TerminalCommand):
+            raise ValueError("Terminal-Start benötigt einen strukturierten Startplan.")
+        if command.tabs:
+            subprocess.Popen(command.argv, shell=False)
 
     @classmethod
     def launch_built_command(
         cls,
-        command: str | list[str],
+        command: TerminalCommand,
         labels: list[str],
         terminal_settings: WindowsTerminalSettings | None = None,
     ) -> None:
@@ -1020,8 +1017,7 @@ class TerminalLauncher:
     def launch(sessions: list[Session], user: str, session_colors: dict[str, str] | None = None, terminal_settings: WindowsTerminalSettings | None = None) -> None:
         """
         Öffnet alle Sessions im konfigurierten Terminal-Ziel.
-        Der Windows-Terminal-Fallback nutzt weiterhin shell=True, damit wt.exe
-        mehrere mit Semikolon getrennte Tab-Subcommands erhält.
+        Windows Terminal erhält Argumentlisten mit expliziten Tab-Trennern.
         """
         if not sessions:
             return
@@ -1045,8 +1041,8 @@ class TerminalLauncher:
 # Allowlist patterns for input validation (defence against shell injection via
 # registry data that ends up in build_wt_command which uses shell=True).
 # Colon allowed for IPv6 addresses.
-_HOSTNAME_RE = re.compile(r'^[A-Za-z0-9.\-:_]+$')
-_USERNAME_RE = re.compile(r'^[A-Za-z0-9.\-_]*$')
+_HOSTNAME_RE = re.compile(r'^(?!-)[A-Za-z0-9.\-:_]+$')
+_USERNAME_RE = re.compile(r'^(?!-)[A-Za-z0-9.\-_]*$')
 
 
 class RegistryReader:
@@ -1112,7 +1108,7 @@ class RegistryReader:
             return None
 
         # Input validation: reject entries with shell metacharacters
-        if not _HOSTNAME_RE.match(hostname):
+        if not _HOSTNAME_RE.fullmatch(hostname) or hostname.startswith("-"):
             print(
                 f"WARNING: Skipping session '{subkey_name}' – "
                 f"hostname contains invalid characters: {hostname!r}",
@@ -1120,7 +1116,7 @@ class RegistryReader:
             )
             return None
 
-        if username and not _USERNAME_RE.match(username):
+        if username and (not _USERNAME_RE.fullmatch(username) or username.startswith("-")):
             print(
                 f"WARNING: Skipping session '{subkey_name}' – "
                 f"username contains invalid characters: {username!r}",

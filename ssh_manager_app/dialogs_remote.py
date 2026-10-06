@@ -160,11 +160,11 @@ class JumpHostDialog(tk.Toplevel):
         if not jump_host:
             messagebox.showwarning("Kein Jumphost", "Bitte einen Jumphost eingeben oder auswählen.", parent=self)
             return None
-        if not _HOSTNAME_RE.match(jump_host):
+        if not _HOSTNAME_RE.fullmatch(jump_host):
             messagebox.showwarning("Ungültiger Jumphost", "Nur Buchstaben, Ziffern, Punkte, Doppelpunkte, Bindestriche und Unterstriche erlaubt.", parent=self)
             return None
         jump_user = self._jump_user_var.get().strip()
-        if jump_user and not _USERNAME_RE.match(jump_user):
+        if jump_user and not _USERNAME_RE.fullmatch(jump_user):
             messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
             return None
         try:
@@ -298,7 +298,7 @@ class SshCopyIdDialog(tk.Toplevel):
         user = self._user_var.get().strip()
         if not user:
             return
-        if not _USERNAME_RE.match(user):
+        if not _USERNAME_RE.fullmatch(user):
             messagebox.showwarning(
                 "Ungültiger Benutzername",
                 "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
@@ -403,7 +403,7 @@ class SshRemoveKeyDialog(tk.Toplevel):
         user = self._user_var.get().strip()
         if not user:
             return
-        if not _USERNAME_RE.match(user):
+        if not _USERNAME_RE.fullmatch(user):
             messagebox.showwarning(
                 "Ungültiger Benutzername",
                 "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
@@ -875,7 +875,7 @@ class RemoteCommandDialog(tk.Toplevel):
         if self._user_mode.get() == "all":
             if not user_value:
                 messagebox.showwarning("Kein Benutzername", "Bitte einen Benutzernamen eingeben oder per Quickselect wählen.", parent=self); return
-            if not _USERNAME_RE.match(user_value):
+            if not _USERNAME_RE.fullmatch(user_value):
                 messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self); return
         if legacy_mode:
             command = self._command_text.get("1.0", "end").strip()
@@ -1130,14 +1130,14 @@ class SshTunnelDialog(tk.Toplevel):
         if not ssh_server:
             messagebox.showwarning("Kein SSH-Server", "Bitte einen SSH-Server eingeben.", parent=self)
             return
-        if not _HOSTNAME_RE.match(ssh_server):
+        if not _HOSTNAME_RE.fullmatch(ssh_server):
             messagebox.showwarning("Ungültiger SSH-Server", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
             return
         local_port = self._parse_port(self._local_port_var, "Lokaler Port")
         if local_port is None:
             return
         remote_host = self._remote_host_var.get().strip() or "localhost"
-        if not _HOSTNAME_RE.match(remote_host):
+        if not _HOSTNAME_RE.fullmatch(remote_host):
             messagebox.showwarning("Ungültiger Zielserver", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
             return
         remote_port = self._parse_port(self._remote_port_var, "Zielport")
@@ -1146,7 +1146,7 @@ class SshTunnelDialog(tk.Toplevel):
         user = self._user_var.get().strip()
         if not user:
             return
-        if not _USERNAME_RE.match(user):
+        if not _USERNAME_RE.fullmatch(user):
             messagebox.showwarning(
                 "Ungültiger Benutzername",
                 "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",
@@ -1382,14 +1382,14 @@ class SessionEditDialog(tk.Toplevel):
         if not hostname:
             messagebox.showwarning("Fehlendes Feld", "Bitte einen Hostnamen eingeben.", parent=self)
             return
-        if not _HOSTNAME_RE.match(hostname):
+        if not _HOSTNAME_RE.fullmatch(hostname):
             messagebox.showwarning(
                 "Ungültiger Hostname",
                 "Nur Buchstaben, Ziffern, Punkte, Bindestriche, Unterstriche und Doppelpunkte erlaubt.",
                 parent=self,
             )
             return
-        if username and not _USERNAME_RE.match(username):
+        if username and not _USERNAME_RE.fullmatch(username):
             messagebox.showwarning(
                 "Ungültiger Benutzername",
                 "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.",

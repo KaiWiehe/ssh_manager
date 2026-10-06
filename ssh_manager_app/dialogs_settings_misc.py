@@ -7,6 +7,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from . import AppSettings, AppearanceSettings, ImportSettings, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, WinSCPSettings, settings_to_dict
+from .ssh_utils import connection_value
 from .constants import _SSH_CONFIG_FILE
 from .dialogs_toast import ToastNotification
 from .storage import load_settings_from_path
@@ -47,7 +48,7 @@ class SshConfigInspectDialog(tk.Toplevel):
 
         try:
             result = subprocess.run(
-                ["ssh", "-G", alias],
+                ["ssh", "-G", "--", connection_value(alias)],
                 capture_output=True, text=True, timeout=5,
             )
             output = result.stdout or result.stderr or "(keine Ausgabe)"

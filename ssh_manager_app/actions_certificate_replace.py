@@ -14,6 +14,7 @@ from .actions_remote import resolve_users_for_sessions
 from .actions_ui import persist_ui_state
 from .core import TerminalLauncher, build_certificate_replace_wt_command
 from .dialogs_certificate_replace import CertificateReplaceDialog, CertificateReplacePreviewDialog, CertificateReplaceScanProgressDialog
+from .ssh_utils import connection_value
 from .models import Session
 
 
@@ -104,11 +105,11 @@ def _local_certificate_expiry(path: str, keystore_password: str) -> str:
 
 def _scan_host(session: Session, user: str, roots: list[str], names: list[str], sudo_password: str, keystore_password: str = "") -> dict:
     if session.is_ssh_config_session:
-        command = ["ssh", "-o", "BatchMode=yes", session.display_name, "bash", "-s"]
+        command = ["ssh", "-o", "BatchMode=yes", "--", connection_value(session.display_name), "bash", "-s"]
     else:
         command = ["ssh", "-o", "BatchMode=yes"]
         if session.port != 22: command.extend(["-p", str(session.port)])
-        command.extend([f"{user}@{session.hostname}", "bash", "-s"])
+        command.extend(["--", f"{connection_value(user)}@{connection_value(session.hostname)}", "bash", "-s"])
     script = ["set -u"]
     if sudo_password:
         script.extend([f"SSH_MANAGER_SUDO_PASSWORD={_quote(sudo_password)}", "sudo() { printf '%s\\n' \"$SSH_MANAGER_SUDO_PASSWORD\" | command sudo -S -p '' \"$@\"; }"])

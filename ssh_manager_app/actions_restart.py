@@ -11,6 +11,7 @@ from tkinter import messagebox
 
 from .actions_remote import resolve_users_for_sessions
 from .dialogs_restart import ServerRestartDialog, ServerRestartProgressDialog
+from .ssh_utils import connection_value
 from .models import Session
 
 
@@ -38,11 +39,11 @@ def _ssh_args(session: Session, user: str, connect_timeout: int = 5) -> list[str
         "ConnectionAttempts=1",
     ]
     if session.is_ssh_config_session:
-        args.append(session.display_name)
+        args.extend(["--", connection_value(session.display_name)])
         return args
     if session.port and session.port != 22:
         args.extend(["-p", str(session.port)])
-    args.append(f"{user}@{session.hostname}")
+    args.extend(["--", f"{connection_value(user)}@{connection_value(session.hostname)}"])
     return args
 
 

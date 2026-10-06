@@ -33,7 +33,7 @@ def test_ssh_args_support_direct_host_port_and_ssh_config_alias():
     direct_args = _ssh_args(direct, "deploy", connect_timeout=7)
     alias_args = _ssh_args(alias, "ignored", connect_timeout=7)
 
-    assert direct_args[-3:] == ["-p", "2222", "deploy@server.example"]
+    assert direct_args[-4:] == ["-p", "2222", "--", "deploy@server.example"]
     assert "ConnectTimeout=7" in direct_args
     assert alias_args[-1] == "prod-alias"
     assert "10.0.0.8" not in alias_args
@@ -68,7 +68,7 @@ def test_run_ssh_uses_argument_list_without_shell_and_keeps_stdin_separate():
 
     assert result is completed
     command = run.call_args.args[0]
-    assert command[-4:] == ["-p", "2222", "ops@server.example", "true"]
+    assert command[-5:] == ["-p", "2222", "--", "ops@server.example", "true"]
     assert "stdin-secret" not in repr(command)
     assert run.call_args.kwargs["input"] == "stdin-secret"
     assert "shell" not in run.call_args.kwargs

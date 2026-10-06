@@ -14,6 +14,8 @@ from ssh_manager_app.core import (
     TerminalLaunchError,
     TerminalLauncher,
     TerminalTabSpec,
+    TerminalCommand,
+    build_wt_command,
     _find_git_bash,
     build_jump_wt_command,
     build_certificate_deploy_wt_command,
@@ -36,23 +38,23 @@ def _herdr_tab_response(workspace_id: str, tab_id: str, pane_id: str, include_wo
 
 def test_terminal_launcher_uses_windows_terminal_by_default():
     session = Session("s1", "Server", [], "10.0.0.1")
-    with patch("ssh_manager_app.core.build_wt_command", return_value="wt command") as build, \
+    with patch("ssh_manager_app.core.build_wt_command", return_value=build_wt_command([session], "ops")) as build, \
          patch("ssh_manager_app.core.subprocess.Popen") as popen:
         TerminalLauncher.launch([session], "ops", {"s1": "#123456"})
 
     build.assert_called_once()
-    popen.assert_called_once_with("wt command", shell=True)
+    popen.assert_called_once_with(build_wt_command([session], "ops").argv, shell=False)
 
 
 def test_terminal_launcher_falls_back_to_windows_terminal_before_first_herdr_tab():
     session = Session("s1", "Server", [], "10.0.0.1")
     settings = WindowsTerminalSettings(ssh_open_mode="herdr")
     with patch.object(HerdrLauncher, "launch", side_effect=HerdrUnavailableError("nicht erreichbar")), \
-         patch("ssh_manager_app.core.build_wt_command", return_value="wt fallback"), \
+         patch("ssh_manager_app.core.build_wt_command", return_value=build_wt_command([session], "ops")), \
          patch("ssh_manager_app.core.subprocess.Popen") as popen:
         TerminalLauncher.launch([session], "ops", terminal_settings=settings)
 
-    popen.assert_called_once_with("wt fallback", shell=True)
+    popen.assert_called_once_with(build_wt_command([session], "ops").argv, shell=False)
 
 
 def test_terminal_launcher_does_not_fallback_after_partial_herdr_start():
@@ -69,29 +71,23 @@ def test_terminal_launcher_does_not_fallback_after_partial_herdr_start():
 
 
 def test_terminal_launcher_extracts_multiple_herdr_tabs_from_windows_terminal_command():
-    command = (
-        'wt.exe new-tab -p "Git Bash" -- "C:\\Program Files\\Git\\bin\\bash.exe" "C:\\Temp\\one.sh" '
-        '; new-tab --title "Two" -p "Git Bash" -- ssh ops@two.example'
-    )
-
+    sessions = [Session("s1", "One ; -- ", [], "one.example"), Session("s2", "Two", [], "two.example")]
+    command = build_wt_command(sessions, "ops")
     tabs = TerminalLauncher._tabs_from_windows_command(command, ["One", "Two"])
-
-    assert tabs == [
-        TerminalTabSpec("One", '"C:/Program Files/Git/bin/bash.exe" "C:/Temp/one.sh"'),
-        TerminalTabSpec("Two", "ssh ops@two.example"),
-    ]
+    assert [tab.command for tab in tabs] == ["ssh -- ops@one.example", "ssh -- ops@two.example"]
+    assert [tab.label for tab in tabs] == ["One", "Two"]
 
 
 def test_terminal_launcher_uses_herdr_for_built_commands_when_selected():
     settings = WindowsTerminalSettings(ssh_open_mode="herdr")
-    command = 'wt.exe new-tab -p "Git Bash" -- ssh ops@server.example'
+    command = build_wt_command([Session("s1", "Server", [], "server.example")], "ops")
 
     with patch.object(HerdrLauncher, "launch_tabs") as launch_tabs, \
          patch.object(TerminalLauncher, "_launch_windows_command") as launch_windows:
         TerminalLauncher.launch_built_command(command, ["Server"], settings)
 
     launch_tabs.assert_called_once_with(
-        [TerminalTabSpec("Server", "ssh ops@server.example")],
+        command.tabs,
         settings,
     )
     launch_windows.assert_not_called()
@@ -99,7 +95,7 @@ def test_terminal_launcher_uses_herdr_for_built_commands_when_selected():
 
 def test_terminal_launcher_falls_back_for_built_command_before_first_herdr_tab():
     settings = WindowsTerminalSettings(ssh_open_mode="herdr")
-    command = ["wt.exe", "new-tab", "-p", "Git Bash", "--", r"C:\Program Files\Git\bin\bash.exe", r"C:\Temp\run.sh"]
+    command = build_wt_command([Session("s1", "Server", [], "server.example")], "ops")
 
     with patch.object(HerdrLauncher, "launch_tabs", side_effect=HerdrUnavailableError("nicht erreichbar")), \
          patch.object(TerminalLauncher, "_launch_windows_command") as launch_windows:
@@ -110,7 +106,7 @@ def test_terminal_launcher_falls_back_for_built_command_before_first_herdr_tab()
 
 def test_terminal_launcher_does_not_fallback_built_command_after_partial_herdr_start():
     settings = WindowsTerminalSettings(ssh_open_mode="herdr")
-    command = 'wt.exe new-tab -p "Git Bash" -- ssh ops@server.example'
+    command = build_wt_command([Session("s1", "Server", [], "server.example")], "ops")
 
     with patch.object(HerdrLauncher, "launch_tabs", side_effect=TerminalLaunchError("teilweise")), \
          patch.object(TerminalLauncher, "_launch_windows_command") as launch_windows:
@@ -157,8 +153,8 @@ def test_herdr_launcher_reuses_existing_workspace_and_does_not_open_outer_tab_fo
         ["tab", "create", "--workspace", "w7", "--label", "Server 2", "--no-focus"],
     ]
     assert [call for call in command_calls if call[:2] == ["pane", "run"]] == [
-        ["pane", "run", "w7:p1", "ssh ops@10.0.0.1"],
-        ["pane", "run", "w7:p2", "ssh deploy@10.0.0.2"],
+        ["pane", "run", "w7:p1", "ssh -- ops@10.0.0.1"],
+        ["pane", "run", "w7:p2", "ssh -- deploy@10.0.0.2"],
     ]
     popen.assert_not_called()
 
@@ -194,7 +190,7 @@ def test_herdr_launcher_reuses_initial_workspace_pane_and_attaches_once_when_hea
         ["workspace", "create", "--label", "SSH Manager", "--no-focus"],
     ]
     assert [call for call in json_calls if call[:2] == ["tab", "create"]] == []
-    assert ["pane", "run", "w8:p1", "ssh root@prod.example"] in command_calls
+    assert ["pane", "run", "w8:p1", "ssh -- root@prod.example"] in command_calls
     best_effort.assert_any_call(r"C:\Tools\herdr.exe", ["tab", "rename", "w8:t1", "Production"])
     attach_args, attach_kwargs = popen.call_args
     assert attach_args[0] == [
@@ -228,10 +224,7 @@ def test_build_jump_wt_command_with_port_and_title_mode():
         terminal_settings=settings,
     )
 
-    assert cmd == (
-        'wt.exe new-tab --tabColor "#112233" --title "deploy@10.0.0.5" '
-        '-p "Git Bash" -- ssh -J -p 2200 jumper@jump.example.com -p 2222 deploy@10.0.0.5'
-    )
+    assert cmd.argv == ["wt.exe", "new-tab", "--tabColor", "#112233", "--title", "deploy@10.0.0.5", "-p", "Git Bash", "--", "ssh", "-J", "jumper@jump.example.com:2200", "-p", "2222", "--", "deploy@10.0.0.5"]
 
 
 def test_build_remote_command_wt_command_creates_temp_script_and_uses_git_bash():
@@ -254,13 +247,13 @@ def test_build_remote_command_wt_command_creates_temp_script_and_uses_git_bash()
             terminal_settings=settings,
         )
 
-    assert cmd.startswith('wt.exe new-tab --tabColor "#abcdef" --title "App" -p "Git Bash" -- ')
-    assert 'bash.exe' in cmd
+    assert cmd.argv[:9] == ["wt.exe", "new-tab", "--tabColor", "#abcdef", "--title", "App", "-p", "Git Bash", "--"]
+    assert cmd.argv[-2].endswith('bash.exe')
     assert captured["prefix"] == "remote_cmd_"
     script_text = captured["content"]
-    assert "ssh deploy@10.0.0.9 -t <<'__REMOTE_CMD__'" in script_text
+    assert "ssh -- deploy@10.0.0.9 -t <<'__REMOTE_CMD__'" in script_text
     assert "uptime" in script_text
-    assert "exec ssh deploy@10.0.0.9" in script_text
+    assert "exec ssh -- deploy@10.0.0.9" in script_text
 
 
 def test_build_remote_command_wt_command_passes_optional_sudo_password_without_command_args():
@@ -278,7 +271,7 @@ def test_build_remote_command_wt_command_passes_optional_sudo_password_without_c
     assert "SSH_MANAGER_SUDO_PASSWORD='secret'\"'\"'value'" in captured["content"]
     assert "command sudo -S -p '' \"$@\"" in captured["content"]
     assert "trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT" in captured["content"]
-    assert "unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec ssh deploy@10.0.0.9" in captured["content"]
+    assert "unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec ssh -- deploy@10.0.0.9" in captured["content"]
 
 
 def test_build_certificate_deploy_wt_command_uploads_all_files_then_installs_and_runs_post_command():
@@ -301,7 +294,7 @@ def test_build_certificate_deploy_wt_command_uploads_all_files_then_installs_and
             })],
         )
 
-    assert command.startswith("wt.exe new-tab")
+    assert command.argv[:2] == ["wt.exe", "new-tab"]
     script = captured["content"]
     assert script.count("scp ") == 2
     assert "SSH_MANAGER_SUDO_PASSWORD='secret'" in script
@@ -371,7 +364,7 @@ def test_build_certificate_deploy_wt_command_keeps_bash_open_by_default_and_can_
             )
         return captured["content"]
 
-    assert "exec ssh deploy@10.0.0.9" in build_content(False)
+    assert "exec ssh -- deploy@10.0.0.9" in build_content(False)
     assert "exec bash" not in build_content(False)
     assert "  exit 0" in build_content(True)
 
@@ -402,7 +395,7 @@ def test_build_certificate_replace_uploads_only_files_with_matches_and_forces_tt
     script = captured["content"]
     assert "needed.jks" in script
     assert "unused.p12" not in script
-    assert "ssh deploy@10.0.0.9 <<'__CERT_REPLACE__'" in script
+    assert "ssh -- deploy@10.0.0.9 <<'__CERT_REPLACE__'" in script
     assert "rm -f -- /tmp/ssh-manager-replace-" in script
 
 
@@ -427,8 +420,8 @@ def test_build_ssh_tunnel_command_returns_expected_wt_args():
             terminal_settings=settings,
         )
 
-    assert cmd[:4] == ["wt.exe", "new-tab", "-p", "My Bash"]
-    assert cmd[4:6] == ["--", r"C:\\Git\\bin\\bash.exe"]
+    assert cmd.argv[:4] == ["wt.exe", "new-tab", "-p", "My Bash"]
+    assert cmd.argv[4:6] == ["--", r"C:\\Git\\bin\\bash.exe"]
     assert captured["prefix"] == "ssh_tunnel_"
     script_text = captured["content"]
-    assert "ssh -N -L 15432:db.internal:5432 deploy@jump.example.com" in script_text
+    assert "ssh -N -L 15432:db.internal:5432 -- deploy@jump.example.com" in script_text

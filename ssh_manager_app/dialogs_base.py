@@ -7,8 +7,8 @@ from typing import Optional
 from .constants import DEFAULT_USER, QUICK_USERS
 from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent, set_validation_state
 
-_USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._-]+$")
-_HOSTNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._:-]+$")
+_USERNAME_RE = __import__("re").compile(r"^(?!-)[A-Za-z0-9._-]+$")
+_HOSTNAME_RE = __import__("re").compile(r"^(?!-)[A-Za-z0-9._:-]+$")
 
 
 def resolve_user_dialog_defaults(
@@ -124,7 +124,7 @@ class UserDialog(tk.Toplevel):
                 "Bitte einen Benutzernamen eingeben.",
             )
             return  # Leeres Feld: Dialog bleibt offen
-        if not _USERNAME_RE.match(user):
+        if not _USERNAME_RE.fullmatch(user):
             set_validation_state(
                 getattr(self, "_user_entry", None),
                 getattr(self, "_validation_var", None),

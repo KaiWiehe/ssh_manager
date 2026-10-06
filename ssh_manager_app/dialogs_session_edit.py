@@ -263,7 +263,7 @@ class SessionEditDialog(tk.Toplevel):
             self._show_validation_error("_host_entry", "Bitte einen Hostnamen eingeben.")
             messagebox.showwarning("Fehlendes Feld", "Bitte einen Hostnamen eingeben.", parent=self)
             return
-        if not _HOSTNAME_RE.match(hostname):
+        if not _HOSTNAME_RE.fullmatch(hostname):
             self._show_validation_error("_host_entry", "Der Hostname enthält ungültige Zeichen.")
             messagebox.showwarning(
                 "Ungültiger Hostname",
@@ -271,7 +271,7 @@ class SessionEditDialog(tk.Toplevel):
                 parent=self,
             )
             return
-        if username and not _USERNAME_RE.match(username):
+        if username and not _USERNAME_RE.fullmatch(username):
             self._show_validation_error("_user_entry", "Der Benutzername enthält ungültige Zeichen.")
             messagebox.showwarning(
                 "Ungültiger Benutzername",

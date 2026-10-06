@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+from .ssh_utils import valid_color
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -19,6 +21,22 @@ from .constants import (
 )
 from .models import AppSettings, AppearanceSettings, ImportSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, WinSCPSettings, default_settings, settings_to_dict
 from .shortcuts import merge_with_defaults as _merge_shortcuts
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Replace only after a complete, flushed write in the same directory."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", dir=path.parent, delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def load_settings() -> AppSettings:
@@ -154,7 +172,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
         windows_terminal=WindowsTerminalSettings(
             profile_name=str(wt_raw.get("profile_name", defaults.windows_terminal.profile_name)).strip() or defaults.windows_terminal.profile_name,
             use_tab_color=bool(wt_raw.get("use_tab_color", defaults.windows_terminal.use_tab_color)),
-            title_mode=str(wt_raw.get("title_mode", defaults.windows_terminal.title_mode)),
+            title_mode=(wt_raw.get("title_mode") if wt_raw.get("title_mode") in {"default", "name", "host", "user_host", "name_host"} else defaults.windows_terminal.title_mode),
             ssh_open_mode=ssh_open_mode,
         ),
         winscp=WinSCPSettings(open_mode=winscp_open_mode),
@@ -223,7 +241,7 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
         recent_sessions = [str(item) for item in recent if str(item).strip()]
         if recent_sessions:
             toolbar_texts["recent_sessions"] = recent_sessions
-        return set(expanded_raw), dict(colors_raw), toolbar_texts
+        return set(expanded_raw), {str(k): v for k, v in colors_raw.items() if valid_color(v)}, toolbar_texts
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return set(), {}, {}
 

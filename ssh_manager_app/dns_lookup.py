@@ -82,6 +82,8 @@ def resolve_dns_value(
             status="error",
             error=str(exc),
         )
+    if query.startswith("-") or any(c.isspace() or ord(c) < 32 for c in query):
+        return DnsLookupResult(original_query, mode, [], "-", "error", "Ungültiger DNS-Name")
     lookup_mode = normalize_lookup_mode(query, mode)
     server = normalize_dns_server(dns_server)
 
