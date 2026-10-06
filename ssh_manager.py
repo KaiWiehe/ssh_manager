@@ -212,8 +212,7 @@ class SSHManagerApp(tk.Tk):
             messagebox.showerror(
                 "Registry-Fehler",
                 f"WinSCP-Sessions konnten nicht geladen werden:\n{e}\n\n"
-                f"Pfad: HKCU\\{REGISTRY_PATH}"
-            )
+                f"Pfad: HKCU\\{REGISTRY_PATH}", parent=self)
             winscp_sessions = []
 
         self._winscp_sessions = winscp_sessions
@@ -258,10 +257,12 @@ class SSHManagerApp(tk.Tk):
             self.after_idle(lambda: messagebox.showwarning("Daten konnten nicht vollständig geladen werden", "\n\n".join(warnings), parent=self))
 
     def report_callback_exception(self, exc, value, traceback):
+        from ssh_manager_app.errors import record_failure
+        record_failure(value.with_traceback(traceback))
         if issubclass(exc, OSError):
             messagebox.showerror("Dateizugriff fehlgeschlagen", f"Die Änderung konnte nicht gespeichert werden:\n{value}", parent=self)
         else:
-            super().report_callback_exception(exc, value, traceback)
+            messagebox.showerror("Unerwarteter Fehler", "Die Aktion konnte nicht abgeschlossen werden. Bitte erneut versuchen. Technische Details stehen im lokalen error.log.", parent=self)
 
 # ---------------------------------------------------------------------------
 # Entry Point

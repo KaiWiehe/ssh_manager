@@ -186,7 +186,7 @@ def open_appdata_jsons_in_vscode(app) -> None:
         _APPDATA_DIR.mkdir(parents=True, exist_ok=True)
         subprocess.Popen(f'code "{_APPDATA_DIR}"', shell=True)
     except OSError as exc:
-        messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{exc}")
+        messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{exc}", parent=app)
 
 
 def _set_session_username(app, session: Session, username: str) -> None:

@@ -23,6 +23,9 @@ def run_worker(owner, work, on_success, on_error=None):
         except queue.Empty:
             owner.after(50, pump)
             return
+        if not ok:
+            from .errors import record_failure
+            record_failure(value)
         if ok:
             on_success(value)
         elif on_error is not None:

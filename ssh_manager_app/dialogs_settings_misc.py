@@ -786,10 +786,10 @@ class SettingsView(ttk.Frame):
         )
         if not path:
             return
-        settings = self._collect_settings()
         try:
+            settings = self._collect_settings()
             atomic_write_text(Path(path), json.dumps(settings_to_dict(settings), ensure_ascii=False, indent=2))
-        except OSError as e:
+        except (OSError, ValueError, TypeError) as e:
             messagebox.showerror("Export fehlgeschlagen", f"Datei konnte nicht gespeichert werden:\n{e}", parent=self)
             return
         ToastNotification(self._app, "Einstellungen exportiert")

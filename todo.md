@@ -119,11 +119,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Problem:** `UserDialog.result` ist `str` oder `tuple`. `RemoteCommandDialog.result` hat 3, 4 oder 5 Elemente. `hasattr(self, "_run_mode")` ist ein toter Legacy-Zweig. `resolve_users_for_sessions` ignoriert Quick-Users und Default-User aus den Settings.
 **Fix:** Result-Dataclasses (`UserChoice`, `RemoteRunSpec`) einführen und den Legacy-Zweig entfernen.
 
-#### [DC-M8] `_export_settings` ruft `_collect_settings()` außerhalb des `try`-Blocks auf
-**Datei:** `ssh_manager_app/dialogs_settings_misc.py` (Z. 776–790), `ssh_manager_app/actions_app.py` (Z. 43, 50)
-**Problem:** Der `ValueError` endet als stille Callback-Exception. `actions_app` greift auf die private Methode zu. `__import__("json")` statt `json`.
-**Fix:** `ValueError` abfangen und melden. Eine öffentliche `export_settings()`-Methode anbieten.
-
 #### [DC-M9] Dialog-Styling hängt am deutschen Button-Text, `<Map>`-Hook läuft bei jedem Mapping
 **Datei:** `ssh_manager_app/ui.py` (Z. 710–746, 795–825)
 **Problem:** `label.startswith("löschen")` steuert Stil und Icon. Eine Textänderung ändert unbemerkt das Verhalten. Der Widget-Baum wird bei jedem Map dreimal durchlaufen.
@@ -202,25 +197,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 
 ## 🖥️ Design — UI/UX
 
-### KRITISCH
-#### [DX-C1] Allgemeine Callback-Fehler in der EXE sichtbar machen
-**Teilweise umgesetzt:** Speicher-/Zugriffsfehler (OSError) werden bereits angezeigt. Andere Exceptions und ein begrenztes Logfile bleiben offen. Die folgende Beschreibung dokumentiert den ursprünglichen Befund.
-**Datei:** `ssh_manager.py` (Z. 189–254, Klasse `SSHManagerApp`)
-**Problem:** Jede unbehandelte Exception in einem Tk-Callback geht nur nach stderr. Die portable EXE hat keine Konsole. Der User klickt, und es passiert nichts.
-**Fix:**
-```python
-def report_callback_exception(self, exc, val, tb):
-    logging.error("".join(traceback.format_exception(exc, val, tb)))
-    messagebox.showerror("Unerwarteter Fehler", f"{exc.__name__}: {val}", parent=self)
-```
-Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
-
-### HOCH
-#### [DX-H5] Remote-Befehl: Command-Build außerhalb des `try`-Blocks, nach Bestätigung passiert nichts
-**Datei:** `ssh_manager_app/actions_remote.py` (Z. 257–281)
-**Problem:** `build_remote_command_wt_command` und `build_remote_script_wt_command` können `ValueError` bzw. `OSError` werfen (Temp-Datei, fehlendes Skript). Das endet als stille Callback-Exception.
-**Fix:** Die `cmd = …`-Zeilen in den bestehenden `try`-Block verschieben.
-
 ### MITTEL
 #### [DX-M1] Empty State zeigt bei 0 Suchtreffern den Erstnutzer-Text
 **Datei:** `ssh_manager_app/tree.py` (Z. 255–262, 836, 1726)
@@ -231,11 +207,6 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 **Datei:** `ssh_manager_app/palette.py` (Z. 573–600)
 **Problem:** Die Liste ist leer, und der Placeholder ist ausgeblendet. Der User sieht eine leere Fläche.
 **Fix:** Bei `not ranked and raw_query.strip()` ein Label „Keine Treffer“ einblenden.
-
-#### [DX-M3] Palette verschluckt Callback-Fehler mit `traceback.print_exc()`
-**Datei:** `ssh_manager_app/palette.py` (Z. 674–679)
-**Problem:** Die Palette ist schon geschlossen, und in der EXE geht der Fehler verloren.
-**Fix:** `showerror` aufrufen oder an `report_callback_exception` weiterreichen.
 
 #### [DX-M4] Hosts prüfen: Mehrfachauslösung, unbegrenzte Threads, veraltete Item-IDs, kein Feedback
 **Datei:** `ssh_manager_app/tree.py` (Z. 1809–1824), `ssh_manager_app/core.py` (Z. 718–724)
@@ -272,11 +243,6 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 **Problem:** Die App friert bis zu 5 s ein. Timeout und fehlendes `ssh` erscheinen als generische Fehlermeldung.
 **Fix:** Den Dialog sofort mit „Lade…“ öffnen und `ssh -G` im Thread ausführen. `TimeoutExpired` und `FileNotFoundError` gezielt melden.
 
-#### [DX-L2] Fehlerdialoge ohne `parent`, uneinheitliche Titel, kein Start-Feedback
-**Datei:** `ssh_manager_app/actions_remote.py` (Z. 124, 142, 165), `ssh_manager_app/actions_sessions.py` (Z. 191)
-**Problem:** Die Dialoge können hinter dem Hauptfenster landen. Die Titel weichen voneinander ab („Fehler“, „Fehler beim Starten“ …).
-**Fix:** `parent=app` setzen und einen gemeinsamen `show_error(app, title, msg)` einführen. Optional einen Toast „Terminal gestartet“.
-
 ---
 
 ## ✅ Best Practice
@@ -293,11 +259,6 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 **Fix:** `1 <= int(port) <= 65535` prüfen, sonst 22 bzw. den Eintrag verwerfen.
 
 ### MITTEL
-#### [BP-M1] Kein Logging-Konzept, viele `except Exception: pass`
-**Datei:** `ssh_manager_app/tree.py` (Z. 321, 351, 359, 385, 637), `ssh_manager_app/palette.py` (Z. 443, 498, 677), `ssh_manager_app/shortcuts.py` (Z. 364–411), `ssh_manager_app/actions_ui.py` (Z. 50, 222), `ssh_manager_app/actions_app.py` (Z. 130, 268), `ssh_manager_app/core.py` (Z. 880–884, 1015–1036, 1116–1128), `ssh_manager_app/dns_lookup.py` (Z. 99–101)
-**Problem:** Es gibt drei Muster nebeneinander (messagebox, `print_exc`, `pass`). Der Herdr→WT-Fallback läuft still, ohne Hinweis.
-**Fix:** `logging` mit rotierendem Datei-Handler in `%APPDATA%\SSH-Manager` einführen. Konkrete Exceptions fangen. Beim Fallback einen Toast zeigen.
-
 #### [BP-M2] Verbleibende doppelte Settings-Allowlists
 **Offen:** Die erlaubten Themes, Akzentfarben und Schriften sind zwischen Storage und Settings-UI doppelt gepflegt. Zentralisierung bleibt ein späterer Refactor.
 **Bereits erledigt:** Atomare JSON-Schreibvorgänge, beschädigte Originale sichern, Settings-Felder robust laden und save_ui_state ohne Mutation des Eingabe-Dicts; siehe Done.
@@ -571,3 +532,58 @@ tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.s
 **Datei:** `ssh_manager_app/actions_dns.py` (Z. 69–95)
 **Problem:** Eine Exception in `resolve_dns_value` lässt den Thread sterben. `except Exception: return` um `after` schluckt Fehler.
 **Fix:** `except Exception` → `progress.close()` und `showerror` per `after`.
+
+#### ~~[DX-C1] Allgemeine Callback-Fehler in der EXE sichtbar machen~~
+
+**Erledigt am 06.10.2026.**
+
+**Teilweise umgesetzt:** Speicher-/Zugriffsfehler (OSError) werden bereits angezeigt. Andere Exceptions und ein begrenztes Logfile bleiben offen. Die folgende Beschreibung dokumentiert den ursprünglichen Befund.
+**Datei:** `ssh_manager.py` (Z. 189–254, Klasse `SSHManagerApp`)
+**Problem:** Jede unbehandelte Exception in einem Tk-Callback geht nur nach stderr. Die portable EXE hat keine Konsole. Der User klickt, und es passiert nichts.
+**Fix:**
+```python
+def report_callback_exception(self, exc, val, tb):
+    logging.error("".join(traceback.format_exception(exc, val, tb)))
+    messagebox.showerror("Unerwarteter Fehler", f"{exc.__name__}: {val}", parent=self)
+```
+Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
+
+#### ~~[DX-H5] Remote-Befehl: Command-Build außerhalb des `try`-Blocks, nach Bestätigung passiert nichts~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/actions_remote.py` (Z. 257–281)
+**Problem:** `build_remote_command_wt_command` und `build_remote_script_wt_command` können `ValueError` bzw. `OSError` werfen (Temp-Datei, fehlendes Skript). Das endet als stille Callback-Exception.
+**Fix:** Die `cmd = …`-Zeilen in den bestehenden `try`-Block verschieben.
+
+#### ~~[DX-M3] Palette verschluckt Callback-Fehler mit `traceback.print_exc()`~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/palette.py` (Z. 674–679)
+**Problem:** Die Palette ist schon geschlossen, und in der EXE geht der Fehler verloren.
+**Fix:** `showerror` aufrufen oder an `report_callback_exception` weiterreichen.
+
+#### ~~[DX-L2] Fehlerdialoge ohne `parent`, uneinheitliche Titel, kein Start-Feedback~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/actions_remote.py` (Z. 124, 142, 165), `ssh_manager_app/actions_sessions.py` (Z. 191)
+**Problem:** Die Dialoge können hinter dem Hauptfenster landen. Die Titel weichen voneinander ab („Fehler“, „Fehler beim Starten“ …).
+**Fix:** `parent=app` setzen und einen gemeinsamen `show_error(app, title, msg)` einführen. Optional einen Toast „Terminal gestartet“.
+
+#### ~~[DC-M8] `_export_settings` ruft `_collect_settings()` außerhalb des `try`-Blocks auf~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/dialogs_settings_misc.py` (Z. 776–790), `ssh_manager_app/actions_app.py` (Z. 43, 50)
+**Problem:** Der `ValueError` endet als stille Callback-Exception. `actions_app` greift auf die private Methode zu. `__import__("json")` statt `json`.
+**Fix:** `ValueError` abfangen und melden. Eine öffentliche `export_settings()`-Methode anbieten.
+
+#### ~~[BP-M1] Kein Logging-Konzept, viele `except Exception: pass`~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/tree.py` (Z. 321, 351, 359, 385, 637), `ssh_manager_app/palette.py` (Z. 443, 498, 677), `ssh_manager_app/shortcuts.py` (Z. 364–411), `ssh_manager_app/actions_ui.py` (Z. 50, 222), `ssh_manager_app/actions_app.py` (Z. 130, 268), `ssh_manager_app/core.py` (Z. 880–884, 1015–1036, 1116–1128), `ssh_manager_app/dns_lookup.py` (Z. 99–101)
+**Problem:** Es gibt drei Muster nebeneinander (messagebox, `print_exc`, `pass`). Der Herdr→WT-Fallback läuft still, ohne Hinweis.
+**Fix:** `logging` mit rotierendem Datei-Handler in `%APPDATA%\SSH-Manager` einführen. Konkrete Exceptions fangen. Beim Fallback einen Toast zeigen.

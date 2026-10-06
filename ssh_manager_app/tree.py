@@ -636,7 +636,7 @@ class SessionTree(ttk.Frame):
             self._on_hide_column(column)
         except Exception:
             # nicht silent verschlucken im Tk-Mainloop: messagebox
-            messagebox.showerror("Spalte ausblenden", "Spalte konnte nicht ausgeblendet werden.")
+            messagebox.showerror("Spalte ausblenden", "Spalte konnte nicht ausgeblendet werden.", parent=self)
 
     def _on_tree_leave(self, _event: tk.Event) -> None:
         self._set_hover_item(None)

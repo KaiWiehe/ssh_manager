@@ -674,9 +674,8 @@ class CommandPaletteDialog(tk.Toplevel):
             def _run_callback():
                 try:
                     callback()
-                except Exception:
-                    import traceback
-                    traceback.print_exc()
+                except Exception as error:
+                    self._master.report_callback_exception(type(error), error, error.__traceback__)
 
             try:
                 self._master.after_idle(_run_callback)

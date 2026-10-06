@@ -2145,7 +2145,7 @@ def test_open_appdata_jsons_in_vscode_shows_error_on_oserror():
          patch("ssh_manager_app.actions_sessions.messagebox.showerror") as showerror:
         open_appdata_jsons_in_vscode(app)
 
-    showerror.assert_called_once_with("VS Code nicht gefunden", "Fehler beim Öffnen:\nboom")
+    showerror.assert_called_once_with("VS Code nicht gefunden", "Fehler beim Öffnen:\nboom", parent=app)
 
 
 def test_edit_session_note_saves_note_and_refreshes_ui():

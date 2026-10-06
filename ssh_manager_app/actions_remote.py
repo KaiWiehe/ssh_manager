@@ -121,7 +121,7 @@ def deploy_ssh_key(app, sessions: list[Session]) -> None:
             app.settings.windows_terminal,
         )
     except (OSError, RuntimeError, ValueError) as exc:
-        messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}")
+        messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
 def remove_ssh_key(app, sessions: list[Session]) -> None:
@@ -139,7 +139,7 @@ def remove_ssh_key(app, sessions: list[Session]) -> None:
             app.settings.windows_terminal,
         )
     except (OSError, RuntimeError, ValueError) as exc:
-        messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}")
+        messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
 def open_tunnel(app, session: Session | None = None) -> None:
@@ -162,7 +162,7 @@ def open_tunnel(app, session: Session | None = None) -> None:
             app.settings.windows_terminal,
         )
     except (OSError, RuntimeError, ValueError) as exc:
-        messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}")
+        messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
 def resolve_users_for_sessions(app, sessions: list[Session], mode: str) -> list[tuple[Session, str]] | None:
@@ -254,34 +254,39 @@ def run_remote_command(app, sessions: list[Session]) -> None:
     if not confirm.result:
         return
 
-    if spec.get("mode") == "command":
-        build_kwargs = {
-            "close_on_success": close_on_success,
-            "session_colors": app._tree.get_session_colors(),
-            "terminal_settings": app.settings.windows_terminal,
-        }
-        if sudo_password:
-            build_kwargs["sudo_password"] = sudo_password
-        cmd = build_remote_command_wt_command([(session, user, command) for session, user in session_users], **build_kwargs)
-    else:
-        build_kwargs = {
-            "close_on_success": close_on_success,
-            "session_colors": app._tree.get_session_colors(),
-            "terminal_settings": app.settings.windows_terminal,
-        }
-        if sudo_password:
-            build_kwargs["sudo_password"] = sudo_password
-        cmd = build_remote_script_wt_command([(session, user, spec) for session, user in session_users], **build_kwargs)
-    sudo_password = ""
-    dialog.result = None
     try:
+        if spec.get("mode") == "command":
+            build_kwargs = {
+                "close_on_success": close_on_success,
+                "session_colors": app._tree.get_session_colors(),
+                "terminal_settings": app.settings.windows_terminal,
+            }
+            if sudo_password:
+                build_kwargs["sudo_password"] = sudo_password
+            cmd = build_remote_command_wt_command([(session, user, command) for session, user in session_users], **build_kwargs)
+        else:
+            build_kwargs = {
+                "close_on_success": close_on_success,
+                "session_colors": app._tree.get_session_colors(),
+                "terminal_settings": app.settings.windows_terminal,
+            }
+            if sudo_password:
+                build_kwargs["sudo_password"] = sudo_password
+            cmd = build_remote_script_wt_command([(session, user, spec) for session, user in session_users], **build_kwargs)
+        sudo_password = ""
+        dialog.result = None
         TerminalLauncher.launch_built_command(
             cmd,
             [session.display_name for session, _user in session_users],
             app.settings.windows_terminal,
         )
     except (OSError, RuntimeError, ValueError) as exc:
-        messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
+        from .errors import record_failure
+        record_failure(exc)
+        messagebox.showerror("Fehler", "Der Remote-Aufruf konnte nicht vorbereitet oder gestartet werden. Bitte Eingaben und Dateizugriff prüfen.", parent=app)
+    finally:
+        sudo_password = ""
+        dialog.result = None
 
 
 def _resolve_copy_user(app, sessions: list[Session]) -> str | None:
