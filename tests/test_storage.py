@@ -478,7 +478,7 @@ def test_load_filezilla_config_sessions_supports_lowercase_dir_and_defaults_miss
     <Folder>
       <Server>
         <Host>fallback.example.com</Host>
-        
+
         <Protocol>0</Protocol>
       </Server>
     </Folder>
