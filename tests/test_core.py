@@ -298,12 +298,13 @@ def test_build_certificate_deploy_wt_command_uploads_all_files_then_installs_and
     script = captured["content"]
     assert script.count("scp ") == 2
     assert "SSH_MANAGER_SUDO_PASSWORD='secret'" in script
-    assert "sudo cp -f --" in script
+    assert "sudo cp --" in script
+    assert "install_certificate" in script
     assert "target_dirs=('/etc/wildfly/certs')" in script
     assert "'server.crt'" in script
     assert "'server.key'" in script
     assert "sudo systemctl restart wildfly.service" in script
-    assert script.index("scp ") < script.index("sudo cp -f --") < script.index("sudo systemctl restart wildfly.service")
+    assert script.index("scp ") < script.index("if ! install_certificate") < script.index("sudo systemctl restart wildfly.service")
 
 
 def test_build_certificate_deploy_wt_command_blocks_existing_files_without_overwrite():
@@ -343,7 +344,7 @@ def test_build_certificate_deploy_wt_command_copies_to_every_target_directory_af
 
     script = captured["content"]
     assert "target_dirs=('/opt/wildfly-a/certs' '/opt/wildfly-b/certs')" in script
-    assert script.index("Prüfe, ob vorhandene Dateien überschrieben würden") < script.index("sudo cp -f --")
+    assert script.index("Prüfe, ob vorhandene Dateien überschrieben würden") < script.index("if ! install_certificate")
     assert "Erfolgreich übertragen: 1 Datei(en) in 2 Zielordner" in script
 
 

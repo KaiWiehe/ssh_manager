@@ -156,13 +156,16 @@ Favoriten und Verlauf
 Ein Runbook-Favorit speichert das vollständige Spec mit Name, Notiz und Pin-Status. Über den Favoriten-Dialog anlegen/bearbeiten, löschen oder anpinnen; angepinnte Einträge stehen oben. Der Verlauf hilft, frühere Einstellungen wiederzuverwenden. Das erneute Auswählen eines Eintrags ersetzt nicht die Prüfung der aktuellen Zielhosts."""),
     HelpTopic("server", "Dateien, Zertifikate und Serverneustart", """Dateien übertragen
 Überträgt die ausgewählten lokalen Dateien auf die Zielhosts. Die Dateien werden zunächst nach /tmp hochgeladen und dann mit sudo in den Zielordner kopiert. Wähle den Remote-Zielordner und prüfe die Option „Vorhandene Dateien überschreiben“. Benötigt scp, SSH-Zugriff und passende sudo-Rechte. Es ist ein Upload-Werkzeug, kein allgemeiner bidirektionaler Dateimanager.
+Unter „Dateibesitzer und Rechte“ einen Dienstbenutzer für alle Hosts oder je Host wählen. Quickselect und freie Eingabe sind möglich; der Besitzer ist unabhängig vom SSH-Login. Neue Dateien bekommen seine primäre Gruppe und die je Datei gewählten Rechte. 0600 ist der sichere Standard für private Keys/Keystores; 0644 nur für öffentliche Zertifikate verwenden. Vorhandene Dateien behalten ihre Besitzer/Rechte, außer die Änderung ist ausdrücklich angehakt. Die Dateien werden vor dem Einsetzen mit den richtigen Metadaten vorbereitet. Das Formular ist bei kleinen Fenstern scrollbar; die Aktionsbuttons bleiben sichtbar.
 
 Zertifikate ersetzen
 Wähle neue lokale Dateien und absolute Whitelist-Suchpfade, beispielsweise /etc/myservice. „Treffer suchen“ sucht ausschließlich in diesen Pfaden nach regulären Dateien mit exakt gleichem Dateinamen. Eine leere Whitelist blockiert die Suche. In der Vorschau bestehende und neue Dateidaten prüfen und die zu ersetzenden Treffer auswählen; erst danach den Austausch bestätigen. Es werden vorhandene Dateien ersetzt, keine beliebigen neuen Zielpfade angelegt.
+Such- und Zielpfade dürfen keine '..'-Segmente oder Steuerzeichen enthalten. Breite Pfade wie / oder /etc sind nach einer zusätzlichen Warnung erlaubt; gezielte Unterordner sind empfehlenswert. Die reine Suche läuft mit maximal acht parallelen Hosts.
 Das optionale Keystore-/P12-Passwort ermöglicht die Prüfung von Zertifikatsdaten in JKS/P12; ohne Passwort werden dort nur Dateizeitstempel angezeigt. Ein optionaler Nach-Befehl (auch aus einem Favoriten) kann anschließend etwa einen Dienst neu starten. „Tab nach Erfolg schließen“ schließt erfolgreiche Terminal-Tabs. Benötigt SSH/scp, passende sudo-Rechte und je nach Format OpenSSL/keytool. Die Aktion verändert Zertifikatsdateien auf den Servern.
 
 Server neu starten
 Löst auf den bestätigten Hosts einen Neustart mit sudo aus. Laufende Verbindungen und Dienste werden dabei unterbrochen; ein ausgelöster Neustart lässt sich nicht rückgängig machen. Der Dialog zeigt die Zielhosts und eine maximale Wartezeit. Optional kann eine systemd-Unit angegeben werden, die nach der SSH-Rückkehr geprüft wird. Ohne Unit werden Neustart und SSH-Rückkehr geprüft. Das sudo-Passwort wird für diesen Lauf verwendet und nicht gespeichert.
+Standardmäßig starten alle Hosts gleichzeitig. Optional die Anzahl gleichzeitiger Neustarts begrenzen: Ein weiterer Host beginnt erst nach Abschluss oder Timeout der Prüfung eines vorherigen Hosts. „Überwachung stoppen“ verhindert noch wartende Neustarts; bereits ausgelöste Neustarts laufen weiter. Bei mehr als fünf Hosts wird die Anzahl zusätzlich bestätigt. Das Formular ist scrollbar und die Aktionsbuttons bleiben sichtbar.
 
 Einzelhost, Auswahl und Ordner
 Die Beschriftung des Kontextmenüs nennt den Geltungsbereich. Im Menü Aktionen und in der Toolbar werden die angehakten Sessions übergeben. Vor dem Start die endgültige Hostliste im jeweiligen Dialog prüfen. Die Hilfe selbst führt keine Serveraktion aus."""),
@@ -202,6 +205,7 @@ Das Kontextmenü kopiert SSH-Befehl, Hostname, Name oder Notiz einer Session. Di
 
 CSV und Excel
 „Angezeigte Verbindungen als CSV/Excel exportieren“ exportiert die sichtbaren Verbindungen. Filter und Quellenanzeige beeinflussen den Inhalt. Nutze es für Listen und Dokumentation; es ist kein vollständiges Backup aller Einstellungen und Quellen.
+Bei CSV ist „Excel-sicher“ standardmäßig aktiv: Mögliche Formeln werden durch ein vorangestelltes Apostroph als Text exportiert. Für unveränderte Rohdaten den Haken entfernen; solche CSVs können beim Öffnen in Excel Formeln ausführen. XLSX verwendet bereits Textzellen.
 
 Einstellungen exportieren/importieren
 Öffne zuerst die Einstellungsansicht: Die Import-/Exportaktionen verwenden diese Ansicht. Export schreibt die App-Einstellungen in eine Datei. Import übernimmt Einstellungen aus einer passenden Datei. Das ist kein Import beliebiger CSV/Excel-Verbindungslisten. Externe WinSCP-, FileZilla- und SSH-Config-Quellen müssen separat gesichert werden.

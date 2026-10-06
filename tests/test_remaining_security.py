@@ -167,3 +167,97 @@ def test_filezilla_unique_stable_ids_and_metadata_migration_with_backup(tmp_path
     assert storage.load_notes() == migrated[0]
     assert storage.load_ui_state() == ({"Folder"}, migrated[1], {**migrated[2], "search_history": []})
     assert json.loads((tmp_path / "notes.json.filezilla-v1.bak").read_text())["notes"] == notes
+
+
+@pytest.mark.parametrize("existing,apply", [(False, False), (True, False), (True, True)])
+def test_certificate_install_sets_metadata_before_publication(tmp_path, existing, apply):
+    import shlex
+    import subprocess
+    from ssh_manager_app.certificate_permissions import certificate_install_prelude
+    from ssh_manager_app.core import _find_git_bash
+    source = tmp_path / "source.pem"
+    source.write_text("new certificate")
+    target = tmp_path / "target.pem"
+    if existing:
+        target.write_text("old certificate")
+    events = tmp_path / "events"
+    quote = lambda path: shlex.quote(str(path).replace("\\", "/"))
+    script = tmp_path / "install.sh"
+    script.write_text(
+        f"events={quote(events)}\n" + r'''
+id() { if [ "$1" = '-u' ]; then echo 42; else echo 43; fi; }
+sudo() {
+  case "$1" in
+    stat) echo '55 66 640';;
+    chown) printf 'owner:%s\n' "$3" >> "$events";;
+    chmod) printf 'mode:%s\n' "$3" >> "$events";;
+    mv) printf 'publish\n' >> "$events"; command "$@";;
+    *) command "$@";;
+  esac
+}
+''' + "\n".join(certificate_install_prelude("service-user", apply, True)) +
+        f"\ninstall_certificate {quote(source)} {quote(target)} 0600\n", encoding="utf-8"
+    )
+    completed = subprocess.run([_find_git_bash(), str(script)], capture_output=True, timeout=10)
+    assert completed.returncode == 0, completed.stderr
+    assert target.read_text() == "new certificate"
+    assert events.read_text().splitlines() == (["owner:55:66", "mode:640", "publish"] if existing and not apply else ["owner:42:43", "mode:0600", "publish"])
+    assert not list(tmp_path.glob(".ssh-manager-cert.*"))
+
+
+def test_certificate_owner_and_mode_reject_injected_or_overbroad_values():
+    from ssh_manager_app.certificate_permissions import certificate_owner, certificate_mode
+    for value in ("root:root", "-root", "$(whoami)", "root\n"):
+        with pytest.raises(ValueError):
+            certificate_owner(value)
+    for mode in ("0777", "0666", "0600; touch bad"):
+        with pytest.raises(ValueError):
+            certificate_mode(mode)
+
+
+@pytest.mark.parametrize("fail_permissions", [False, True])
+def test_generated_certificate_deploy_script_end_to_end_with_local_ssh_simulation(tmp_path, fail_permissions):
+    import shlex
+    import subprocess
+    import re
+    from ssh_manager_app.core import build_certificate_deploy_wt_command, _find_git_bash
+    source = tmp_path / "server key.pem"
+    source.write_text("test secret")
+    destination = tmp_path / "certs"
+    destination.mkdir()
+    (destination / source.name).write_text("old certificate")
+    post = tmp_path / "post-executed"
+    path = lambda value: str(value).replace("\\", "/")
+    quote = lambda value: shlex.quote(path(value))
+    captured = {}
+    spec = {"files": [path(source)], "target_dirs": [path(destination)], "file_owner": "service-user",
+            "file_modes": {path(source): "0600"}, "close_on_success": True,
+            "overwrite": True,
+            "post_command": "printf done > " + quote(post)}
+    with patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda _prefix, content: captured.update(content=content) or "test.sh"):
+        build_certificate_deploy_wt_command([(Session("a", "A", [], "test.invalid"), "ops", spec)])
+    script = tmp_path / "complete.sh"
+    script.write_text(f"fail_permissions={int(fail_permissions)}\n" + r'''
+id() { if [ "$1" = '-u' ]; then echo 42; else echo 43; fi; }
+sudo() {
+  if [ "$fail_permissions" -eq 1 ] && [ "$1" = 'chmod' ]; then return 1; fi
+  if [ "$1" != 'chown' ]; then command "$@"; fi
+}
+ssh() {
+  if [ "${@: -1}" = '-t' ]; then eval "$(cat)"; else eval "${@: -1}"; fi
+}
+scp() { local dst="${@: -1}"; command cp -- "$2" "${dst#*:}"; }
+''' + captured["content"], encoding="utf-8")
+    result = subprocess.run([_find_git_bash(), str(script)], input=b"\n", capture_output=True, timeout=15)
+    if fail_permissions:
+        assert result.returncode != 0
+        assert (destination / source.name).read_text() == "old certificate"
+        assert not post.exists()
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (destination / source.name).read_text() == "test secret"
+        assert post.read_text() == "done"
+    assert not list(destination.glob(".ssh-manager-cert.*"))
+    directory = re.search(r"/tmp/ssh-manager-cert-[a-f0-9]+", captured["content"]).group()
+    check = subprocess.run([_find_git_bash(), "-c", '[ ! -d "$1" ]', "check", directory], capture_output=True, timeout=10)
+    assert check.returncode == 0

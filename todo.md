@@ -2,20 +2,12 @@
 
 Erstellt: 2026-10-02
 Geprüft: Frontend + Backend + Package-Scan
-Umsetzung 06.10.2026: Freigegebene Gruppen 1–18 abgeschlossen (Version 0.2.38). Offene Punkte stehen oben, erledigte Audit-Funde unten in Done. S-H2, BP-M2, DC-M6 und DC-M13 behalten jeweils ihren offenen Rest.
+Umsetzung 06.10.2026: Gruppen 1–18 und anschließend S-H2, S-M4, S-M6, BP-H1, DC-M13 und BP-M4 abgeschlossen (Version 0.2.44). Offene Punkte stehen oben, erledigte Audit-Funde durchgestrichen unten in Done. BP-M2 und DC-M6 behalten ihren offenen Rest. Plattform-/Signierungsentscheidung bleibt offen.
 
 > Kontext: Python/Tkinter-Desktop-App. „Frontend“ = Tkinter-UI (`tree.py`, `ui*.py`, `dialogs_*.py`, `palette.py`, `shortcuts.py`), „Backend“ = Logik-/Prozess-/Datei-Schicht (`core.py`, `storage.py`, `actions_*.py`, `dns_lookup.py`, `exports.py`, `ssh_manager.py`, `scripts/`). Zeilennummern beziehen sich auf Commit `21f78f7`. Die Funde DC-C1 und DC-C2 sind manuell verifiziert.
 
 ---
 
-## 🔒 Security
-
-### HOCH
-#### [S-H2] Endgültige Zertifikatsrechte und Besitzer beim Deploy
-**Offen, Entscheidung erforderlich:** Neue Zieldateien werden weiterhin mit dem bisherigen cp-Verhalten installiert. Pauschal 0600/root:root kann Dienste ausschließen. Die gewünschte Rechte-/Besitzerregel für private Keys und öffentliche Zertifikate muss separat festgelegt werden.
-**Bereits erledigt:** Private temporäre Upload-Verzeichnisse und Cleanup; siehe Done.
-
-### MITTEL
 ## 🎨 Design — Code-Architektur
 
 ### KRITISCH
@@ -117,13 +109,8 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 
 ---
 
-## 🖥️ Design — UI/UX
-
----
-
 ## ✅ Best Practice
 
-### HOCH
 ### MITTEL
 #### [BP-M2] Verbleibende doppelte Settings-Allowlists
 **Offen:** Die erlaubten Themes, Akzentfarben und Schriften sind zwischen Storage und Settings-UI doppelt gepflegt. Zentralisierung bleibt ein späterer Refactor.
@@ -165,6 +152,14 @@ Keine.
 
 ## Done
 
+~~#### [S-H2] Endgültige Zertifikatsrechte und Besitzer beim Deploy~~
+~~**Offen, Entscheidung erforderlich:** Neue Zieldateien werden weiterhin mit dem bisherigen cp-Verhalten installiert. Pauschal 0600/root:root kann Dienste ausschließen. Die gewünschte Rechte-/Besitzerregel für private Keys und öffentliche Zertifikate muss separat festgelegt werden.~~
+~~**Bereits erledigt:** Private temporäre Upload-Verzeichnisse und Cleanup; siehe Done.~~
+
+**Umgesetzt 06.10.2026:** Explizite Dateibesitzerwahl gemeinsam/je Server, konfigurierte Quick-Users und freie Eingabe; getrennt vom SSH-Login. Primäre Gruppe des Besitzers, Dateirechte je Datei mit sicherem 0600-Default und sichtbaren öffentlichen Alternativen. Bestehende Metadaten standardmäßig erhalten, Änderung opt-in. Benutzerexistenz prüfen; private temporäre Zieldatei mit Metadaten vor atomarem Verschieben, bestehende Symlinks erhalten.
+
+
+
 ~~#### [S-M6] FileZilla-XML ohne Entity-Schutz und Größenlimit~~
 ~~**Datei:** `ssh_manager_app/storage.py` (Z. 321–367)~~
 ~~**Problem:** `ET.fromstring` expandiert interne Entities (Billion-Laughs-Risiko). Die Datei hat kein Größenlimit. `session_key` enthält `name`, `host` und `port` unescaped, gleiche Einträge kollidieren.~~
@@ -172,7 +167,7 @@ Keine.
 
 ~~---~~
 
-**Umgesetzt 06.10.2026:** XML begrenzt auf 5 MB, DOCTYPE/ENTITY auch in UTF-16/32 abgelehnt. Versionierte Hash-IDs unterscheiden Benutzer und gleiche Einträge; unrelated Einfügungen ändern IDs nicht. Alte Notizen, Farben, Favoriten, Recent und User-Overrides migriert, Original-Metadaten vor Schreiben gesichert. Gemeinsame alte IDs übertragen Zuordnungen an alle Treffer.
+**Umgesetzt 06.10.2026:** XML begrenzt auf 5 MB, DOCTYPE/ENTITY auch in UTF-16/32 abgelehnt. Versionierte Hash-IDs unterscheiden Benutzer und gleiche Einträge; Einfügungen anderer Verbindungen ändern IDs nicht. Alte Notizen, Farben, Favoriten, Recent und User-Overrides migriert, Original-Metadaten vor Schreiben gesichert. Gemeinsame alte IDs übertragen Zuordnungen an alle Treffer. Die ursprüngliche pauschale Billion-Laughs-Behauptung ist für die geprüfte Expat-2.8.2-Umgebung nicht belegt; die Parserhärtung erfolgt zusätzlich.
 
 
 

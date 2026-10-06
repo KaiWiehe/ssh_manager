@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .ssh_utils import connection_value
 from .certificate_paths import certificate_paths, confirm_broad_certificate_paths
+from .dialogs_certificate_permissions import CertificatePermissionsDialog
 from .secret_scripts import clear_password_fields
 from .models import Session
 from .ui_components import build_dialog_header, fit_window_to_parent
@@ -244,6 +245,9 @@ class CertificateDeployDialog(tk.Toplevel):
         self.result: dict | None = None
         self._files: list[str] = []
         self._reference_sessions = reference_sessions or []
+        self._permissions = None
+        self._quick_users = list(parent.settings.quick_users)
+        self._default_owner = parent.settings.default_user
         self._favorites = [item for item in (favorites or []) if item.get("mode", "command") == "command" and str(item.get("command", "")).strip()]
         self._overwrite_var = tk.BooleanVar(value=False)
         self._sudo_password_var = tk.StringVar()
@@ -256,8 +260,19 @@ class CertificateDeployDialog(tk.Toplevel):
         self._center_on_parent(parent)
 
     def _build(self, target_count: int) -> None:
-        root = ttk.Frame(self, padding=14)
-        root.pack(fill="both", expand=True)
+        actions = ttk.Frame(self, padding=(14, 8, 14, 14))
+        actions.pack(side="bottom", fill="x")
+        form = ttk.Frame(self)
+        form.pack(fill="both", expand=True)
+        self._form_canvas = tk.Canvas(form, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(form, orient="vertical", command=self._form_canvas.yview)
+        self._form_canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        self._form_canvas.pack(side="left", fill="both", expand=True)
+        root = ttk.Frame(self._form_canvas, padding=14)
+        form_window = self._form_canvas.create_window((0, 0), window=root, anchor="nw")
+        root.bind("<Configure>", lambda _event: self._form_canvas.configure(scrollregion=self._form_canvas.bbox("all")))
+        self._form_canvas.bind("<Configure>", lambda event: self._form_canvas.itemconfigure(form_window, width=event.width))
         root.columnconfigure(0, weight=1)
         root.rowconfigure(2, weight=1)
 
@@ -288,8 +303,11 @@ class CertificateDeployDialog(tk.Toplevel):
         self._browse_button.grid(row=0, column=2, padx=(8, 0))
         if not self._reference_sessions:
             self._browse_button.configure(state="disabled")
-        ttk.Label(destination, text="Ein absoluter Linux-Pfad pro Zeile. Alle ausgewählten Dateien behalten ihren Namen.", style="Muted.TLabel").grid(row=1, column=1, sticky="w", pady=(4, 0))
+        ttk.Label(destination, text="Ein absoluter Linux-Pfad pro Zeile. Alle ausgewählten Dateien behalten ihren Namen.", wraplength=360, style="Muted.TLabel").grid(row=1, column=1, columnspan=2, sticky="w", pady=(4, 0))
         ttk.Checkbutton(destination, text="Vorhandene Dateien überschreiben", variable=self._overwrite_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Button(destination, text="Dateibesitzer und Rechte…", command=self._choose_permissions).grid(row=3, column=0, sticky="w", pady=(8, 0))
+        self._permissions_summary = tk.StringVar(value="Vor Übertragung auswählen; vorhandene Rechte bleiben standardmäßig erhalten.")
+        ttk.Label(destination, textvariable=self._permissions_summary, wraplength=360, style="Muted.TLabel").grid(row=3, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(8, 0))
 
         security = ttk.LabelFrame(root, text="sudo", padding=10)
         security.grid(row=4, column=0, sticky="ew", pady=(10, 0))
@@ -322,12 +340,22 @@ class CertificateDeployDialog(tk.Toplevel):
         options.grid(row=6, column=0, sticky="w", pady=(10, 0))
         self._close_on_success_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(options, text="Terminal-Tab nach erfolgreicher Übertragung schließen", variable=self._close_on_success_var).pack(side="left")
-        ttk.Label(options, text="Standard: offen lassen für eine interaktive Bash-Konsole.", style="Muted.TLabel").pack(side="left", padx=(10, 0))
+        ttk.Label(options, text="Standard: offen lassen für eine interaktive Bash-Konsole.", wraplength=220, style="Muted.TLabel").pack(side="left", padx=(10, 0))
 
-        actions = ttk.Frame(root)
-        actions.grid(row=7, column=0, sticky="e", pady=(12, 0))
         ttk.Button(actions, text="Abbrechen", command=self._on_cancel, width=11).pack(side="right")
         ttk.Button(actions, text="Übertragen", command=self._on_ok, width=12, style="Accent.TButton").pack(side="right", padx=(0, 8))
+        self._bind_form_scroll(root)
+
+    def _bind_form_scroll(self, widget) -> None:
+        if not isinstance(widget, (tk.Text, tk.Listbox, ttk.Combobox, ttk.Spinbox)):
+            widget.bind("<MouseWheel>", self._scroll_form, add="+")
+        for child in widget.winfo_children():
+            self._bind_form_scroll(child)
+
+    def _scroll_form(self, event):
+        if event.delta:
+            self._form_canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+        return "break"
 
     def _choose_files(self) -> None:
         paths = filedialog.askopenfilenames(parent=self, title="Dateien auswählen")
@@ -348,6 +376,18 @@ class CertificateDeployDialog(tk.Toplevel):
 
     def _toggle_password(self) -> None:
         self._password_entry.configure(show="" if self._show_password_var.get() else "•")
+
+    def _choose_permissions(self) -> None:
+        if not self._files:
+            messagebox.showwarning("Keine Dateien", "Bitte zuerst Dateien auswählen.", parent=self)
+            return
+        dialog = CertificatePermissionsDialog(self, self._reference_sessions, self._files, self._quick_users, self._default_owner, self._permissions)
+        self.wait_window(dialog)
+        self.grab_set()
+        if dialog.result is not None:
+            self._permissions = dialog.result
+            owners = set(self._permissions["owners"].values())
+            self._permissions_summary.set("Besitzer: " + (next(iter(owners)) if len(owners) == 1 else "je Server") + "; Dateirechte ausgewählt.")
 
     @staticmethod
     def _favorite_label(item: dict) -> str:
@@ -409,6 +449,10 @@ class CertificateDeployDialog(tk.Toplevel):
         target_dirs = list(dict.fromkeys(path.rstrip("/") or "/" for path in target_dirs))
         if not confirm_broad_certificate_paths(self, target_dirs):
             return
+        if self._permissions is None or set(self._permissions["file_modes"]) != set(self._files):
+            self._choose_permissions()
+            if self._permissions is None or set(self._permissions["file_modes"]) != set(self._files):
+                return
         self.result = {
             "files": list(self._files),
             "target_dirs": target_dirs,
@@ -416,6 +460,7 @@ class CertificateDeployDialog(tk.Toplevel):
             "sudo_password": self._sudo_password_var.get(),
             "post_command": self._post_command.get("1.0", "end").strip(),
             "close_on_success": self._close_on_success_var.get(),
+            **self._permissions,
         }
         clear_password_fields(self)
         self.destroy()

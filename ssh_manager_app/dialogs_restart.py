@@ -33,8 +33,19 @@ class ServerRestartDialog(tk.Toplevel):
         self.bind("<Escape>", lambda _event: self._on_cancel())
 
     def _build(self, session_users: list[tuple[Session, str]]) -> None:
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill="both", expand=True)
+        buttons = ttk.Frame(self, padding=(20, 8, 20, 14))
+        buttons.pack(side="bottom", fill="x")
+        form = ttk.Frame(self)
+        form.pack(fill="both", expand=True)
+        self._form_canvas = tk.Canvas(form, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(form, orient="vertical", command=self._form_canvas.yview)
+        self._form_canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        self._form_canvas.pack(side="left", fill="both", expand=True)
+        frame = ttk.Frame(self._form_canvas, padding=20)
+        window = self._form_canvas.create_window((0, 0), window=frame, anchor="nw")
+        frame.bind("<Configure>", lambda _event: self._form_canvas.configure(scrollregion=self._form_canvas.bbox("all")))
+        self._form_canvas.bind("<Configure>", lambda event: self._form_canvas.itemconfigure(window, width=event.width))
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(2, weight=1)
 
@@ -54,6 +65,7 @@ class ServerRestartDialog(tk.Toplevel):
         hosts.columnconfigure(0, weight=1)
         hosts.rowconfigure(0, weight=1)
         hosts_text = scrolledtext.ScrolledText(hosts, wrap="word", height=9)
+        self._hosts_text = hosts_text
         hosts_text.grid(row=0, column=0, sticky="nsew")
         hosts_text.insert(
             "1.0",
@@ -102,11 +114,21 @@ class ServerRestartDialog(tk.Toplevel):
         ttk.Label(options, text="Ohne Begrenzung: alle gleichzeitig. Mit Begrenzung startet der nächste Host erst nach Abschluss der Prüfung eines Hosts.",
                   style="Muted.TLabel", wraplength=560).grid(row=6, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=4, column=0, sticky="e", pady=(14, 0))
-        ttk.Button(buttons, text="Abbrechen", command=self._on_cancel, width=12).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="Server neu starten", command=self._on_ok, width=20, style="Danger.TButton").pack(side="left")
+        ttk.Button(buttons, text="Server neu starten", command=self._on_ok, width=20, style="Danger.TButton").pack(side="right")
+        ttk.Button(buttons, text="Abbrechen", command=self._on_cancel, width=12).pack(side="right", padx=(0, 8))
+        self._bind_form_scroll(frame)
         self._password_entry.focus()
+
+    def _bind_form_scroll(self, widget):
+        if not isinstance(widget, (tk.Text, ttk.Spinbox)):
+            widget.bind("<MouseWheel>", self._scroll_form, add="+")
+        for child in widget.winfo_children():
+            self._bind_form_scroll(child)
+
+    def _scroll_form(self, event):
+        if event.delta:
+            self._form_canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+        return "break"
 
     def _toggle_password(self) -> None:
         self._password_entry.configure(show="" if self._show_password_var.get() else "•")

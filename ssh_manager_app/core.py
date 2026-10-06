@@ -18,6 +18,7 @@ import winreg
 from . import PALETTE, REGISTRY_PATH, SKIP_SESSIONS, Session, WindowsTerminalSettings
 from .constants import _SSH_CONFIG_FILE, _STATE_FILE
 from .storage import load_ssh_config_sessions
+from .certificate_permissions import certificate_install_prelude, certificate_mode
 from .secret_scripts import write_protected_script, cleanup_script, managed_scripts
 from .ssh_utils import connection_value, ssh_argv, shell_command, scp_target, valid_color, valid_port, read_port
 
@@ -438,6 +439,9 @@ def build_certificate_deploy_wt_command(
         sudo_password = str(spec.get("sudo_password") or "")
         post_command = str(spec.get("post_command") or "").strip()
         close_on_success = bool(spec.get("close_on_success"))
+        file_owner = str(spec.get("file_owner") or user or "root")
+        file_modes = {path: certificate_mode(spec.get("file_modes", {}).get(path, "0600")) for path in files}
+        install_prelude = certificate_install_prelude(file_owner, bool(spec.get("apply_to_existing")), overwrite)
         delimiter = _here_doc_delimiter(str(spec))
         run_id = uuid.uuid4().hex
         remote_dir = f"/tmp/ssh-manager-cert-{run_id}"
@@ -477,8 +481,9 @@ def build_certificate_deploy_wt_command(
             "  printf ' %s\\n' \"$1\"",
             "  printf '==================================================\\n'",
             "}",
-            "cleanup() { rm -rf -- " + _shell_single_quote(remote_dir) + "; }",
+            "cleanup() { if [ -n \"${install_tmp:-}\" ]; then sudo rm -f -- \"$install_tmp\"; fi; rm -rf -- " + _shell_single_quote(remote_dir) + "; }",
             "trap cleanup EXIT",
+            *install_prelude,
             "header 'Dateien installieren'",
             "target_dirs=(" + " ".join(_shell_single_quote(path) for path in target_dirs) + ")",
             "for target_dir in \"${target_dirs[@]}\"; do",
@@ -495,7 +500,7 @@ def build_certificate_deploy_wt_command(
                 filename = Path(local_path).name
                 remote_lines.extend([
                     f"  target_file=\"$target_dir\"/{_shell_single_quote(filename)}",
-                    "  if [ -e \"$target_file\" ]; then",
+                    "  if sudo test -e \"$target_file\" || sudo test -L \"$target_file\"; then",
                     "    echo \"AUSGELASSEN: Zieldatei existiert bereits: $target_file\"",
                     "    echo 'Es wurde keine Datei dieses Hosts ersetzt und kein Nach-Befehl ausgeführt.'",
                     "    exit 2",
@@ -511,7 +516,7 @@ def build_certificate_deploy_wt_command(
             filename = Path(local_path).name
             remote_lines.extend([
                 f"  target_file=\"$target_dir\"/{_shell_single_quote(filename)}",
-                f"  if ! sudo cp -f -- {_shell_single_quote(remote_tmp)} \"$target_file\"; then",
+                f"  if ! install_certificate {_shell_single_quote(remote_tmp)} \"$target_file\" {_shell_single_quote(file_modes[local_path])}; then",
                 "    echo \"FEHLER: Datei konnte nicht installiert werden: $target_file\"",
                 "    exit 1",
                 "  fi",

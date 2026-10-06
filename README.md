@@ -85,6 +85,18 @@ prüfen; der Windows-Build führt diese Prüfung automatisch aus.
 
 Die Statusansicht bestätigt zunächst den tatsächlichen Neustart und wartet danach auf eine stabile SSH-Verbindung. Wurde eine systemd-Unit angegeben, erscheint das grüne Häkchen erst, wenn auch diese wieder `active` ist. Fehler und Zeitüberschreitungen werden pro Server angezeigt, ohne die Überwachung der übrigen Server abzubrechen.
 
+Standardmäßig werden alle ausgewählten Hosts gleichzeitig gestartet. Mit **Gleichzeitige Neustarts begrenzen** beginnt der nächste Host erst, wenn die Prüfung eines laufenden Hosts endet. Stoppen verhindert noch wartende Neustarts; bereits ausgelöste laufen weiter. Bei mehr als fünf Hosts wird die Anzahl zusätzlich bestätigt.
+
+## Zertifikatsrechte, Pfade und CSV-Export
+
+Beim Datei-Upload wählt **Dateibesitzer und Rechte…** einen Dienstbenutzer für alle Hosts oder je Host, mit konfigurierten Quick-Users und freier Eingabe. Der Dateibesitzer ist unabhängig vom SSH-Anmeldebenutzer; seine primäre Gruppe wird verwendet. Neue Dateien bekommen standardmäßig **0600**. Je Datei sind auch Gruppenrechte oder öffentliche Leserechte wählbar; **0644 nur für öffentliche Zertifikate** verwenden. Vorhandene Besitzer/Rechte bleiben erhalten, außer die Änderung wird ausdrücklich aktiviert. Die Installation bereitet Metadaten vor und ersetzt die Zieldatei atomar; bestehende Symlinks bleiben erhalten.
+
+Zertifikat-Such- und Zielpfade werden normalisiert; Steuerzeichen und `..`-Segmente sind unzulässig. Breite Pfade wie `/etc` bleiben nach einer Warnung erlaubt. Die reine Zertifikatssuche arbeitet mit höchstens acht parallelen Hosts. Übertragungs- und Neustartformulare sind bei kleinen Fenstern scrollbar, die Aktionsbuttons bleiben sichtbar.
+
+Der CSV-Export ist standardmäßig **Excel-sicher**: Mögliche Formeln in Zellen und Ordnerüberschriften erhalten ein vorangestelltes Apostroph. Für unveränderte Rohdaten kann die Option deaktiviert werden; beim Öffnen solcher Dateien in Excel können Formeln ausgeführt werden. XLSX verwendet Textzellen.
+
+Beim Umbenennen oder Verschieben in einen vorhandenen Ordner muss das Zusammenführen bestätigt werden. Ein einzelner neuer Ordnername darf keinen `/` enthalten; beim Verschieben bleiben vollständige Ordnerpfade möglich.
+
 ## Bedienung
 
 ### Integrierte Hilfe
@@ -168,6 +180,8 @@ FileZilla-Sites werden aus `sitemanager.xml` gelesen, typischerweise hier:
 ```text
 %APPDATA%\FileZilla\sitemanager.xml
 ```
+
+Der Import liest höchstens **5 MB** und lehnt XML mit DOCTYPE-/ENTITY-Deklarationen ab. Zu große oder ungültige Dateien werden gemeldet und bleiben unverändert. Die neuen IDs unterscheiden Benutzer und gleiche Einträge; das Einfügen anderer Sites verschiebt sie nicht. Alte Notizen, Farben, Favoriten, zuletzt verwendete Sessions und Benutzer-Overrides werden übernommen. Vor dem Speichern entstehen Sicherungen `notes.json.filezilla-v1.bak` und `ui_state.json.filezilla-v1.bak`. Bei ehemals kollidierenden IDs wird die bisher gemeinsame Zuordnung auf alle betroffenen Einträge übertragen.
 
 ## Notizen
 

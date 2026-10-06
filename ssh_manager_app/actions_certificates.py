@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from tkinter import messagebox
+from pathlib import Path
 
 from .actions_remote import resolve_users_for_sessions
 from .core import TerminalLauncher, build_certificate_deploy_wt_command
@@ -36,12 +37,18 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
     post_text = "Ja" if deployment["post_command"] else "Nein"
     target_dirs = deployment["target_dirs"]
     target_preview = "\n".join(f"  - {path}" for path in target_dirs)
+    owners = deployment.get("owners", {})
+    rights_preview = "\n".join(f"  - {session.display_name}: {owners.get(session.key, user)}" for session, user in session_users)
+    mode_preview = "\n".join(f"  - {Path(path).name}: {mode}" for path, mode in deployment.get("file_modes", {}).items())
     confirmation = (
         f"Dateien: {len(deployment['files'])}\n"
         f"Hosts: {len(runnable)}\n"
         f"Zielordner ({len(target_dirs)}):\n{target_preview}\n"
         f"Überschreiben: {overwrite_text}\n"
         f"Nach-Befehl: {post_text}\n\n"
+        f"Dateibesitzer (primäre Gruppe):\n{rights_preview}\n"
+        f"Rechte neuer Dateien:\n{mode_preview}\n"
+        f"Vorhandene Rechte: {'gewählte Regel anwenden' if deployment.get('apply_to_existing') else 'beibehalten'}\n\n"
         "Übertragung jetzt starten?"
     )
     if not messagebox.askyesno("Dateiübertragung bestätigen", confirmation, icon="warning", parent=app):
@@ -49,7 +56,7 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
 
     try:
         command = build_certificate_deploy_wt_command(
-            [(session, user, deployment) for session, user in session_users],
+            [(session, user, {**deployment, "file_owner": owners[session.key]} if owners else deployment) for session, user in session_users],
             session_colors=app._tree.get_session_colors(),
             terminal_settings=app.settings.windows_terminal,
         )
