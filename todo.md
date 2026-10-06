@@ -2,7 +2,7 @@
 
 Erstellt: 2026-10-02
 Geprüft: Frontend + Backend + Package-Scan
-Umsetzung 06.10.2026: Freigegebene Gruppen 1–8 abgeschlossen (Version 0.2.28). Offene Punkte stehen oben, erledigte Audit-Funde unten in Done. S-H2 und BP-M2 behalten jeweils ihren offenen Rest.
+Umsetzung 06.10.2026: Freigegebene Gruppen 1–18 abgeschlossen (Version 0.2.38). Offene Punkte stehen oben, erledigte Audit-Funde unten in Done. S-H2, BP-M2, DC-M6 und DC-M13 behalten jeweils ihren offenen Rest.
 
 > Kontext: Python/Tkinter-Desktop-App. „Frontend“ = Tkinter-UI (`tree.py`, `ui*.py`, `dialogs_*.py`, `palette.py`, `shortcuts.py`), „Backend“ = Logik-/Prozess-/Datei-Schicht (`core.py`, `storage.py`, `actions_*.py`, `dns_lookup.py`, `exports.py`, `ssh_manager.py`, `scripts/`). Zeilennummern beziehen sich auf Commit `21f78f7`. Die Funde DC-C1 und DC-C2 sind manuell verifiziert.
 
@@ -142,11 +142,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Problem:** Der Star-Import leakt `json`, `os`, `Path` usw. Module importieren über das Paket-Root statt aus den konkreten Modulen.
 **Fix:** `__all__` pflegen und auf konkrete Modul-Imports umstellen.
 
-#### [DC-L6] AGENTS.md-Modulübersicht veraltet
-**Datei:** `AGENTS.md` (Abschnitt „Schichten / Module“)
-**Problem:** Nicht beschrieben sind `actions_*.py`, `palette.py`, `shortcuts.py`, `dns_lookup.py`, `exports.py`, `ui_components.py` und mehrere `dialogs_*`.
-**Fix:** Die Übersicht und die Abhängigkeitsrichtung aktualisieren.
-
 ---
 
 ## 🖥️ Design — UI/UX
@@ -177,11 +172,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Fix:** `ThreadPoolExecutor(max_workers=8)` verwenden. Bei mehr als 5 Hosts die Anzahl in der Bestätigung hervorheben.
 
 ### NIEDRIG
-#### [BP-L1] `code "…"` mit `shell=True`, Fehlermeldung „VS Code nicht gefunden“ greift nie
-**Datei:** `ssh_manager_app/actions_open.py` (Z. 22), `ssh_manager_app/actions_sessions.py` (Z. 189)
-**Problem:** Mit `shell=True` löst ein fehlendes `code` keinen `OSError` aus. Die Funktion ist zudem doppelt vorhanden.
-**Fix:** `code_path = shutil.which("code")` ermitteln und `subprocess.Popen([code_path, str(path)])` aufrufen. Daraus eine gemeinsame Hilfsfunktion machen.
-
 #### [BP-L2] Build: UPX aktiv, kein Hash-Pinning, keine Signatur
 **Datei:** `ssh_manager.spec` (Z. 38), `scripts/build_windows.ps1` (Z. 15)
 **Problem:** UPX-gepackte PyInstaller-EXEs werden häufig von Virenscannern markiert. `pip install` läuft ohne `--require-hashes`, und es gibt keinen `signtool`-Schritt.
@@ -384,17 +374,6 @@ tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.s
 **Umgesetzt:** Je Lauf ein exklusiv angelegtes Verzeichnis mit Modus 0700 und umask 077; Upload-Fehler und reguläres Ende räumen auf. Bereits vorhandene Zielrechte und Besitzer beim Replace bleiben erhalten. Cleanup bei unerreichbarem SSH-Ziel ist best effort; verbliebene Staging-Dateien liegen weiterhin im privaten Verzeichnis.
 
 ---
-
-## Ursprüngliche Audit-Zusammenfassung (historisch)
-
-| Sektion | KRITISCH | HOCH | MITTEL | NIEDRIG | Total |
-|---|---|---|---|---|---|
-| 🔒 Security | 2 | 4 | 6 | 2 | 14 |
-| 🎨 Design — Architektur | 4 | 8 | 14 | 6 | 32 |
-| 🖥️ Design — UI/UX | 1 | 5 | 9 | 2 | 17 |
-| ✅ Best Practice | 0 | 2 | 4 | 2 | 8 |
-| 📦 Package-Scan | 0 | 0 | 0 | 3 | 3 |
-| **Total** | **7** | **19** | **33** | **15** | **74** |
 
 #### ~~[DC-H3] Herdr-JSON wird ungeprüft verschachtelt gelesen, der Fallback greift dann nicht~~
 
@@ -643,3 +622,32 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 #### ~~[DC-M6a] Konfigurierte Benutzerdefaults in Remote-Aktionen~~
 
 **Erledigt am 06.10.2026.** Gemeinsame und individuelle Benutzerabfragen erhalten die aktuellen Settings.
+
+#### ~~[BP-L1] `code "…"` mit `shell=True`, Fehlermeldung „VS Code nicht gefunden“ greift nie~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/actions_open.py` (Z. 22), `ssh_manager_app/actions_sessions.py` (Z. 189)
+**Problem:** Mit `shell=True` löst ein fehlendes `code` keinen `OSError` aus. Die Funktion ist zudem doppelt vorhanden.
+**Fix:** `code_path = shutil.which("code")` ermitteln und `subprocess.Popen([code_path, str(path)])` aufrufen. Daraus eine gemeinsame Hilfsfunktion machen.
+
+#### ~~[DC-L6] AGENTS.md-Modulübersicht veraltet~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `AGENTS.md` (Abschnitt „Schichten / Module“)
+**Problem:** Nicht beschrieben sind `actions_*.py`, `palette.py`, `shortcuts.py`, `dns_lookup.py`, `exports.py`, `ui_components.py` und mehrere `dialogs_*`.
+**Fix:** Die Übersicht und die Abhängigkeitsrichtung aktualisieren.
+
+---
+
+## Ursprüngliche Audit-Zusammenfassung (historisch)
+
+| Sektion | KRITISCH | HOCH | MITTEL | NIEDRIG | Total |
+|---|---|---|---|---|---|
+| 🔒 Security | 2 | 4 | 6 | 2 | 14 |
+| 🎨 Design — Architektur | 4 | 8 | 14 | 6 | 32 |
+| 🖥️ Design — UI/UX | 1 | 5 | 9 | 2 | 17 |
+| ✅ Best Practice | 0 | 2 | 4 | 2 | 8 |
+| 📦 Package-Scan | 0 | 0 | 0 | 3 | 3 |
+| **Total** | **7** | **19** | **33** | **15** | **74** |

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 import tkinter as tk
 from dataclasses import replace
 from tkinter import messagebox, simpledialog, ttk
@@ -12,6 +11,7 @@ from .dialogs_base import _USERNAME_RE, _build_quickselect_buttons
 from .dialogs_move_folder import MoveFolderDialog
 from .dialogs_session_edit import SessionEditDialog
 from .models import Session
+from .editor import open_in_vscode
 from .storage import save_app_sessions, save_notes, save_sessions_and_notes
 
 
@@ -171,8 +171,8 @@ def open_appdata_jsons_in_vscode(app) -> None:
     """Öffnet den SSH-Manager-AppData-Ordner mit JSON-Dateien in VS Code."""
     try:
         _APPDATA_DIR.mkdir(parents=True, exist_ok=True)
-        subprocess.Popen(f'code "{_APPDATA_DIR}"', shell=True)
-    except OSError as exc:
+        open_in_vscode(_APPDATA_DIR)
+    except (OSError, ValueError) as exc:
         messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{exc}", parent=app)
 
 

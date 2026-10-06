@@ -2068,17 +2068,17 @@ def test_duplicate_ssh_alias_creates_app_session_and_rebuilds():
     rebuild.assert_called_once_with(app)
 
 
-def test_open_appdata_jsons_in_vscode_launches_code_with_shell():
+def test_open_appdata_jsons_in_vscode_uses_shared_launcher():
     app = MagicMock()
     appdata_dir = MagicMock()
     appdata_dir.__str__.return_value = "/tmp/appdata"
 
     with patch("ssh_manager_app.actions_sessions._APPDATA_DIR", appdata_dir), \
-         patch("ssh_manager_app.actions_sessions.subprocess.Popen") as popen:
+         patch("ssh_manager_app.actions_sessions.open_in_vscode") as popen:
         open_appdata_jsons_in_vscode(app)
 
     appdata_dir.mkdir.assert_called_once_with(parents=True, exist_ok=True)
-    popen.assert_called_once_with('code "/tmp/appdata"', shell=True)
+    popen.assert_called_once_with(appdata_dir)
 
 
 def test_add_session_returns_early_on_cancel():
@@ -2140,7 +2140,7 @@ def test_open_appdata_jsons_in_vscode_shows_error_on_oserror():
     appdata_dir.__str__.return_value = "/tmp/appdata"
 
     with patch("ssh_manager_app.actions_sessions._APPDATA_DIR", appdata_dir), \
-         patch("ssh_manager_app.actions_sessions.subprocess.Popen", side_effect=OSError("boom")), \
+         patch("ssh_manager_app.actions_sessions.open_in_vscode", side_effect=OSError("boom")), \
          patch("ssh_manager_app.actions_sessions.messagebox.showerror") as showerror:
         open_appdata_jsons_in_vscode(app)
 
@@ -2255,16 +2255,12 @@ def test_inspect_ssh_config_opens_dialog_for_session_alias():
     dialog_cls.assert_called_once_with(app, "prod-alias")
 
 
-def test_open_ssh_config_in_vscode_launches_code_with_shell():
+def test_open_ssh_config_in_vscode_uses_shared_launcher():
+    from ssh_manager_app.actions_open import _SSH_CONFIG_FILE
     app = MagicMock()
-
-    with patch("ssh_manager_app.actions_open.subprocess.Popen") as popen:
+    with patch("ssh_manager_app.actions_open.open_in_vscode") as launch:
         open_ssh_config_in_vscode(app)
-
-    popen.assert_called_once()
-    args, kwargs = popen.call_args
-    assert args[0].startswith('code "')
-    assert kwargs == {"shell": True}
+    launch.assert_called_once_with(_SSH_CONFIG_FILE)
 
 
 def _run_open_worker(owner, work, done, failed):
@@ -2363,7 +2359,7 @@ def test_set_winscp_external_sessions_in_existing_window_updates_registry():
 def test_open_ssh_config_in_vscode_shows_error_on_oserror():
     app = MagicMock()
 
-    with patch("ssh_manager_app.actions_open.subprocess.Popen", side_effect=OSError("boom")), \
+    with patch("ssh_manager_app.actions_open.open_in_vscode", side_effect=OSError("boom")), \
          patch("ssh_manager_app.actions_open.messagebox.showerror") as showerror:
         open_ssh_config_in_vscode(app)
 

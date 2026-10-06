@@ -404,13 +404,21 @@ def load_app_sessions() -> list[Session]:
                 name = str(entry["name"])
                 hostname = str(entry["hostname"])
                 key = (_SSH_ALIAS_PREFIX if source == "ssh_alias" else _APP_PREFIX) + session_id
+                try:
+                    port = read_port(entry.get("port", 22))
+                except ValueError:
+                    _preserve_invalid(_APP_SESSIONS_FILE)
+                    warning = _load_warnings.get(_APP_SESSIONS_FILE, "")
+                    if "Port" not in warning:
+                        _load_warnings[_APP_SESSIONS_FILE] = warning + " Verbindungen mit ungültigem Port wurden übersprungen; erlaubt sind 1–65535."
+                    continue
                 sessions.append(Session(
                     key=key,
                     display_name=name,
                     folder_path=folder_path,
                     hostname=hostname,
                     username=str(entry.get("username", "")),
-                    port=read_port(entry.get("port", 22)),
+                    port=port,
                     source=source,
                 ))
             except (KeyError, TypeError, ValueError):

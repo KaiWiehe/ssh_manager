@@ -127,6 +127,25 @@ notes.json / settings  ──┘
 **`ssh_manager_app/version.py`**
 - `APP_NAME` / `APP_VERSION` / `APP_DISPLAY_NAME` für App-Name, UI und Packaging
 
+**Weitere Module / aktuelle Zuständigkeiten**
+- `actions_ui.py`: Settings-Vorschau/Snapshots, Suche, Quellenaufbau, Favoriten/Recent, Rebuild.
+- `actions_sessions.py`, `actions_notes.py`: eigene Sessions, Benutzer-Overrides und app-interne Notizen.
+- `actions_remote.py`: SSH/Jumphost, Keys, Tunnel und Remote-Runbooks; Benutzerdefaults aus AppSettings.
+- `actions_open.py`: WinSCP-Startfolge und SSH-Config-Anzeige; langsame Aufrufe im Hintergrund.
+- `actions_dns.py`, `actions_restart.py`, `actions_certificates.py`, `actions_certificate_replace.py`: DNS, Neustartüberwachung und Zertifikatsaktionen.
+- `actions_app.py`: Command Palette, App-Abschluss sowie Import/Export-Aktionen.
+- `palette.py`, `shortcuts.py`, `help.py`: Suche/Aktionen, Tastenkürzel und Bedienhilfe.
+- `dialogs_dns.py`, `dialogs_restart.py`, `dialogs_certificates.py`, `dialogs_certificate_replace.py`, `dialogs_export.py`: zugehörige Dialoge; `dialogs_user.py` bleibt Kompatibilitäts-Reexport.
+- `dns_lookup.py`, `exports.py`: reine Auflösungs-/Exportlogik; keine Tk-Widgets.
+- `ui_components.py`: gemeinsame Dialog-/Tooltip-/Layoutbausteine.
+- `ssh_utils.py`: validierte SSH-Argumente, Ports, Farben, SCP-Ziele und Shell-Quoting.
+- `secret_scripts.py`: benutzergebundene DPAPI-Skriptpayloads und Cleanup; entschlüsselte Inhalte bleiben im Prozessspeicher.
+- `workers.py`: Worker-Ergebnisse per Queue; `after()` und UI-Callbacks ausschließlich im Tk-Hauptthread.
+- `errors.py`: rotierendes `error.log` mit Fehlertyp/Codeposition, ohne Exception-Text, Befehle, Passwörter oder Locals.
+- `editor.py`: gemeinsamer VS-Code-Start, inklusive Windows-`code.cmd`.
+
+Aktuelle Richtung: UI/Dialog → Actions → Core/Storage/Hilfsmodule. Bestehende lokale Imports zwischen UI und Actions sind weiterhin vorhanden; diese Übersicht behauptet keinen abgeschlossenen Architekturumbau. `TerminalCommand` trägt strukturierte Tab-Argumente; nicht wieder in Shell-Strings zurückverwandeln. Host-Probes sind auf acht Worker begrenzt und ignorieren alte Baumgenerationen. Neustart-Parallelität bleibt unverändert.
+
 **Packaging**
 - `requirements.txt` / `requirements-dev.txt` – feste Laufzeit-, Test- und Build-Abhängigkeiten
 - `assets/ssh-manager.ico` – App-/EXE-Icon

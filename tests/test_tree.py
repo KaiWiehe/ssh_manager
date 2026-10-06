@@ -346,12 +346,12 @@ def test_host_checks_deduplicate_and_discard_results_after_rebuild(monkeypatch):
         future = Future()
         futures.append(future)
         return future
-    monkeypatch.setattr(tree, "_HOST_PROBES", SimpleNamespace(submit=submit))
+    monkeypatch.setattr(tree, "_create_host_probe_pool", lambda: SimpleNamespace(submit=submit))
     session = Session("key", "host", [], "example", port=2222)
     statuses = []
     owner = SimpleNamespace(_populate_generation=1, _item_to_session={"row": session},
                             _set_item_status=lambda *args: statuses.append(args),
-                            after=lambda *args: None, winfo_exists=lambda: True,
+                            after=lambda *args: None, bind=lambda *args, **kwargs: None, winfo_exists=lambda: True,
                             _pump_host_checks=lambda: None)
     SessionTree.check_hosts(owner, [("row", session)], timeout=7)
     SessionTree.check_hosts(owner, [("row", session)], timeout=7)

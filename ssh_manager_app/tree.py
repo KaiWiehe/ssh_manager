@@ -10,7 +10,8 @@ from .constants import _SSH_CONFIG_DEFAULT_FOLDER
 from .core import check_host_reachable
 from .ui_components import TooltipPopup
 
-_HOST_PROBES = ThreadPoolExecutor(max_workers=8, thread_name_prefix="ssh-host-check")
+def _create_host_probe_pool():
+    return ThreadPoolExecutor(max_workers=8, thread_name_prefix="ssh-host-check")
 
 
 def _session_values_text(sessions: list[Session], attribute: str) -> str:
@@ -1821,6 +1822,9 @@ class SessionTree(ttk.Frame):
     def check_hosts(self, item_session_pairs: list[tuple[str, Session]], timeout: int = 3) -> None:
         """Bounded probes; only this thread accesses widgets or tree mappings."""
         if not hasattr(self, "_host_pending"):
+            self._host_executor = _create_host_probe_pool()
+            self._host_check_timer = None
+            self.bind("<Destroy>", lambda event: self._close_host_checks(event), add="+")
             self._host_pending = set()
             self._host_results = queue.SimpleQueue()
             self._host_pumping = False
@@ -1841,15 +1845,22 @@ class SessionTree(ttk.Frame):
             self._host_pending.add(session.key)
             self._set_item_status(item_id, "checking")
             try:
-                future = _HOST_PROBES.submit(check_host_reachable, session.hostname, session.port, timeout=timeout)
+                future = self._host_executor.submit(check_host_reachable, session.hostname, session.port, timeout=timeout)
                 future.add_done_callback(lambda result, iid=item_id, value=session: completed(result, iid, value))
             except RuntimeError:
                 self._host_results.put((generation, item_id, session, False))
         if self._host_pending and not self._host_pumping:
             self._host_pumping = True
-            self.after(50, self._pump_host_checks)
+            self._host_check_timer = self.after(50, self._pump_host_checks)
+
+    def _close_host_checks(self, event) -> None:
+        if event.widget is self:
+            self._host_executor.shutdown(wait=False, cancel_futures=True)
+            if self._host_check_timer is not None:
+                self.after_cancel(self._host_check_timer)
 
     def _pump_host_checks(self) -> None:
+        self._host_check_timer = None
         if not self.winfo_exists():
             return
         while True:
@@ -1861,7 +1872,7 @@ class SessionTree(ttk.Frame):
             if generation == getattr(self, "_populate_generation", 0) and self._item_to_session.get(item_id) is session:
                 self._set_item_status(item_id, "ok" if ok else "fail")
         if self._host_pending:
-            self.after(50, self._pump_host_checks)
+            self._host_check_timer = self.after(50, self._pump_host_checks)
         else:
             self._host_pumping = False
 

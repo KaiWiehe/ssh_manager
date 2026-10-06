@@ -1127,6 +1127,7 @@ class RegistryReader:
         sessions: list[Session] = []
         self.warnings = []
         self._skipped = 0
+        self._invalid_ports = 0
 
         with winreg.OpenKey(self.REGISTRY_BASE, REGISTRY_PATH) as base_key:
             index = 0
@@ -1150,6 +1151,8 @@ class RegistryReader:
 
         if self._skipped:
             self.warnings.append(f"WinSCP: {self._skipped} Einträge konnten nicht gelesen werden oder enthalten ungültige Verbindungsdaten.")
+        if self._invalid_ports:
+            self.warnings.append(f"WinSCP: {self._invalid_ports} Verbindungen mit ungültigem Port übersprungen; erlaubt sind 1–65535.")
         sessions.sort(key=lambda s: (s.folder_key.lower(), s.display_name.lower()))
         return sessions
 
@@ -1189,6 +1192,7 @@ class RegistryReader:
         try:
             port = read_port(port)
         except ValueError:
+            self._invalid_ports = getattr(self, "_invalid_ports", 0) + 1
             self._skipped = getattr(self, "_skipped", 0) + 1
             return None
 

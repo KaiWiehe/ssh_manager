@@ -10,6 +10,10 @@ class Owner:
     def winfo_exists(self):
         assert threading.get_ident() == self.thread
         return self.exists
+    def bind(self, *args, **kwargs):
+        return "binding"
+    def unbind(self, *args):
+        assert threading.get_ident() == self.thread
     def after(self, delay, callback):
         assert threading.get_ident() == self.thread
         self.callbacks.append(callback)
@@ -59,3 +63,38 @@ def test_diagnostics_exclude_exception_secrets_and_bound_log_size(tmp_path, monk
         for handler in logger.handlers:
             handler.close()
         logger.handlers = previous
+
+
+def test_real_tk_stays_responsive_until_worker_result_arrives():
+    import time
+    import tkinter as tk
+    import pytest
+    try:
+        root = tk.Tk()
+    except tk.TclError as error:
+        pytest.skip(str(error))
+    root.withdraw()
+    release = threading.Event()
+    received = []
+    ticks = []
+    errors = []
+    root.report_callback_exception = lambda *args: errors.append(args)
+    try:
+        thread = run_worker(root, lambda: (release.wait(2), 42)[1], received.append)
+        root.after(5, lambda: ticks.append(True))
+        deadline = time.monotonic() + 1
+        while not ticks and time.monotonic() < deadline:
+            root.update()
+            time.sleep(.01)
+        assert ticks and not received
+        release.set()
+        thread.join(2)
+        deadline = time.monotonic() + 1
+        while not received and time.monotonic() < deadline:
+            root.update()
+            time.sleep(.01)
+        assert received == [42]
+        assert errors == []
+    finally:
+        release.set()
+        root.destroy()

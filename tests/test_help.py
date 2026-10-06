@@ -154,3 +154,22 @@ def test_shift_enter_activates_focused_row_with_default_binding(app):
     app._tree._tv.event_generate("<Shift-Return>")
     app.update()
     activate.assert_called_once_with()
+
+
+def test_search_empty_state_and_palette_no_results_are_visible(app):
+    app._tree.filter("unbekanntes-security-test-thema")
+    app.update()
+    assert app._tree._empty_title.get() == "Keine Suchtreffer"
+    assert not app._tree._empty_add_button.winfo_ismapped()
+    app._tree.filter("")
+    app.update()
+    assert app._tree._empty_title.get() == "Keine Verbindungen vorhanden"
+    from ssh_manager_app.actions_app import open_command_palette
+    open_command_palette(app)
+    app.update()
+    palette = app._command_palette
+    palette._entry.insert(0, "unbekanntes-security-test-thema")
+    palette._on_query_changed()
+    assert not palette._ranked
+    assert "Keine Treffer" in palette._listbox.get(0)
+    palette._close()

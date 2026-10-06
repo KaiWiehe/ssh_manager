@@ -119,8 +119,10 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         ttk.Label(root, textvariable=self._status_var, style="Muted.TLabel", wraplength=620).grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
         controls = ttk.Frame(root)
         controls.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
-        ttk.Button(controls, text="Eine Ebene hoch", command=self._up).pack(side="left")
-        ttk.Button(controls, text="Aktualisieren", command=self._load).pack(side="left", padx=(8, 0))
+        self._up_button = ttk.Button(controls, text="Eine Ebene hoch", command=self._up)
+        self._up_button.pack(side="left")
+        self._refresh_button = ttk.Button(controls, text="Aktualisieren", command=self._load)
+        self._refresh_button.pack(side="left", padx=(8, 0))
         ttk.Button(controls, text="Abbrechen", command=self._on_cancel).pack(side="right")
         self._use_button = ttk.Button(controls, text="Diesen Ordner verwenden", command=self._use_current)
         self._use_button.pack(side="right", padx=(0, 8))
@@ -144,6 +146,8 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self._host_combo.configure(state="disabled")
         self._path_entry.configure(state="disabled")
         self._use_button.configure(state="disabled")
+        self._up_button.configure(state="disabled")
+        self._refresh_button.configure(state="disabled")
         self._loading = True
         session, user = self._selected_session_user()
         self._load_generation += 1
@@ -159,6 +163,8 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self._loading = False
         self._path_entry.configure(state="normal")
         self._use_button.configure(state="normal")
+        self._up_button.configure(state="normal")
+        self._refresh_button.configure(state="normal")
         self._host_combo.configure(state="readonly")
         self._folders.configure(state="normal")
         if error:

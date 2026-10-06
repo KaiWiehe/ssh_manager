@@ -9,6 +9,7 @@ from .core import _find_winscp
 from .dialogs_settings_misc import SshConfigInspectDialog
 from .models import Session
 from .workers import run_worker
+from .editor import open_in_vscode
 
 
 def inspect_ssh_config(app, session: Session) -> None:
@@ -20,8 +21,8 @@ def inspect_ssh_config(app, session: Session) -> None:
 def open_ssh_config_in_vscode(app) -> None:
     """Öffnet ~/.ssh/config in VS Code."""
     try:
-        subprocess.Popen(f'code "{_SSH_CONFIG_FILE}"', shell=True)
-    except OSError as exc:
+        open_in_vscode(_SSH_CONFIG_FILE)
+    except (OSError, ValueError) as exc:
         messagebox.showerror("VS Code nicht gefunden", f"Fehler beim Öffnen:\n{exc}", parent=app)
 
 

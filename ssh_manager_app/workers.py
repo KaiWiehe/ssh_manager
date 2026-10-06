@@ -8,6 +8,12 @@ from tkinter import messagebox
 
 def run_worker(owner, work, on_success, on_error=None):
     events = queue.SimpleQueue()
+    timer = None
+    binding = None
+
+    def cancel(event):
+        if event.widget is owner and timer is not None:
+            owner.after_cancel(timer)
 
     def worker():
         try:
@@ -16,13 +22,17 @@ def run_worker(owner, work, on_success, on_error=None):
             events.put((False, error))
 
     def pump():
+        nonlocal timer
+        timer = None
         if not owner.winfo_exists():
             return
         try:
             ok, value = events.get_nowait()
         except queue.Empty:
-            owner.after(50, pump)
+            timer = owner.after(50, pump)
             return
+        if binding is not None:
+            owner.unbind("<Destroy>", binding)
         if not ok:
             from .errors import record_failure
             record_failure(value)
@@ -33,7 +43,8 @@ def run_worker(owner, work, on_success, on_error=None):
         else:
             messagebox.showerror("Hintergrundaufgabe fehlgeschlagen", "Die Aufgabe konnte nicht abgeschlossen werden.", parent=owner)
 
-    owner.after(50, pump)
+    binding = owner.bind("<Destroy>", cancel, add="+")
+    timer = owner.after(50, pump)
     thread = threading.Thread(target=worker, daemon=True)
     try:
         thread.start()
