@@ -15,6 +15,20 @@ from .editor import open_in_vscode
 from .storage import save_app_sessions, save_notes, save_sessions_and_notes
 
 
+def _confirm_folder_merge(app, target_path: list[str], source_paths: list[list[str]]) -> bool:
+    """Existing parent folders count as destinations even without direct sessions."""
+    if all(path == target_path for path in source_paths):
+        return True
+    known = list(app._app_sessions) + list(app._sessions)
+    if not any(session.folder_path[:len(target_path)] == target_path for session in known):
+        return True
+    return messagebox.askyesno(
+        "Ordner zusammenführen?",
+        f"Der Ordner '{'/'.join(target_path)}' existiert bereits.\n\nVerbindungen und gegebenenfalls gleichnamige Unterordner werden zusammen angezeigt. Keine Verbindung wird gelöscht.\nZusammenführen?",
+        parent=app, icon="warning",
+    )
+
+
 def add_session(app, folder_preset: str = "") -> None:
     """Öffnet den Dialog zum Anlegen einer neuen Session (App oder SSH-Alias)."""
     dialog = SessionEditDialog(
@@ -72,6 +86,8 @@ def move_session(app, session: Session) -> None:
     if dialog.result is None:
         return
     folder_path = [p for p in dialog.result.split("/") if p]
+    if folder_path and not _confirm_folder_merge(app, folder_path, [session.folder_path]):
+        return
     for i, existing in enumerate(app._app_sessions):
         if existing.key == session.key:
             app._app_sessions[i] = replace(existing, folder_path=list(folder_path))
@@ -89,6 +105,8 @@ def move_sessions(app, sessions: list[Session]) -> None:
     if dialog.result is None:
         return
     folder_path = [p for p in dialog.result.split("/") if p]
+    if folder_path and not _confirm_folder_merge(app, folder_path, [session.folder_path for session in sessions]):
+        return
     keys = {session.key for session in sessions}
     for i, existing in enumerate(app._app_sessions):
         if existing.key in keys:
@@ -140,6 +158,11 @@ def rename_folder(app, folder_key: str) -> None:
     if not new_name or new_name.strip() == old_name:
         return
     new_name = new_name.strip()
+    if "/" in new_name or new_name in {".", ".."} or any(ord(char) < 32 or ord(char) == 127 for char in new_name):
+        messagebox.showwarning("Ungültiger Ordnername", "Bitte einen einzelnen Ordnernamen ohne '/', '..' oder Steuerzeichen eingeben.", parent=app)
+        return
+    if not _confirm_folder_merge(app, prefix + [new_name], [parts]):
+        return
 
     for session in app._app_sessions:
         folder_path = session.folder_path

@@ -111,17 +111,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Problem:** `("app", "ssh_alias")` steht rund zwölfmal im Code. `"★ Favoriten"` und `"↺ Zuletzt verwendet"` sind hartkodiert, dazu Limits wie `[:10]`, `[:25]` und `450` ms.
 **Fix:** Ein `SessionSource`-Enum und Konstanten in `constants.py` anlegen, dazu `Session.is_editable`.
 
-#### [DC-M13] Verbleibende Ordnernamen- und Konfliktentscheidung
-**Teilweise erledigt:** Identische Session-Kopien verwenden dataclasses.replace; leere Mehrfachauswahl wird abgefangen. Namen/Konflikte bleiben bewusst offen.
-**Datei:** `ssh_manager_app/actions_sessions.py` (Z. 78–110, 142–165, 199–207, 94)
-**Problem:** Mehrere Schwachstellen:
-- `Session` wird dreimal von Hand kopiert.
-- Ein `/` im neuen Ordnernamen zerlegt den Pfad.
-- Bei Namenskollisionen werden Ordner still zusammengelegt.
-- `sessions[0]` wird ohne Leerprüfung verwendet.
-
-**Fix:** `dataclasses.replace` verwenden und den Namen validieren (leer, `/`, Duplikat).
-
 ### NIEDRIG
 #### [DC-L1] Root-`winreg.py`-Stub ist irreführend
 **Datei:** `winreg.py`, `ssh_manager_app/core.py` (Z. 18), `tests/conftest.py`
@@ -187,6 +176,21 @@ Keine.
 ---
 
 ## Done
+
+~~#### [DC-M13] Verbleibende Ordnernamen- und Konfliktentscheidung~~
+~~**Teilweise erledigt:** Identische Session-Kopien verwenden dataclasses.replace; leere Mehrfachauswahl wird abgefangen. Namen/Konflikte bleiben bewusst offen.~~
+~~**Datei:** `ssh_manager_app/actions_sessions.py` (Z. 78–110, 142–165, 199–207, 94)~~
+~~**Problem:** Mehrere Schwachstellen:~~
+~~- `Session` wird dreimal von Hand kopiert.~~
+~~- Ein `/` im neuen Ordnernamen zerlegt den Pfad.~~
+~~- Bei Namenskollisionen werden Ordner still zusammengelegt.~~
+~~- `sessions[0]` wird ohne Leerprüfung verwendet.~~
+
+~~**Fix:** `dataclasses.replace` verwenden und den Namen validieren (leer, `/`, Duplikat).~~
+
+**Umgesetzt 06.10.2026:** Ordnernamen beim Umbenennen validiert; vorhandene Ziele auch mit Unterordnern erkannt, Zusammenführen beim Umbenennen/Verschieben ausdrücklich bestätigen. Abbrechen verändert keine Daten.
+
+
 
 ~~#### [BP-H1] Zertifikats-Zielordner nur mit `startswith("/")` geprüft~~
 ~~**Datei:** `ssh_manager_app/dialogs_certificates.py` (Z. 358–386)~~
