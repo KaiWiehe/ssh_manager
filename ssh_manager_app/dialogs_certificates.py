@@ -8,6 +8,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .ssh_utils import connection_value
+from .certificate_paths import certificate_paths, confirm_broad_certificate_paths
 from .secret_scripts import clear_password_fields
 from .models import Session
 from .ui_components import build_dialog_header, fit_window_to_parent
@@ -361,7 +362,11 @@ class CertificateDeployDialog(tk.Toplevel):
         self._post_command.insert("1.0", command)
 
     def _browse_remote_folders(self) -> None:
-        target_dirs = self._get_target_dirs()
+        try:
+            target_dirs = self._get_target_dirs()
+        except ValueError as exc:
+            messagebox.showwarning("Ungültiger Zielordner", str(exc), parent=self)
+            return
         dialog = RemoteFolderBrowserDialog(
             self,
             self._reference_sessions,
@@ -376,7 +381,7 @@ class CertificateDeployDialog(tk.Toplevel):
                 self._target_dirs_text.insert("1.0", "\n".join(target_dirs))
 
     def _get_target_dirs(self) -> list[str]:
-        return [line.strip() for line in self._target_dirs_text.get("1.0", "end").splitlines() if line.strip()]
+        return certificate_paths(self._target_dirs_text.get("1.0", "end").split("\n"))
 
     def _on_ok(self) -> None:
         if not self._files:
@@ -390,7 +395,11 @@ class CertificateDeployDialog(tk.Toplevel):
         if len(names) != len(set(names)):
             messagebox.showwarning("Doppelte Dateinamen", "Die ausgewählten Dateien müssen unterschiedliche Dateinamen haben.", parent=self)
             return
-        target_dirs = self._get_target_dirs()
+        try:
+            target_dirs = self._get_target_dirs()
+        except ValueError as exc:
+            messagebox.showwarning("Ungültiger Zielordner", str(exc), parent=self)
+            return
         if not target_dirs:
             messagebox.showwarning("Kein Zielordner", "Bitte mindestens einen Zielordner angeben.", parent=self)
             return
@@ -398,6 +407,8 @@ class CertificateDeployDialog(tk.Toplevel):
             messagebox.showwarning("Ungültiger Zielordner", "Bitte ausschließlich absolute Linux-Pfade angeben, z. B. /etc/ssl/private.", parent=self)
             return
         target_dirs = list(dict.fromkeys(path.rstrip("/") or "/" for path in target_dirs))
+        if not confirm_broad_certificate_paths(self, target_dirs):
+            return
         self.result = {
             "files": list(self._files),
             "target_dirs": target_dirs,

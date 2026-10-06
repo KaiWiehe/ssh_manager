@@ -142,11 +142,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 ## ✅ Best Practice
 
 ### HOCH
-#### [BP-H1] Zertifikats-Zielordner nur mit `startswith("/")` geprüft
-**Datei:** `ssh_manager_app/dialogs_certificates.py` (Z. 358–386)
-**Problem:** `..`, Steuerzeichen und Systemwurzeln (`/`, `/etc`, `/usr`) werden für Schreiboperationen mit sudo akzeptiert.
-**Fix:** Mit `posixpath.normpath` normalisieren und `..` sowie Steuerzeichen ablehnen. Bei kritischen Wurzeln zusätzlich bestätigen lassen.
-
 ### MITTEL
 #### [BP-M2] Verbleibende doppelte Settings-Allowlists
 **Offen:** Die erlaubten Themes, Akzentfarben und Schriften sind zwischen Storage und Settings-UI doppelt gepflegt. Zentralisierung bleibt ein späterer Refactor.
@@ -192,6 +187,15 @@ Keine.
 ---
 
 ## Done
+
+~~#### [BP-H1] Zertifikats-Zielordner nur mit `startswith("/")` geprüft~~
+~~**Datei:** `ssh_manager_app/dialogs_certificates.py` (Z. 358–386)~~
+~~**Problem:** `..`, Steuerzeichen und Systemwurzeln (`/`, `/etc`, `/usr`) werden für Schreiboperationen mit sudo akzeptiert.~~
+~~**Fix:** Mit `posixpath.normpath` normalisieren und `..` sowie Steuerzeichen ablehnen. Bei kritischen Wurzeln zusätzlich bestätigen lassen.~~
+
+**Umgesetzt 06.10.2026:** Gemeinsame Pfadvalidierung für Suche und Deploy: normalisiert, Steuerzeichen und .. abgelehnt; breite Systemordner nur nach Warnung erlaubt, gültige Unterordner erhalten.
+
+
 
 ~~#### [S-M4] CSV-/Formula-Injection im Export~~
 ~~**Datei:** `ssh_manager_app/exports.py` (Z. 31–41)~~

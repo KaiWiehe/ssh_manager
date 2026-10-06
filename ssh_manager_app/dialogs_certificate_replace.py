@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .certificate_paths import certificate_paths, confirm_broad_certificate_paths
+
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -75,10 +77,13 @@ class CertificateReplaceDialog(tk.Toplevel):
         for path in self._files: self._files_list.insert("end", path)
 
     def _roots_value(self):
-        return list(dict.fromkeys(line.strip().rstrip("/") or "/" for line in self._roots.get("1.0", "end").splitlines() if line.strip()))
+        return self._roots.get("1.0", "end").split("\n")
 
     def _browse_roots(self):
-        roots = self._roots_value()
+        try:
+            roots = certificate_paths(self._roots_value())
+        except ValueError as exc:
+            messagebox.showwarning("Ungültiger Pfad", str(exc), parent=self); return
         dialog = RemoteFolderBrowserDialog(self, self._reference_sessions, roots[-1] if roots else "/", self._sudo_password.get())
         self.wait_window(dialog)
         if dialog.result and dialog.result not in roots:
@@ -92,7 +97,10 @@ class CertificateReplaceDialog(tk.Toplevel):
             self._post.delete("1.0", "end"); self._post.insert("1.0", str(self._favorites[index]["command"]).strip())
 
     def _ok(self):
-        roots = self._roots_value()
+        try:
+            roots = certificate_paths(self._roots_value())
+        except ValueError as exc:
+            messagebox.showwarning("Ungültiger Pfad", str(exc), parent=self); return
         if not roots:
             messagebox.showwarning("Leere Whitelist", "Bitte mindestens einen Whitelist-Suchpfad angeben.", parent=self); return
         if any(not root.startswith("/") for root in roots):
@@ -102,6 +110,8 @@ class CertificateReplaceDialog(tk.Toplevel):
         names = [Path(path).name for path in self._files]
         if len(names) != len(set(names)):
             messagebox.showwarning("Doppelte Namen", "Ausgewählte Dateien müssen unterschiedliche Namen haben.", parent=self); return
+        if not confirm_broad_certificate_paths(self, roots, search=True):
+            return
         self._on_whitelist_changed(roots)
         self.result = {"files": list(self._files), "roots": roots, "sudo_password": self._sudo_password.get(), "keystore_password": self._keystore_password.get(), "post_command": self._post.get("1.0", "end").strip(), "close_on_success": self._close_on_success.get()}
         clear_password_fields(self)
