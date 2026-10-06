@@ -675,7 +675,6 @@ class SettingsView(ttk.Frame):
         return "break"
 
     def _event_to_shortcut_string(self, event: tk.Event) -> str:
-        from .shortcuts import _MOD_ALIASES  # noqa: F401
 
         mods: list[str] = []
         state = int(getattr(event, "state", 0) or 0)

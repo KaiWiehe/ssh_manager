@@ -304,3 +304,15 @@ def test_invalid_whitelist_is_not_persisted():
     with patch("ssh_manager_app.dialogs_certificate_replace.messagebox.showwarning"):
         CertificateReplaceDialog._ok(dialog)
     dialog._on_whitelist_changed.assert_not_called()
+
+
+def test_empty_multi_session_actions_do_not_open_dialogs():
+    from ssh_manager_app.actions_sessions import move_sessions, set_sessions_username, clear_sessions_username
+    from unittest.mock import Mock
+    app = Mock()
+    with patch("ssh_manager_app.actions_sessions.MoveFolderDialog") as dialog, patch("ssh_manager_app.actions_sessions.tk.Toplevel") as window:
+        move_sessions(app, [])
+        set_sessions_username(app, [])
+        clear_sessions_username(app, [])
+    dialog.assert_not_called()
+    window.assert_not_called()

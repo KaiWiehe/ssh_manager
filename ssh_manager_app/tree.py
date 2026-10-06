@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import socket
 import queue
 from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
@@ -53,25 +52,25 @@ class SessionTree(ttk.Frame):
         on_selection_changed,  # Callable[[int], None]
         initial_open_folders: set[str] | None = None,
         initial_session_colors: dict[str, str] | None = None,
-        on_quick_connect=None,           # Callable[[Session], None] | None
+        on_quick_connect=None,           # Callable[[list[Session]], None] | None
         on_connect_sessions=None,        # Callable[[list[Session]], None] | None
-        on_edit_session=None,            # Callable[[Session], None] | None
+        on_edit_session=None,            # Callable[[list[Session]], None] | None
         on_set_sessions_username=None,   # Callable[[list[Session]], None] | None
         on_clear_sessions_username=None, # Callable[[list[Session]], None] | None
-        on_delete_session=None,          # Callable[[Session], None] | None
+        on_delete_session=None,          # Callable[[list[Session]], None] | None
         on_delete_folder=None,           # Callable[[list[Session], str], None] | None
         on_rename_folder=None,           # Callable[[str, str], None] | None  (folder_key, new_name)
         on_add_session=None,             # Callable[[], None] | None
         on_add_session_in_folder=None,   # Callable[[str], None] | None  (folder_key)
-        on_duplicate_ssh_alias=None,     # Callable[[Session], None] | None
-        on_inspect_ssh_config=None,      # Callable[[Session], None] | None
-        on_duplicate_app_session=None,   # Callable[[Session], None] | None
-        on_move_session=None,            # Callable[[Session], None] | None
+        on_duplicate_ssh_alias=None,     # Callable[[list[Session]], None] | None
+        on_inspect_ssh_config=None,      # Callable[[list[Session]], None] | None
+        on_duplicate_app_session=None,   # Callable[[list[Session]], None] | None
+        on_move_session=None,            # Callable[[list[Session]], None] | None
         on_move_sessions=None,           # Callable[[list[Session]], None] | None
         on_open_ssh_config_in_vscode=None,  # Callable[[], None] | None
         on_deploy_ssh_key=None,             # Callable[[list[Session]], None] | None
         on_remove_ssh_key=None,             # Callable[[list[Session]], None] | None
-        on_open_tunnel=None,                # Callable[[Session], None] | None
+        on_open_tunnel=None,                # Callable[[list[Session]], None] | None
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
         on_restart_servers=None,            # Callable[[list[Session]], None] | None
@@ -79,14 +78,14 @@ class SessionTree(ttk.Frame):
         on_replace_certificates=None,       # Callable[[list[Session]], None] | None
         on_resolve_dns=None,                # Callable[[list[Session]], None] | None
         on_resolve_dns_with_server=None,    # Callable[[list[Session]], None] | None
-        on_open_via_jumphost=None,          # Callable[[Session], None] | None
-        on_copy_ssh_command=None,           # Callable[[Session], None] | None
+        on_open_via_jumphost=None,          # Callable[[list[Session]], None] | None
+        on_copy_ssh_command=None,           # Callable[[list[Session]], None] | None
         on_ui_state_changed=None,           # Callable[[], None] | None
         notes_getter=None,                  # Callable[[str], str] | None
-        on_edit_note=None,                  # Callable[[Session], None] | None
+        on_edit_note=None,                  # Callable[[list[Session]], None] | None
         on_add_favorite=None,               # Callable[[Session, bool], None] | None
         on_add_favorites=None,              # Callable[[list[Session], bool], None] | None
-        on_remove_favorite=None,            # Callable[[Session], None] | None
+        on_remove_favorite=None,            # Callable[[list[Session]], None] | None
         favorite_keys_getter=None,          # Callable[[], set[str]] | None
         on_hide_column=None,                # Callable[[str], None] | None
         toolbar_settings: ToolbarSettings | None = None,
@@ -823,7 +822,6 @@ class SessionTree(ttk.Frame):
                             open=was_open,
                             tags=(self.TAG_FOLDER,),
                         )
-                        self._tv.tag_bind(folder_id, "<<TreeviewOpen>>", lambda e: None)
                         folder_items[folder_key] = folder_id
                         self._item_to_folder_key[folder_id] = folder_key
                     parent_id = folder_items[folder_key]

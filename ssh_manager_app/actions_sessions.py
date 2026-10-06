@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import tkinter as tk
+from dataclasses import replace
 from tkinter import messagebox, simpledialog, ttk
 
 from .actions_app import get_all_folder_names, get_ssh_aliases
@@ -73,15 +74,7 @@ def move_session(app, session: Session) -> None:
     folder_path = [p for p in dialog.result.split("/") if p]
     for i, existing in enumerate(app._app_sessions):
         if existing.key == session.key:
-            app._app_sessions[i] = Session(
-                key=existing.key,
-                display_name=existing.display_name,
-                folder_path=folder_path,
-                hostname=existing.hostname,
-                username=existing.username,
-                port=existing.port,
-                source=existing.source,
-            )
+            app._app_sessions[i] = replace(existing, folder_path=list(folder_path))
             break
     save_app_sessions(app._app_sessions)
     rebuild_sessions(app)
@@ -89,6 +82,8 @@ def move_session(app, session: Session) -> None:
 
 def move_sessions(app, sessions: list[Session]) -> None:
     """Verschiebt mehrere App-/SSH-Alias-Sessions in denselben Ordner."""
+    if not sessions:
+        return
     dialog = MoveFolderDialog(app, get_all_folder_names(app), sessions[0].folder_key)
     app.wait_window(dialog)
     if dialog.result is None:
@@ -97,15 +92,7 @@ def move_sessions(app, sessions: list[Session]) -> None:
     keys = {session.key for session in sessions}
     for i, existing in enumerate(app._app_sessions):
         if existing.key in keys:
-            app._app_sessions[i] = Session(
-                key=existing.key,
-                display_name=existing.display_name,
-                folder_path=folder_path,
-                hostname=existing.hostname,
-                username=existing.username,
-                port=existing.port,
-                source=existing.source,
-            )
+            app._app_sessions[i] = replace(existing, folder_path=list(folder_path))
     save_app_sessions(app._app_sessions)
     rebuild_sessions(app)
 
@@ -194,15 +181,7 @@ def _set_session_username(app, session: Session, username: str) -> None:
     updated_app_session = False
     for i, existing in enumerate(app._app_sessions):
         if existing.key == session.key:
-            app._app_sessions[i] = Session(
-                key=existing.key,
-                display_name=existing.display_name,
-                folder_path=existing.folder_path,
-                hostname=existing.hostname,
-                username=username,
-                port=existing.port,
-                source=existing.source,
-            )
+            app._app_sessions[i] = replace(existing, username=username)
             updated_app_session = True
             break
     if updated_app_session:
@@ -220,6 +199,8 @@ def set_session_username(app, session: Session, username: str) -> None:
 
 
 def set_sessions_username(app, sessions: list[Session]) -> None:
+    if not sessions:
+        return
     dialog = tk.Toplevel(app)
     dialog.title("Benutzer setzen")
     dialog.resizable(False, False)
@@ -250,7 +231,7 @@ def set_sessions_username(app, sessions: list[Session]) -> None:
         if not user:
             messagebox.showwarning("Benutzer setzen", "Benutzername darf nicht leer sein.", parent=dialog)
             return
-        if not _USERNAME_RE.match(user):
+        if not _USERNAME_RE.fullmatch(user):
             messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=dialog)
             return
         result["user"] = user
@@ -278,6 +259,8 @@ def set_sessions_username(app, sessions: list[Session]) -> None:
 
 
 def clear_sessions_username(app, sessions: list[Session]) -> None:
+    if not sessions:
+        return
     if not messagebox.askyesno(
         "Benutzer entfernen",
         f"Fest gesetzten Benutzer für {len(sessions)} Verbindung(en) entfernen?\n\nDanach wird beim Verbinden wieder gefragt.",

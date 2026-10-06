@@ -5,7 +5,7 @@ from dataclasses import replace
 from copy import deepcopy
 
 from .dialogs_toast import ToastNotification
-from .models import AppearanceSettings, AppSettings, SourceVisibilitySettings, ToolbarSettings
+from .models import AppearanceSettings, AppSettings, SourceVisibilitySettings, ToolbarSettings, Session
 from .storage import load_filezilla_config_sessions, load_ssh_config_sessions, save_settings, save_ui_state
 from .ui import configure_app_styles, layout_toolbar_buttons, refresh_checkbox_images
 
@@ -150,12 +150,6 @@ def reset_settings(app) -> None:
     if app._settings_view is not None:
         app._settings_view.load_from_app()
 
-
-
-def restore_saved_settings(app) -> None:
-    apply_settings(app, getattr(app, "_persisted_settings", app.settings))
-    if app._settings_view is not None:
-        app._settings_view.load_from_app()
 
 
 def reset_session_colors(app) -> None:

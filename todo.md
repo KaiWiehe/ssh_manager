@@ -47,11 +47,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Fix:** Die Richtung Models/Storage → Core → Actions → UI festlegen. Die Verdrahtung in einem Composition-Root bündeln, Views bekommen Callbacks injiziert. Klein und schrittweise vorgehen (AGENTS.md-Refactor-Regeln).
 
 ### HOCH
-#### [DC-H2] Toter, nicht lauffähiger Duplikat-`SessionEditDialog` in `dialogs_remote.py`
-**Datei:** `ssh_manager_app/dialogs_remote.py` (Z. 1176–1442)
-**Problem:** Die zweite Kopie von `SessionEditDialog` (das Original liegt in `dialogs_session_edit.py`) referenziert die nicht importierten Namen `uuid`, `_APP_PREFIX` und `_SSH_ALIAS_PREFIX`. Das ist ein Rest eines Splits. `QUICK_USERS` ist ungenutzt importiert.
-**Fix:** Block Z. 1176–1442 löschen und den Import entfernen.
-
 #### [DC-H4] `core.py` ist ein God-Module (1192 Z.) mit fremden Verantwortlichkeiten
 **Datei:** `ssh_manager_app/core.py` (gesamt; Z. 165–198, 1145, 1190)
 **Problem:** `core.py` mischt WT-/Bash-Builder, Herdr, Launcher, Registry, Hostprüfung, Tk-Pixelbilder (UI-Code) und das Schreiben von `~/.ssh/config` (gehört in `storage`). Der Tab-Befehl wird achtmal identisch zusammengesetzt. Der Abschnittskommentar „UI-State Persistenz“ ist leer.
@@ -124,7 +119,8 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Problem:** `("app", "ssh_alias")` steht rund zwölfmal im Code. `"★ Favoriten"` und `"↺ Zuletzt verwendet"` sind hartkodiert, dazu Limits wie `[:10]`, `[:25]` und `450` ms.
 **Fix:** Ein `SessionSource`-Enum und Konstanten in `constants.py` anlegen, dazu `Session.is_editable`.
 
-#### [DC-M13] `actions_sessions`: manuelles Feld-Kopieren, `rename_folder` ohne Validierung
+#### [DC-M13] Verbleibende Ordnernamen- und Konfliktentscheidung
+**Teilweise erledigt:** Identische Session-Kopien verwenden dataclasses.replace; leere Mehrfachauswahl wird abgefangen. Namen/Konflikte bleiben bewusst offen.
 **Datei:** `ssh_manager_app/actions_sessions.py` (Z. 78–110, 142–165, 199–207, 94)
 **Problem:** Mehrere Schwachstellen:
 - `Session` wird dreimal von Hand kopiert.
@@ -139,24 +135,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Datei:** `winreg.py`, `ssh_manager_app/core.py` (Z. 18), `tests/conftest.py`
 **Problem:** Unter Windows ist `winreg` ein Built-in-Modul und wird **nicht** überschattet (geprüft: `'winreg' in sys.builtin_module_names` → `True`). Der Stub ist also nur für Nicht-Windows-Plattformen relevant und doppelt den Test-Stub in `conftest.py`.
 **Fix:** Den Root-Stub entfernen, wenn kein Nicht-Windows-Start nötig ist. Sonst `winreg` in `core.py` lazy bzw. per `try/except ImportError` importieren.
-
-#### [DC-L2] Callback-Vertrag `on_copy_ssh_command` inkonsistent
-**Datei:** `ssh_manager_app/tree.py` (Z. 80, 1301–1304, 1443–1446), `ssh_manager_app/ui.py` (Z. 380–385), `ssh_manager_app/actions_remote.py` (Z. 335)
-**Problem:** Die Annotation lautet `Session`, aufgerufen wird der Callback mit `list[Session]`. `copy_ssh_command` ist ungenutzt.
-**Fix:** Die Signatur auf `list[Session]` vereinheitlichen und den toten Wrapper entfernen.
-
-#### [DC-L4] Tote Reste und unbenutzte Imports
-**Datei:** `ssh_manager_app/tree.py` (Z. 3, 812, 1875), `ssh_manager_app/core.py` (Z. 212), `ssh_manager_app/actions_ui.py` (Z. 151, 251, 262), `ssh_manager_app/dialogs_settings_misc.py` (Z. 667, 699–706)
-**Problem:** Gefunden wurden:
-- `import socket` ungenutzt
-- Zeile `settings = …` doppelt
-- No-op-`tag_bind`
-- `restore_saved_settings` ungenutzt
-- `_MOD_ALIASES` ungenutzt
-- `Session` als Annotation ohne Import
-- verwaiste Abschnittskommentare
-
-**Fix:** Mit ruff/pyflakes prüfen und aufräumen.
 
 #### [DC-L5] `__init__.py` mit Star-Imports ohne `__all__`, `__import__("re")`, `dialogs_user.py`-Re-Export
 **Datei:** `ssh_manager_app/__init__.py` (Z. 1–3), `ssh_manager_app/dialogs_base.py` (Z. 10–11), `ssh_manager_app/dialogs_user.py`
@@ -624,3 +602,39 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 **Datei:** `ssh_manager_app/dialogs_certificate_replace.py` (Z. 27–45, 94)
 **Problem:** `_ok` speichert die Whitelist, bevor die Eingabe geprüft ist. Dazu kommen Semikolon-Ketten, die vom Dialogstil der übrigen Module abweichen.
 **Fix:** Erst nach erfolgreicher Validierung persistieren.
+
+#### ~~[DC-M13a] Interne Session-Kopien und leere Auswahl~~
+
+**Erledigt am 06.10.2026.** Feldkopien vereinfacht, leere Auswahllisten abgesichert. Ordnerkonflikte bleiben offen.
+
+#### ~~[DC-H2] Toter, nicht lauffähiger Duplikat-`SessionEditDialog` in `dialogs_remote.py`~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/dialogs_remote.py` (Z. 1176–1442)
+**Problem:** Die zweite Kopie von `SessionEditDialog` (das Original liegt in `dialogs_session_edit.py`) referenziert die nicht importierten Namen `uuid`, `_APP_PREFIX` und `_SSH_ALIAS_PREFIX`. Das ist ein Rest eines Splits. `QUICK_USERS` ist ungenutzt importiert.
+**Fix:** Block Z. 1176–1442 löschen und den Import entfernen.
+
+#### ~~[DC-L2] Callback-Vertrag `on_copy_ssh_command` inkonsistent~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/tree.py` (Z. 80, 1301–1304, 1443–1446), `ssh_manager_app/ui.py` (Z. 380–385), `ssh_manager_app/actions_remote.py` (Z. 335)
+**Problem:** Die Annotation lautet `Session`, aufgerufen wird der Callback mit `list[Session]`. `copy_ssh_command` ist ungenutzt.
+**Fix:** Die Signatur auf `list[Session]` vereinheitlichen und den toten Wrapper entfernen.
+
+#### ~~[DC-L4] Tote Reste und unbenutzte Imports~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/tree.py` (Z. 3, 812, 1875), `ssh_manager_app/core.py` (Z. 212), `ssh_manager_app/actions_ui.py` (Z. 151, 251, 262), `ssh_manager_app/dialogs_settings_misc.py` (Z. 667, 699–706)
+**Problem:** Gefunden wurden:
+- `import socket` ungenutzt
+- Zeile `settings = …` doppelt
+- No-op-`tag_bind`
+- `restore_saved_settings` ungenutzt
+- `_MOD_ALIASES` ungenutzt
+- `Session` als Annotation ohne Import
+- verwaiste Abschnittskommentare
+
+**Fix:** Mit ruff/pyflakes prüfen und aufräumen.
