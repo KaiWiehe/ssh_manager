@@ -16,16 +16,6 @@ Geprüft: Frontend + Backend + Package-Scan
 **Fix:** Vor dem Upload `ssh host 'umask 077; mkdir -m 700 /tmp/ssh-manager-cert-<uuid>'` ausführen und dorthin hochladen. Beim Deploy `sudo install -m 0600 -o root -g root -- src dst` verwenden (Mode wählbar, Default restriktiv). Aufräumen auch im Fehlerpfad.
 
 ### MITTEL
-#### [S-M1] Fester Here-Doc-Delimiter und ungeprüfter `interpreter` aus Favoriten/History
-**Datei:** `ssh_manager_app/core.py` (Z. 331–362), `ssh_manager_app/dialogs_remote.py` (Z. 775–799, 868–899), `ssh_manager_app/storage.py` (Z. 203–208)
-**Problem:** Remote-Befehle laufen in einem Here-Doc mit festem Delimiter `__REMOTE_CMD__`. Eine Zeile `__REMOTE_CMD__` im Befehl beendet es, und der Rest läuft **lokal** in Git Bash. `interpreter` kommt über `_apply_spec` ungeprüft aus `ui_state.json` und steht unquotet in der Skriptzeile.
-**Fix:** Delimiter pro Lauf zufällig erzeugen (`__REMOTE_CMD_{uuid4().hex}__`). `interpreter` gegen `{"bash", "sh", "python3", "python", "direct"}` prüfen. Das Spec-Dict beim Laden validieren.
-
-#### [S-M2] Vorhersagbarer Remote-Temp-Pfad für lokale Skripte
-**Datei:** `ssh_manager_app/core.py` (Z. 345–359)
-**Problem:** `remote_tmp = f"/tmp/ssh-manager-$(date +%s)-$$-{basename}"` wird anschließend single-quoted, `$(date)` und `$$` werden also nie expandiert. Der Pfad ist fest und vorhersagbar (Symlink- und Race-Risiko auf Multi-User-Hosts). `basename` geht ungefiltert ein.
-**Fix:** Den Namen lokal erzeugen: `f"/tmp/ssh-manager-{uuid.uuid4().hex}-{re.sub(r'[^A-Za-z0-9._-]', '_', basename)}"`, remote `umask 077` setzen.
-
 #### [S-M4] CSV-/Formula-Injection im Export
 **Datei:** `ssh_manager_app/exports.py` (Z. 31–41)
 **Problem:** Namen, Hosts und Notizen, die mit `=`, `+`, `-` oder `@` beginnen, wertet Excel als Formel aus. XLSX ist nicht betroffen (`inlineStr`).
@@ -539,3 +529,19 @@ tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.s
 **Datei:** `ssh_manager.py` (Z. 195–197), `ssh_manager_app/actions_ui.py` (Z. 12–15, 61–74), `ssh_manager_app/dialogs_settings_misc.py` (Z. 818–826, 1032, 1086–1099)
 **Problem:** `settings`, `_persisted_settings` und `_startup_settings` sind **dasselbe** Objekt. `preview_*` mutiert in-place, damit ändert sich der „gespeicherte“ Stand mit. `_import_settings` setzt `_persisted_settings` nicht neu. `_startup_settings` ist ungenutzt.
 **Fix:** Beim Start `copy.deepcopy` verwenden. `preview_*` per `dataclasses.replace` auf neue Objekte setzen. `_persisted_settings` nur in `apply_settings` und beim Laden schreiben.
+
+#### ~~[S-M1] Fester Here-Doc-Delimiter und ungeprüfter `interpreter` aus Favoriten/History~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/core.py` (Z. 331–362), `ssh_manager_app/dialogs_remote.py` (Z. 775–799, 868–899), `ssh_manager_app/storage.py` (Z. 203–208)
+**Problem:** Remote-Befehle laufen in einem Here-Doc mit festem Delimiter `__REMOTE_CMD__`. Eine Zeile `__REMOTE_CMD__` im Befehl beendet es, und der Rest läuft **lokal** in Git Bash. `interpreter` kommt über `_apply_spec` ungeprüft aus `ui_state.json` und steht unquotet in der Skriptzeile.
+**Fix:** Delimiter pro Lauf zufällig erzeugen (`__REMOTE_CMD_{uuid4().hex}__`). `interpreter` gegen `{"bash", "sh", "python3", "python", "direct"}` prüfen. Das Spec-Dict beim Laden validieren.
+
+#### ~~[S-M2] Vorhersagbarer Remote-Temp-Pfad für lokale Skripte~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/core.py` (Z. 345–359)
+**Problem:** `remote_tmp = f"/tmp/ssh-manager-$(date +%s)-$$-{basename}"` wird anschließend single-quoted, `$(date)` und `$$` werden also nie expandiert. Der Pfad ist fest und vorhersagbar (Symlink- und Race-Risiko auf Multi-User-Hosts). `basename` geht ungefiltert ein.
+**Fix:** Den Namen lokal erzeugen: `f"/tmp/ssh-manager-{uuid.uuid4().hex}-{re.sub(r'[^A-Za-z0-9._-]', '_', basename)}"`, remote `umask 077` setzen.

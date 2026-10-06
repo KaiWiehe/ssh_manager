@@ -809,6 +809,12 @@ class RemoteCommandDialog(tk.Toplevel):
         return spec
 
     def _apply_spec(self, item: dict) -> None:
+        from .core import validate_run_spec
+        try:
+            validate_run_spec(item)
+        except (ValueError, TypeError):
+            messagebox.showwarning("Ungültiges Runbook", "Modus oder Interpreter wird nicht unterstützt. Der gespeicherte Eintrag bleibt unverändert.", parent=self)
+            return
         self._run_mode.set(item.get("mode", "command"))
         self._interpreter.set(item.get("interpreter", "bash"))
         self._arguments_var.set(item.get("arguments", ""))

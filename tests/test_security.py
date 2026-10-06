@@ -218,3 +218,40 @@ def test_real_settings_cancel_restores_saved_toolbar(tmp_path, monkeypatch):
         assert app.settings is not app._persisted_settings
     finally:
         app.destroy()
+
+
+def test_old_heredoc_marker_cannot_escape_to_local_shell(tmp_path):
+    from ssh_manager_app.core import _find_git_bash, build_remote_command_wt_command
+    captured = {}
+    local_marker = tmp_path / "unexpected-local-file"
+    remote_command = "__REMOTE_CMD__\nprintf hacked > " + __import__('shlex').quote(str(local_marker).replace("\\", "/"))
+    with patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda prefix, content: captured.update(content=content) or "offline.sh"):
+        build_remote_command_wt_command([(Session("s", "Server", [], "host"), "ops", remote_command)], close_on_success=True)
+    output = tmp_path / "ssh-input"
+    script = tmp_path / "offline.sh"
+    script.write_text("ssh() { cat > " + __import__('shlex').quote(str(output).replace("\\", "/")) + "; }\n" + captured["content"], encoding="utf-8")
+    result = subprocess.run([_find_git_bash(), str(script)], capture_output=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert not local_marker.exists()
+    assert output.read_text() == remote_command + "\n"
+
+
+def test_invalid_runbook_interpreter_never_creates_script():
+    from ssh_manager_app.core import build_remote_script_wt_command
+    with patch("ssh_manager_app.core._write_temp_bash_script") as write:
+        with pytest.raises(ValueError):
+            build_remote_script_wt_command([(Session("s", "Server", [], "host"), "ops", {"mode": "remote_script", "interpreter": "bash; local-command"})], close_on_success=True)
+    write.assert_not_called()
+
+
+def test_local_script_has_unique_private_upload_directory():
+    from ssh_manager_app.core import build_remote_script_wt_command
+    captured = []
+    with patch("ssh_manager_app.core._write_temp_bash_script", side_effect=lambda prefix, content: captured.append(content) or "offline.sh"):
+        for _ in range(2):
+            build_remote_script_wt_command([(Session("s", "Server", [], "host", port=2222), "ops", {"mode": "local_script", "local_path": "script.py", "interpreter": "python3"})], close_on_success=True)
+    assert captured[0] != captured[1]
+    assert "mkdir -m 700" in captured[0]
+    assert "scp -P 2222 --" in captured[0]
+    assert "$(date" not in captured[0]
+    assert "rm -rf --" in captured[0]

@@ -95,6 +95,20 @@ def _shell_single_quote(text: str) -> str:
     return "'" + text.replace("'", "'\"'\"'") + "'"
 
 
+def _here_doc_delimiter(body: str) -> str:
+    while True:
+        delimiter = f"__SSH_MANAGER_{uuid.uuid4().hex}__"
+        if delimiter not in body:
+            return delimiter
+
+
+def validate_run_spec(spec: dict) -> None:
+    if spec.get("mode", "command") not in {"command", "local_script", "remote_script"}:
+        raise ValueError("Unbekannter Runbook-Modus.")
+    if spec.get("interpreter", "bash") not in {"bash", "sh", "python3", "python", "direct"}:
+        raise ValueError("Unbekannter Runbook-Interpreter.")
+
+
 def _sudo_password_prelude(sudo_password: str | None) -> list[str]:
     """Return a remote-shell wrapper for a one-off sudo password.
 
@@ -204,13 +218,13 @@ def build_remote_command_wt_command(
 ) -> TerminalCommand:
     """Erzeugt WT-Tabs, die pro Host ein lokales Bash-Skript starten."""
     settings = terminal_settings or WindowsTerminalSettings()
-    settings = terminal_settings or WindowsTerminalSettings()
     git_bash = _find_git_bash()
     colors = session_colors or {}
 
     parts = []
     for i, (session, user, remote_script) in enumerate(session_commands):
         ssh_cmd = _build_ssh_command(session, user)
+        delimiter = _here_doc_delimiter(remote_script + str(sudo_password))
         start_label = f"Start: {remote_script.strip() or '-'}"
         script_lines = [
             "#!/usr/bin/env bash",
@@ -222,12 +236,12 @@ def build_remote_command_wt_command(
         if sudo_password:
             script_lines.append("trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT")
         if close_on_success:
-            script_lines.append(f"{ssh_cmd} <<'__REMOTE_CMD__'")
+            script_lines.append(f"{ssh_cmd} <<'{delimiter}'")
         else:
-            script_lines.append(f"{ssh_cmd} -t <<'__REMOTE_CMD__'")
+            script_lines.append(f"{ssh_cmd} -t <<'{delimiter}'")
         script_lines.extend(_sudo_password_prelude(sudo_password))
         script_lines.append(remote_script)
-        script_lines.append("__REMOTE_CMD__")
+        script_lines.append(delimiter)
         script_lines.append("status=$?")
         if not close_on_success:
             if sudo_password:
@@ -319,6 +333,8 @@ def build_remote_script_wt_command(
     parts = []
     for i, (session, user, spec) in enumerate(session_commands):
         ssh_cmd = _build_ssh_command(session, user)
+        validate_run_spec(spec)
+        delimiter = _here_doc_delimiter(str(spec) + str(sudo_password))
         mode = str(spec.get("mode", "command"))
         interpreter = str(spec.get("interpreter", "bash") or "bash")
         command = str(spec.get("command", ""))
@@ -332,31 +348,31 @@ def build_remote_script_wt_command(
             script_line = f"{interpreter} {_shell_single_quote(remote_path)} {arguments}" if interpreter != "direct" else f"{_shell_single_quote(remote_path)} {arguments}"
             remote_script = _join_remote_steps(before_command, script_line, after_command)
             title = f"Remote-Skript: {remote_path}"
-            remote_body = f"{ssh_cmd} -t <<'__REMOTE_CMD__'\n{remote_script}\n__REMOTE_CMD__"
+            remote_body = f"{ssh_cmd} -t <<'{delimiter}'\n{remote_script}\n{delimiter}"
         elif mode == "local_script":
-            basename = Path(local_path).name or "script"
-            remote_tmp = f"/tmp/ssh-manager-$(date +%s)-$$-{basename}"
-            if session.is_ssh_config_session:
-                upload_target = scp_target(session, user)
-                scp_port = ""
-            else:
-                upload_target = scp_target(session, user)
-                scp_port = f"-P {session.port} " if session.port != 22 else ""
-            upload = f"scp {scp_port}-- {_shell_single_quote(local_path)} {_shell_single_quote(upload_target + ":" + remote_tmp)}"
+            basename = re.sub(r"[^A-Za-z0-9._-]", "_", Path(local_path).name) or "script"
+            remote_dir = f"/tmp/ssh-manager-script-{uuid.uuid4().hex}"
+            remote_tmp = remote_dir + "/" + basename
+            upload_target = scp_target(session, user)
+            scp_port = f"-P {valid_port(session.port)} " if session.port != 22 else ""
+            mkdir = f"{ssh_cmd} " + _shell_single_quote(f"umask 077; mkdir -m 700 -- {_shell_single_quote(remote_dir)}")
+            upload = f"scp {scp_port}-- {_shell_single_quote(local_path)} {_shell_single_quote(upload_target + ':' + remote_tmp)}"
             script_line = f"chmod +x {_shell_single_quote(remote_tmp)} && "
             script_line += f"{interpreter} {_shell_single_quote(remote_tmp)} {arguments}" if interpreter != "direct" else f"{_shell_single_quote(remote_tmp)} {arguments}"
-            remote_script = _join_remote_steps(before_command, script_line, after_command)
-            remote_script += f"\nstatus=$?\nrm -f {_shell_single_quote(remote_tmp)}\nexit $status"
+            remote_script = "trap " + _shell_single_quote(f"rm -rf -- {_shell_single_quote(remote_dir)}") + " EXIT\n" + _join_remote_steps(before_command, script_line, after_command)
+            remote_script += f"\nstatus=$?\nrm -rf -- {_shell_single_quote(remote_dir)}\nexit $status"
             title = f"Lokales Skript: {local_path}"
-            remote_body = f"{upload}\nif [ $? -ne 0 ]; then exit 1; fi\n{ssh_cmd} -t <<'__REMOTE_CMD__'\n{remote_script}\n__REMOTE_CMD__"
+            cleanup_ssh = shell_command(ssh_argv(session, user, ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"]))
+            cleanup = cleanup_ssh + " " + _shell_single_quote(f"rm -rf -- {_shell_single_quote(remote_dir)}")
+            remote_body = f"{mkdir}\nif [ $? -ne 0 ]; then exit 1; fi\n{upload}\nif [ $? -ne 0 ]; then {cleanup}; exit 1; fi\n{ssh_cmd} -t <<'{delimiter}'\n{remote_script}\n{delimiter}\n"
         else:
             title = f"Remote-Befehl: {command.strip() or '-'}"
-            remote_body = f"{ssh_cmd} {'-t ' if not close_on_success else ''}<<'__REMOTE_CMD__'\n{command}\n__REMOTE_CMD__"
+            remote_body = f"{ssh_cmd} {'-t ' if not close_on_success else ''}<<'{delimiter}'\n{command}\n{delimiter}"
 
         if sudo_password:
             remote_body = remote_body.replace(
-                "<<'__REMOTE_CMD__'\n",
-                "<<'__REMOTE_CMD__'\n" + "\n".join(_sudo_password_prelude(sudo_password)) + "\n",
+                f"<<'{delimiter}'\n",
+                f"<<'{delimiter}'\n" + "\n".join(_sudo_password_prelude(sudo_password)) + "\n",
             )
 
         execution_preview = _format_remote_execution_preview(spec)
@@ -370,6 +386,8 @@ def build_remote_script_wt_command(
             remote_body,
             "status=$?",
         ]
+        if mode == "local_script":
+            script_lines.append(f"if [ $status -ne 0 ]; then {cleanup} >/dev/null 2>&1 || true; fi")
         if sudo_password:
             script_lines.insert(1, "trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT")
         if not close_on_success:
@@ -405,6 +423,7 @@ def build_certificate_deploy_wt_command(
         sudo_password = str(spec.get("sudo_password") or "")
         post_command = str(spec.get("post_command") or "").strip()
         close_on_success = bool(spec.get("close_on_success"))
+        delimiter = _here_doc_delimiter(str(spec))
         run_id = uuid.uuid4().hex
         remote_tmp_files = [f"/tmp/ssh-manager-cert-{run_id}-{file_index}" for file_index in range(len(files))]
 
@@ -499,9 +518,9 @@ def build_certificate_deploy_wt_command(
         ])
         script_lines.extend([
             "printf '%s\\n' 'Alle Uploads erfolgreich. Installiere Dateien auf dem Zielhost …'",
-            f"{ssh_cmd} -t <<'__CERT_DEPLOY__'",
+            f"{ssh_cmd} -t <<'{delimiter}'",
             *remote_lines,
-            "__CERT_DEPLOY__",
+            delimiter,
             "status=$?",
             "if [ $status -eq 0 ]; then",
         ])
@@ -545,6 +564,7 @@ def build_certificate_replace_wt_command(
         sudo_password = str(spec.get("sudo_password") or "")
         post_command = str(spec.get("post_command") or "").strip()
         close_on_success = bool(spec.get("close_on_success"))
+        delimiter = _here_doc_delimiter(str(spec))
         run_id = uuid.uuid4().hex
         temp_paths = {name: f"/tmp/ssh-manager-replace-{run_id}-{item_index}" for item_index, name in enumerate(files_by_name)}
         ssh_cmd = _build_ssh_command(session, user)
@@ -582,9 +602,9 @@ def build_certificate_replace_wt_command(
         remote_lines.append("echo 'ZUSAMMENFASSUNG: Zertifikate erfolgreich ersetzt.'")
         cleanup_paths = " ".join(temp_paths.values())
         script_lines.extend([
-            f"{ssh_cmd} <<'__CERT_REPLACE__'",
+            f"{ssh_cmd} <<'{delimiter}'",
             *remote_lines,
-            "__CERT_REPLACE__",
+            delimiter,
             "status=$?",
             f"if [ $status -ne 0 ]; then {ssh_cmd} \"rm -f -- {cleanup_paths}\" >/dev/null 2>&1 || true; fi",
         ])

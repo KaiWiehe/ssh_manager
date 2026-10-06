@@ -251,7 +251,7 @@ def test_build_remote_command_wt_command_creates_temp_script_and_uses_git_bash()
     assert cmd.argv[-2].endswith('bash.exe')
     assert captured["prefix"] == "remote_cmd_"
     script_text = captured["content"]
-    assert "ssh -- deploy@10.0.0.9 -t <<'__REMOTE_CMD__'" in script_text
+    assert "ssh -- deploy@10.0.0.9 -t <<'__SSH_MANAGER_" in script_text
     assert "uptime" in script_text
     assert "exec ssh -- deploy@10.0.0.9" in script_text
 
@@ -395,7 +395,7 @@ def test_build_certificate_replace_uploads_only_files_with_matches_and_forces_tt
     script = captured["content"]
     assert "needed.jks" in script
     assert "unused.p12" not in script
-    assert "ssh -- deploy@10.0.0.9 <<'__CERT_REPLACE__'" in script
+    assert "ssh -- deploy@10.0.0.9 <<'__SSH_MANAGER_" in script
     assert "rm -f -- /tmp/ssh-manager-replace-" in script
 
 
