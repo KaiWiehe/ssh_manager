@@ -273,23 +273,26 @@ def restart_servers(app, sessions: list[Session]) -> None:
         def report(state: str, detail: str) -> None:
             events.put(("status", session.key, state, detail))
 
-        result = monitor_server_restart(
-            session,
-            user,
-            sudo_password,
-            service,
-            timeout_seconds,
-            progress.cancel_event,
-            report,
-        )
-        events.put(("done", session.key, result.status, result.detail))
+        try:
+            result = monitor_server_restart(
+                session, user, sudo_password, service, timeout_seconds,
+                progress.cancel_event, report,
+            )
+            events.put(("done", session.key, result.status, result.detail))
+        except Exception:
+            events.put(("done", session.key, "error", "Neustart-Prüfung unerwartet fehlgeschlagen. Zustand bitte manuell prüfen; kein automatischer Neustartversuch."))
 
     for session, user in session_users:
-        threading.Thread(target=run_one, args=(session, user), daemon=True).start()
+        try:
+            threading.Thread(target=run_one, args=(session, user), daemon=True).start()
+        except (RuntimeError, OSError):
+            events.put(("done", session.key, "error", "Hintergrundaufgabe konnte nicht gestartet werden."))
 
     completed: set[str] = set()
 
     def pump_events() -> None:
+        if not progress.winfo_exists():
+            return
         try:
             while True:
                 kind, session_key, state, detail = events.get_nowait()

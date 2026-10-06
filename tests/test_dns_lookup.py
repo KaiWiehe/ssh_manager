@@ -546,7 +546,7 @@ def test_async_dns_lookup_resolves_shared_hostname_once_and_labels_each_result()
     with patch("ssh_manager_app.actions_dns.DnsLookupProgressDialog", return_value=progress), \
          patch("ssh_manager_app.actions_dns.resolve_dns_value", return_value=resolved) as resolver, \
          patch("ssh_manager_app.actions_dns.DnsLookupResultsDialog") as results_dialog, \
-         patch("ssh_manager_app.actions_dns.threading.Thread", side_effect=run_thread_immediately):
+         patch("ssh_manager_app.actions_dns.run_worker", side_effect=lambda owner, work, done, failed: done(work())):
         _resolve_values_async(
             app,
             [
@@ -623,7 +623,7 @@ def test_async_manual_lookup_adds_matched_connection_name_to_result():
     with patch("ssh_manager_app.actions_dns.DnsLookupProgressDialog", return_value=progress), \
          patch("ssh_manager_app.actions_dns.resolve_dns_value", return_value=resolved), \
          patch("ssh_manager_app.actions_dns.DnsLookupResultsDialog") as results_dialog, \
-         patch("ssh_manager_app.actions_dns.threading.Thread", side_effect=run_thread_immediately):
+         patch("ssh_manager_app.actions_dns.run_worker", side_effect=lambda owner, work, done, failed: done(work())):
         _resolve_values_async(
             app,
             [("service.example.com", "auto", "")],

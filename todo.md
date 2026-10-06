@@ -216,16 +216,6 @@ def report_callback_exception(self, exc, val, tb):
 Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 
 ### HOCH
-#### [DX-H3] Zertifikat-Replace: Worker ohne `try/except`, modaler Dialog hängt
-**Datei:** `ssh_manager_app/actions_certificate_replace.py` (Z. 183–193), `ssh_manager_app/dialogs_certificate_replace.py` (Z. 219–236)
-**Problem:** Eine unerwartete Exception lässt den Thread sterben. Der `grab_set`-Progress-Dialog bleibt offen. Der Fortschritt ist nur indeterminate (40 s Timeout pro Host, seriell), und es gibt keinen Abbrechen-Button.
-**Fix:** Den Worker in `try/except` kapseln, bei einem Fehler `progress.close()` und `showerror` per `after`. Dazu „Host X von N“ anzeigen und einen Abbrechen-Button ergänzen.
-
-#### [DX-H4] Server-Neustart: `run_one` ohne `try/except`, Dialog bleibt auf „Neustart läuft…“
-**Datei:** `ssh_manager_app/actions_restart.py` (Z. 270–304)
-**Problem:** Ohne das `done`-Event läuft `pump_events` endlos. Nach dem Schließen des Dialogs folgen `TclError`s auf zerstörten Widgets.
-**Fix:** In `run_one` `except Exception` abfangen und ein `RestartResult("error", …)` zurückgeben. In `pump_events` `if not progress.winfo_exists(): return` einbauen.
-
 #### [DX-H5] Remote-Befehl: Command-Build außerhalb des `try`-Blocks, nach Bestätigung passiert nichts
 **Datei:** `ssh_manager_app/actions_remote.py` (Z. 257–281)
 **Problem:** `build_remote_command_wt_command` und `build_remote_script_wt_command` können `ValueError` bzw. `OSError` werfen (Temp-Datei, fehlendes Skript). Das endet als stille Callback-Exception.
@@ -256,16 +246,6 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 - Bei leerer Auswahl gibt es keine Meldung.
 
 **Fix:** `self._tv.exists(iid)` prüfen und einen Generations-Zähler einführen. `ThreadPoolExecutor(max_workers=20)` verwenden. Bei leerer Auswahl einen Toast zeigen.
-
-#### [DX-M5] Zertifikats-Ordnerauswahl: Buttons während des Ladens aktiv, Fehler lässt UI disabled
-**Datei:** `ssh_manager_app/dialogs_certificates.py` (Z. 128–154)
-**Problem:** Eine Exception im Worker lässt Combobox und Listbox dauerhaft auf `disabled`. „Diesen Ordner verwenden“ ist während des Ladens klickbar.
-**Fix:** Im Worker `try/except` mit einem Fehlertext. Die Buttons während des Ladens deaktivieren.
-
-#### [DX-M6] DNS-Auflösung: Worker ohne `try/except`, Progress-Dialog bleibt stehen
-**Datei:** `ssh_manager_app/actions_dns.py` (Z. 69–95)
-**Problem:** Eine Exception in `resolve_dns_value` lässt den Thread sterben. `except Exception: return` um `after` schluckt Fehler.
-**Fix:** `except Exception` → `progress.close()` und `showerror` per `after`.
 
 #### [DX-M7] „In WinSCP öffnen“ friert die UI ein (`wait` + `sleep` im UI-Thread)
 **Datei:** `ssh_manager_app/actions_open.py` (Z. 70–80)
@@ -559,3 +539,35 @@ tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.s
 **Datei:** `ssh_manager_app/core.py` (Z. 839–877, 909, 929, 960)
 **Problem:** `payload.get("result", {}).get(...)` und `int(item.get("number", 0))` werfen bei `null` oder falschem Typ `AttributeError` bzw. `ValueError`. `launch_tabs` fängt nur `OSError`, `RuntimeError` und `TimeoutExpired`. Der Start bricht ab, und der WT-Fallback wird nicht ausgeführt.
 **Fix:** Einen Helper `_dig(payload, *keys, default)` mit `isinstance`-Prüfungen verwenden. `AttributeError`, `ValueError` und `TypeError` in `RuntimeError` umwandeln.
+
+#### ~~[DX-H3] Zertifikat-Replace: Worker ohne `try/except`, modaler Dialog hängt~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/actions_certificate_replace.py` (Z. 183–193), `ssh_manager_app/dialogs_certificate_replace.py` (Z. 219–236)
+**Problem:** Eine unerwartete Exception lässt den Thread sterben. Der `grab_set`-Progress-Dialog bleibt offen. Der Fortschritt ist nur indeterminate (40 s Timeout pro Host, seriell), und es gibt keinen Abbrechen-Button.
+**Fix:** Den Worker in `try/except` kapseln, bei einem Fehler `progress.close()` und `showerror` per `after`. Dazu „Host X von N“ anzeigen und einen Abbrechen-Button ergänzen.
+
+#### ~~[DX-H4] Server-Neustart: `run_one` ohne `try/except`, Dialog bleibt auf „Neustart läuft…“~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/actions_restart.py` (Z. 270–304)
+**Problem:** Ohne das `done`-Event läuft `pump_events` endlos. Nach dem Schließen des Dialogs folgen `TclError`s auf zerstörten Widgets.
+**Fix:** In `run_one` `except Exception` abfangen und ein `RestartResult("error", …)` zurückgeben. In `pump_events` `if not progress.winfo_exists(): return` einbauen.
+
+#### ~~[DX-M5] Zertifikats-Ordnerauswahl: Buttons während des Ladens aktiv, Fehler lässt UI disabled~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/dialogs_certificates.py` (Z. 128–154)
+**Problem:** Eine Exception im Worker lässt Combobox und Listbox dauerhaft auf `disabled`. „Diesen Ordner verwenden“ ist während des Ladens klickbar.
+**Fix:** Im Worker `try/except` mit einem Fehlertext. Die Buttons während des Ladens deaktivieren.
+
+#### ~~[DX-M6] DNS-Auflösung: Worker ohne `try/except`, Progress-Dialog bleibt stehen~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/actions_dns.py` (Z. 69–95)
+**Problem:** Eine Exception in `resolve_dns_value` lässt den Thread sterben. `except Exception: return` um `after` schluckt Fehler.
+**Fix:** `except Exception` → `progress.close()` und `showerror` per `after`.

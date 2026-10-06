@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-import threading
+from .workers import run_worker
 import os
 import re
 import tempfile
@@ -174,18 +174,35 @@ def replace_certificates(app, sessions: list[Session]) -> None:
     names = [Path(path).name for path in spec["files"]]
     progress = CertificateReplaceScanProgressDialog(app, len(users))
 
-    def worker() -> None:
-        source_summary = [(Path(path).name, _local_certificate_expiry(path, spec["keystore_password"])) for path in spec["files"]]
-        scanned = []
-        for session, user in users:
+    def worker():
+        try:
+            source_summary = [(Path(path).name, _local_certificate_expiry(path, spec["keystore_password"])) for path in spec["files"]]
+            scanned = []
+            for session, user in users:
+                if progress.cancelled:
+                    return None
+                scanned.append((session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"], spec["keystore_password"])))
+            return scanned, source_summary
+        finally:
+            spec["keystore_password"] = ""
             if progress.cancelled:
-                return
-            scanned.append((session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"], spec["keystore_password"])))
-        spec["keystore_password"] = ""
-        if not progress.cancelled:
-            app.after(0, lambda: _show_replace_preview(app, progress, scanned, spec, source_summary))
+                spec["sudo_password"] = ""
 
-    threading.Thread(target=worker, daemon=True).start()
+    def done(result):
+        if result is not None and not progress.cancelled:
+            scanned, source_summary = result
+            _show_replace_preview(app, progress, scanned, spec, source_summary)
+        else:
+            spec["sudo_password"] = ""
+
+    def failed(error):
+        spec["sudo_password"] = ""
+        if not progress.cancelled:
+            progress.close()
+            messagebox.showerror("Zertifikat-Prüfung", "Die Prüfung ist unerwartet fehlgeschlagen. Bitte erneut versuchen.", parent=app)
+
+    run_worker(app, worker, done, failed)
+
 
 
 def _selected_deployments(scanned, spec, selected_matches: set[tuple[int, str, str]]):

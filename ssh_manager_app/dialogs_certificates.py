@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 import posixpath
 import subprocess
-import threading
+from .workers import run_worker
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
@@ -86,6 +86,7 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self._status_var = tk.StringVar(value="Ordner werden geladen …")
         self._entries: list[tuple[str, str]] = []
         self._load_generation = 0
+        self._loading = False
 
         self.transient(parent)
         self.grab_set()
@@ -121,13 +122,16 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         ttk.Button(controls, text="Eine Ebene hoch", command=self._up).pack(side="left")
         ttk.Button(controls, text="Aktualisieren", command=self._load).pack(side="left", padx=(8, 0))
         ttk.Button(controls, text="Abbrechen", command=self._on_cancel).pack(side="right")
-        ttk.Button(controls, text="Diesen Ordner verwenden", command=self._use_current).pack(side="right", padx=(0, 8))
+        self._use_button = ttk.Button(controls, text="Diesen Ordner verwenden", command=self._use_current)
+        self._use_button.pack(side="right", padx=(0, 8))
 
     def _selected_session_user(self) -> tuple[Session, str]:
         index = max(0, self._host_combo.current())
         return self._session_users[index]
 
     def _load(self) -> None:
+        if self._loading:
+            return
         path = self._path_var.get().strip() or "/"
         if not path.startswith("/"):
             self._status_var.set("Bitte einen absoluten Linux-Pfad angeben.")
@@ -138,18 +142,23 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self._folders.configure(state="disabled")
         self._status_var.set("Ordner werden geladen …")
         self._host_combo.configure(state="disabled")
+        self._path_entry.configure(state="disabled")
+        self._use_button.configure(state="disabled")
+        self._loading = True
         session, user = self._selected_session_user()
         self._load_generation += 1
         generation = self._load_generation
-        threading.Thread(target=self._load_worker, args=(session, user, self._path_var.get(), self._sudo_password, generation), daemon=True).start()
-
-    def _load_worker(self, session: Session, user: str, path: str, sudo_password: str, generation: int) -> None:
-        folders, error = _ssh_folder_list_command(session, user, path, sudo_password)
-        self.after(0, lambda: self._show_folders(folders, error, generation))
+        path, password = self._path_var.get(), self._sudo_password
+        run_worker(self, lambda: _ssh_folder_list_command(session, user, path, password),
+                   lambda result: self._show_folders(*result, generation),
+                   lambda error: self._show_folders([], "Abfrage unerwartet fehlgeschlagen.", generation))
 
     def _show_folders(self, entries: list[tuple[str, str]], error: str, generation: int) -> None:
         if generation != self._load_generation:
             return
+        self._loading = False
+        self._path_entry.configure(state="normal")
+        self._use_button.configure(state="normal")
         self._host_combo.configure(state="readonly")
         self._folders.configure(state="normal")
         if error:
@@ -191,12 +200,16 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self._load()
 
     def _up(self) -> None:
+        if self._loading:
+            return
         current = self._path_var.get().rstrip("/") or "/"
         parent = posixpath.dirname(current)
         self._path_var.set(parent or "/")
         self._load()
 
     def _use_current(self) -> None:
+        if self._loading:
+            return
         self.result = self._path_var.get().strip() or "/"
         clear_password_fields(self)
         self.destroy()

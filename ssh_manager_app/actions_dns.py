@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
-import threading
+from .workers import run_worker
 from dataclasses import replace
 from tkinter import messagebox
 
@@ -85,14 +85,19 @@ def _resolve_values_async(
                 matched_name = _matching_connection_names(result, match_sessions)
             results.append(replace(result, connection_name=matched_name))
 
-        if progress.cancelled:
-            return
-        try:
-            app.after(0, lambda: _show_dns_lookup_results(app, progress, results))
-        except Exception:
-            return
+        return results
 
-    threading.Thread(target=worker, daemon=True).start()
+    def done(results):
+        if not progress.cancelled:
+            _show_dns_lookup_results(app, progress, results)
+
+    def failed(error):
+        if not progress.cancelled:
+            progress.close()
+            messagebox.showerror("DNS/IP-Auflösung", "Die Auflösung ist unerwartet fehlgeschlagen. Bitte erneut versuchen.", parent=app)
+
+    run_worker(app, worker, done, failed)
+
 
 
 def _all_sessions(app) -> list[Session]:
