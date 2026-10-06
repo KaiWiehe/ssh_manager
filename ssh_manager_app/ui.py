@@ -889,7 +889,10 @@ def install_shortcut_manager(app) -> None:
         from .actions_ui import edit_focused_session
         edit_focused_session(app)
 
+    from .help import open_help
+
     actions = [
+        ShortcutAction("open_help", "Hilfe öffnen", "F1", lambda: open_help(app), skip_in_entry=False),
         # Let text widgets keep their normal Ctrl+P / typing behavior.
         ShortcutAction("open_command_palette", "Befehlspalette öffnen", "Ctrl+P", open_command_palette, skip_in_entry=True),
         ShortcutAction("focus_search", "Suche fokussieren", "Ctrl+F", lambda: focus_search(app), skip_in_entry=False),
@@ -933,6 +936,9 @@ def reapply_shortcut_bindings(app) -> None:
     if manager is None:
         return
     manager.apply_bindings(dict(getattr(app.settings, "keyboard_shortcuts", {})))
+    help_menu = getattr(app, "_help_menu", None)
+    if help_menu is not None:
+        help_menu.entryconfigure(0, accelerator=manager.current_mapping().get("open_help", ""))
 
 
 def build_main_ui(self) -> None:
@@ -1014,6 +1020,13 @@ def build_main_ui(self) -> None:
     settings_menu.add_separator()
     settings_menu.add_command(label="Einstellungen zurücksetzen", command=lambda: reset_settings_callback(self))
     menubar.add_cascade(label="Einstellungen", menu=settings_menu)
+
+    from .help import open_help
+
+    help_menu = tk.Menu(menubar, tearoff=False)
+    self._help_menu = help_menu
+    help_menu.add_command(label="Hilfe öffnen", accelerator=_acc("open_help"), command=lambda: open_help(self))
+    menubar.add_cascade(label="Hilfe", menu=help_menu)
 
     self._main_frame = ttk.Frame(self)
     self._main_frame.grid(row=0, column=0, sticky="nsew")

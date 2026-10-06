@@ -87,6 +87,25 @@ Die Statusansicht bestätigt zunächst den tatsächlichen Neustart und wartet da
 
 ## Bedienung
 
+### Integrierte Hilfe
+
+**F1**, **Hilfe → Hilfe öffnen** oder **„Hilfe öffnen“ in der Befehlspalette**
+öffnet ein separates, nichtmodales Hilfefenster. Links stehen die Themen, rechts
+die Erklärungen; die Suche berücksichtigt Titel und vollständige Hilfetexte.
+Die Hilfe erklärt alle Aktionen, Quellen, Einstellungen und die Tastaturbedienung
+und zeigt aktuelle sowie voreingestellte App-Kürzel. F1 kann unter
+**Einstellungen → Tastenkürzel** geändert werden. **Escape** schließt die Hilfe.
+Sie funktioniert offline und benötigt keine zusätzlichen Pakete.
+
+Im Baum aktiviert **Enter** die fokussierte Zeile: Verbindung öffnen oder Ordner
+umschalten. **Strg+Enter** verbindet die angehakten Sessions. **Shift+Enter** hat
+keine eigene Aktion und aktiviert bei Standardbelegung ebenfalls die fokussierte
+Zeile. **Rechts/Links** öffnet/schließt Ordner oder wechselt zu Kind/Elternordner;
+**Leertaste** schaltet Checkboxen um. F2 und Entf verwenden eine einzelne
+angehakte Session bevorzugt, ansonsten die Kontextzeile.
+
+### Verbindungen bedienen
+
 1. **Sessions auswählen** – Klick auf eine Zeile setzt/entfernt den Haken. Ordner sind auf-/zuklappbar.
 2. **Mehrere auf einmal** – Beliebig viele Haken setzen. Rechtsklick auf einen Ordner bietet u. a. Auswahl-, Farb- und Auf-/Zu-Aktionen.
 3. **Suche** – Oben im Suchfeld tippen filtert live nach Name und Hostname. Rechts daneben gibt es einen kleinen Verlauf-Button.

@@ -26,6 +26,7 @@ from typing import Callable, Iterable
 
 #: Ordered list of (action_id, German label, default human-readable shortcut)
 DEFAULT_ACTION_ORDER: list[tuple[str, str, str]] = [
+    ("open_help", "Hilfe öffnen", "F1"),
     ("open_command_palette", "Befehlspalette öffnen", "Ctrl+P"),
     ("focus_search", "Suche fokussieren", "Ctrl+F"),
     ("new_session", "Neue Verbindung", "Ctrl+N"),
@@ -367,6 +368,13 @@ class ShortcutManager:
 
     def _make_handler(self, action: ShortcutAction):
         def handler(event):
+            # Nonmodal help must not operate on the main app behind it.
+            try:
+                top = event.widget.winfo_toplevel()
+            except Exception:
+                top = None
+            if getattr(top, "_blocks_app_shortcuts", False):
+                return None
             # Modal dialogs/palettes can host text entries of their own. Don't
             # let global app shortcuts interfere while a grab is active.
             if _is_modal_dialog_active(self._root):

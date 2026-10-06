@@ -109,6 +109,7 @@ def export_visible_sessions(app, export_format: str) -> None:
 def open_command_palette(app) -> None:
     """Open the VSCode-style command palette."""
     from .palette import CommandPaletteDialog, CommandPaletteItem
+    from .help import open_help
     from .actions_remote import connect_sessions, quick_connect_session
     from .actions_ui import (
         collapse_all,
@@ -189,6 +190,8 @@ def open_command_palette(app) -> None:
         return mgr.current_mapping().get(action_id, "") if mgr else ""
 
     action_items = [
+        CommandPaletteItem("act:help", "Hilfe öffnen", _accel("open_help"),
+                           kind="action", callback=lambda: open_help(app)),
         CommandPaletteItem("act:connect", "Verbinden mit Auswahl", _accel("connect"),
                            kind="action", callback=_connect_selection),
         CommandPaletteItem("act:edit", "Bearbeiten", _accel("edit"),
