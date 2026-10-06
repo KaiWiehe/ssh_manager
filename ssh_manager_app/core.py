@@ -902,24 +902,36 @@ class HerdrLauncher:
     @classmethod
     def _find_workspace(cls, executable: str) -> str | None:
         payload = cls._run_json(executable, ["workspace", "list"])
-        workspaces = payload.get("result", {}).get("workspaces", [])
+        result = payload.get("result")
+        if not isinstance(result, dict) or not isinstance(result.get("workspaces"), list):
+            raise RuntimeError("Herdr-Workspaces haben ein unerwartetes Format.")
+        workspaces = result["workspaces"]
         matches = [item for item in workspaces if isinstance(item, dict) and item.get("label") == cls.WORKSPACE_LABEL]
         if not matches:
             return None
-        matches.sort(key=lambda item: int(item.get("number", 0)))
+        try:
+            matches.sort(key=lambda item: int(item.get("number", 0)))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Herdr-Workspace-Nummer ist ungültig.") from exc
         workspace_id = matches[0].get("workspace_id")
-        return str(workspace_id) if workspace_id else None
+        if not isinstance(workspace_id, str) or not workspace_id.strip():
+            raise RuntimeError("Herdr-Workspace-ID ist ungültig.")
+        return workspace_id
 
     @staticmethod
     def _created_tab(payload: dict) -> tuple[str, str, str]:
-        result = payload.get("result", {})
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise RuntimeError("Herdr-Tab-Antwort ist ungültig.")
         workspace = result.get("workspace", {})
         tab = result.get("tab", {})
         root_pane = result.get("root_pane", {})
+        if not all(isinstance(value, dict) for value in (workspace, tab, root_pane)):
+            raise RuntimeError("Herdr-Tab-Daten sind ungültig.")
         workspace_id = workspace.get("workspace_id") or tab.get("workspace_id")
         tab_id = tab.get("tab_id")
         pane_id = root_pane.get("pane_id")
-        if not workspace_id or not tab_id or not pane_id:
+        if not all(isinstance(value, str) and value.strip() for value in (workspace_id, tab_id, pane_id)):
             raise RuntimeError("Herdr hat für den neuen Tab keine vollständigen IDs geliefert.")
         return str(workspace_id), str(tab_id), str(pane_id)
 
@@ -928,7 +940,10 @@ class HerdrLauncher:
         """Unterscheidet interaktive Herdr-Clients von den Serverprozessen."""
         try:
             sessions = cls._run_json(executable, ["session", "list", "--json"])
-            running_servers = sum(1 for item in sessions.get("sessions", []) if isinstance(item, dict) and item.get("running"))
+            rows = sessions.get("sessions")
+            if not isinstance(rows, list):
+                raise RuntimeError("Herdr-Sessions haben ein unerwartetes Format.")
+            running_servers = sum(1 for item in rows if isinstance(item, dict) and item.get("running"))
             image_name = Path(executable).name
             result = subprocess.run(
                 ["tasklist", "/FI", f"IMAGENAME eq {image_name}", "/FO", "CSV", "/NH"],

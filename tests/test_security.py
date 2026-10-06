@@ -272,3 +272,18 @@ def test_failed_certificate_upload_removes_its_private_directory(tmp_path):
     assert result.returncode != 0
     check = subprocess.run([_find_git_bash(), "-c", '[ ! -d "$1" ]', "offline-check", directory], capture_output=True, timeout=10)
     assert check.returncode == 0
+
+
+@pytest.mark.parametrize("result", [None, [], {"workspace": None}, {"tab": []}, {"root_pane": "bad"}])
+def test_herdr_rejects_malformed_nested_tab_data(result):
+    from ssh_manager_app.core import HerdrLauncher
+    with pytest.raises(RuntimeError):
+        HerdrLauncher._created_tab({"result": result})
+
+
+@pytest.mark.parametrize("result", [None, [], {"workspaces": None}, {"workspaces": [{"label": "SSH Manager", "number": "bad", "workspace_id": "w"}]}])
+def test_herdr_rejects_malformed_workspace_data(result):
+    from ssh_manager_app.core import HerdrLauncher
+    with patch.object(HerdrLauncher, "_run_json", return_value={"result": result}):
+        with pytest.raises(RuntimeError):
+            HerdrLauncher._find_workspace("herdr")

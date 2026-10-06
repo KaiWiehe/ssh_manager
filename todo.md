@@ -52,11 +52,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Problem:** Die zweite Kopie von `SessionEditDialog` (das Original liegt in `dialogs_session_edit.py`) referenziert die nicht importierten Namen `uuid`, `_APP_PREFIX` und `_SSH_ALIAS_PREFIX`. Das ist ein Rest eines Splits. `QUICK_USERS` ist ungenutzt importiert.
 **Fix:** Block Z. 1176–1442 löschen und den Import entfernen.
 
-#### [DC-H3] Herdr-JSON wird ungeprüft verschachtelt gelesen, der Fallback greift dann nicht
-**Datei:** `ssh_manager_app/core.py` (Z. 839–877, 909, 929, 960)
-**Problem:** `payload.get("result", {}).get(...)` und `int(item.get("number", 0))` werfen bei `null` oder falschem Typ `AttributeError` bzw. `ValueError`. `launch_tabs` fängt nur `OSError`, `RuntimeError` und `TimeoutExpired`. Der Start bricht ab, und der WT-Fallback wird nicht ausgeführt.
-**Fix:** Einen Helper `_dig(payload, *keys, default)` mit `isinstance`-Prüfungen verwenden. `AttributeError`, `ValueError` und `TypeError` in `RuntimeError` umwandeln.
-
 #### [DC-H4] `core.py` ist ein God-Module (1192 Z.) mit fremden Verantwortlichkeiten
 **Datei:** `ssh_manager_app/core.py` (gesamt; Z. 165–198, 1145, 1190)
 **Problem:** `core.py` mischt WT-/Bash-Builder, Herdr, Launcher, Registry, Hostprüfung, Tk-Pixelbilder (UI-Code) und das Schreiben von `~/.ssh/config` (gehört in `storage`). Der Tab-Befehl wird achtmal identisch zusammengesetzt. Der Abschnittskommentar „UI-State Persistenz“ ist leer.
@@ -556,3 +551,11 @@ tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.s
 | ✅ Best Practice | 0 | 2 | 4 | 2 | 8 |
 | 📦 Package-Scan | 0 | 0 | 0 | 3 | 3 |
 | **Total** | **7** | **19** | **33** | **15** | **74** |
+
+#### ~~[DC-H3] Herdr-JSON wird ungeprüft verschachtelt gelesen, der Fallback greift dann nicht~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/core.py` (Z. 839–877, 909, 929, 960)
+**Problem:** `payload.get("result", {}).get(...)` und `int(item.get("number", 0))` werfen bei `null` oder falschem Typ `AttributeError` bzw. `ValueError`. `launch_tabs` fängt nur `OSError`, `RuntimeError` und `TimeoutExpired`. Der Start bricht ab, und der WT-Fallback wird nicht ausgeführt.
+**Fix:** Einen Helper `_dig(payload, *keys, default)` mit `isinstance`-Prüfungen verwenden. `AttributeError`, `ValueError` und `TypeError` in `RuntimeError` umwandeln.
