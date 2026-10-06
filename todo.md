@@ -2,7 +2,7 @@
 
 Erstellt: 2026-10-02
 Geprüft: Frontend + Backend + Package-Scan
-Umsetzung 06.10.2026: Gruppen 1–18 und anschließend S-H2, S-M4, S-M6, BP-H1, DC-M13 und BP-M4 abgeschlossen (Version 0.2.44). Offene Punkte stehen oben, erledigte Audit-Funde durchgestrichen unten in Done. BP-M2 und DC-M6 behalten ihren offenen Rest. Plattform-/Signierungsentscheidung bleibt offen.
+Umsetzung 06.10.2026: Gruppen 1–18 und anschließend S-H2, S-M4, S-M6, BP-H1, DC-M13 und BP-M4 abgeschlossen (Version 0.2.44). Offene Punkte stehen oben, erledigte Audit-Funde durchgestrichen unten in Done. BP-M2 und DC-M6 behalten ihren offenen Rest. Entscheidung von Kai: Plattform-Kompatibilität zunächst behalten, EXE-Signierung zurückstellen.
 
 > Kontext: Python/Tkinter-Desktop-App. „Frontend“ = Tkinter-UI (`tree.py`, `ui*.py`, `dialogs_*.py`, `palette.py`, `shortcuts.py`), „Backend“ = Logik-/Prozess-/Datei-Schicht (`core.py`, `storage.py`, `actions_*.py`, `dns_lookup.py`, `exports.py`, `ssh_manager.py`, `scripts/`). Zeilennummern beziehen sich auf Commit `21f78f7`. Die Funde DC-C1 und DC-C2 sind manuell verifiziert.
 
@@ -98,6 +98,7 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 
 ### NIEDRIG
 #### [DC-L1] Root-`winreg.py`-Stub ist irreführend
+**Zurückgestellt, Entscheidung 06.10.2026:** Plattform-Kompatibilität und vorhandenen Stub zunächst behalten. Keine Entfernung oder Umstellung auf Windows-only. Eine spätere Bereinigung muss die bestehende Kompatibilität erhalten.
 **Datei:** `winreg.py`, `ssh_manager_app/core.py` (Z. 18), `tests/conftest.py`
 **Problem:** Unter Windows ist `winreg` ein Built-in-Modul und wird **nicht** überschattet (geprüft: `'winreg' in sys.builtin_module_names` → `True`). Der Stub ist also nur für Nicht-Windows-Plattformen relevant und doppelt den Test-Stub in `conftest.py`.
 **Fix:** Den Root-Stub entfernen, wenn kein Nicht-Windows-Start nötig ist. Sonst `winreg` in `core.py` lazy bzw. per `try/except ImportError` importieren.
@@ -123,6 +124,7 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 
 ### NIEDRIG
 #### [BP-L2] Build: UPX aktiv, kein Hash-Pinning, keine Signatur
+**Signierung zurückgestellt, Entscheidung 06.10.2026:** Kein Codesigning-Zertifikat beschaffen und keinen Signierdienst oder Signaturschritt einrichten. UPX und Hash-Pinning bleiben davon getrennte offene Aufgaben.
 **Datei:** `ssh_manager.spec` (Z. 38), `scripts/build_windows.ps1` (Z. 15)
 **Problem:** UPX-gepackte PyInstaller-EXEs werden häufig von Virenscannern markiert. `pip install` läuft ohne `--require-hashes`, und es gibt keinen `signtool`-Schritt.
 **Fix:** `upx=False` setzen. Optional `pip-compile --generate-hashes` und `signtool sign` ergänzen.
