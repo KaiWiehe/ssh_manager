@@ -5,7 +5,7 @@ import os
 import tempfile
 import shutil
 import time
-from .ssh_utils import valid_color
+from .ssh_utils import valid_color, read_port
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -119,9 +119,33 @@ def save_settings(settings: AppSettings) -> None:
     _atomic_write_json(_SETTINGS_FILE, settings_to_dict(settings))
 
 
-def load_settings_from_path(path: Path) -> AppSettings:
+def load_settings_from_path(path: Path, *, require_settings: bool = False) -> AppSettings:
     defaults = default_settings()
     raw = _read_json(path)
+    if require_settings:
+        schema = settings_to_dict(defaults)
+        meaningful = False
+        for key, value in raw.items():
+            if key not in schema:
+                continue
+            expected = schema[key]
+            if type(value) is not type(expected):
+                raise ValueError(f"Ungültiges Format für Einstellung {key}.")
+            if isinstance(expected, dict):
+                for field, item in value.items():
+                    if field not in expected:
+                        continue
+                    if type(item) is not type(expected[field]):
+                        raise ValueError(f"Ungültiges Format für Einstellung {key}.{field}.")
+                    if isinstance(item, list) and not all(isinstance(entry, str) for entry in item):
+                        raise ValueError(f"Ungültige Liste für Einstellung {key}.{field}.")
+                    meaningful = True
+            else:
+                if isinstance(value, list) and not all(isinstance(entry, str) for entry in value):
+                    raise ValueError(f"Ungültige Liste für Einstellung {key}.")
+                meaningful = True
+        if not meaningful:
+            raise ValueError("Die Datei enthält keine erkennbaren SSH-Manager-Einstellungen.")
     raw_dict = raw if isinstance(raw, dict) else {}
     toolbar_raw = raw_dict.get("toolbar", {})
     if not isinstance(toolbar_raw, dict):
@@ -386,7 +410,7 @@ def load_app_sessions() -> list[Session]:
                     folder_path=folder_path,
                     hostname=hostname,
                     username=str(entry.get("username", "")),
-                    port=int(entry.get("port", 22)),
+                    port=read_port(entry.get("port", 22)),
                     source=source,
                 ))
             except (KeyError, TypeError, ValueError):
@@ -452,9 +476,10 @@ def load_filezilla_config_sessions() -> list[Session]:
                 user = (child.findtext("User") or "").strip()
                 port_text = (child.findtext("Port") or "22").strip()
                 try:
-                    port = int(port_text) if port_text else 22
+                    port = read_port(port_text)
                 except ValueError:
-                    port = 22
+                    _load_warnings[file_path] = "FileZilla: Verbindungen mit ungültigem Port wurden übersprungen. Erlaubt sind 1–65535; Quelldatei unverändert."
+                    continue
                 full_folder = [_FILEZILLA_CONFIG_DEFAULT_FOLDER] + folder_path
                 session_key = f"__filezilla__{'/'.join(full_folder)}/{name}/{host}/{port}"
                 sessions.append(Session(
@@ -489,7 +514,7 @@ def load_ssh_config_sessions() -> list[Session]:
 
     def flush() -> None:
         nonlocal current_alias, current_hostname, current_user, current_port
-        if current_alias and '*' not in current_alias and '?' not in current_alias:
+        if current_alias and current_port is not None and '*' not in current_alias and '?' not in current_alias:
             sessions.append(Session(
                 key=_SSH_CONFIG_PREFIX + current_alias,
                 display_name=current_alias,
@@ -521,8 +546,9 @@ def load_ssh_config_sessions() -> list[Session]:
             current_user = val
         elif kw == "port" and current_alias:
             try:
-                current_port = int(val)
+                current_port = read_port(val)
             except ValueError:
-                pass
+                current_port = None
+                _load_warnings[_SSH_CONFIG_FILE] = "SSH-Config: Aliase mit ungültigem Port wurden übersprungen. Erlaubt sind 1–65535; Quelldatei unverändert."
     flush()
     return sessions

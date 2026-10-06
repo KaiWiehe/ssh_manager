@@ -314,6 +314,12 @@ def rebuild_sessions(app, *, reload_winscp: bool = False) -> None:
         except OSError:
             messagebox.showerror("Registry-Fehler", "WinSCP-Sessions konnten nicht neu geladen werden. Der bisherige Stand bleibt angezeigt.", parent=app)
             success = False
+    from .storage import take_load_warnings
+    warnings = take_load_warnings()
+    if warnings:
+        from tkinter import messagebox
+        messagebox.showwarning("Import unvollständig", "\n\n".join(warnings), parent=app)
+        success = False
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
     return success

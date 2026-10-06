@@ -478,7 +478,7 @@ def test_load_filezilla_config_sessions_supports_lowercase_dir_and_defaults_miss
     <Folder>
       <Server>
         <Host>fallback.example.com</Host>
-        <Port>not-a-port</Port>
+        
         <Protocol>0</Protocol>
       </Server>
     </Folder>
@@ -525,3 +525,32 @@ Host staging
     assert sessions[0].username == "deploy"
     assert sessions[0].port == 2200
     assert sessions[1].hostname == "stage.example.com"
+
+
+@pytest.mark.parametrize("data", [{"sessions": []}, {}, {"appearance": []}, {"toolbar": {"show_reload": "false"}}])
+def test_settings_import_rejects_foreign_or_wrongly_typed_files(tmp_path, data):
+    path = tmp_path / "import.json"
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError):
+        load_settings_from_path(path, require_settings=True)
+
+
+def test_settings_import_accepts_partial_old_export(tmp_path):
+    path = tmp_path / "import.json"
+    path.write_text(json.dumps({"default_user": "custom", "toolbar": {"show_reload": False}}))
+    settings = load_settings_from_path(path, require_settings=True)
+    assert settings.default_user == "custom"
+    assert settings.toolbar.show_reload is False
+
+
+def test_filezilla_invalid_port_is_reported_without_changing_source(tmp_path, monkeypatch):
+    from ssh_manager_app import storage
+    directory = tmp_path / "FileZilla"
+    directory.mkdir()
+    path = directory / "sitemanager.xml"
+    text = "<FileZilla3><Servers><Server><Host>example</Host><Port>65536</Port></Server></Servers></FileZilla3>"
+    path.write_text(text)
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert storage.load_filezilla_config_sessions() == []
+    assert "Port" in storage._load_warnings[path]
+    assert path.read_text() == text

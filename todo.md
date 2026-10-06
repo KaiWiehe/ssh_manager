@@ -134,11 +134,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 
 **Fix:** `dataclasses.replace` verwenden und den Namen validieren (leer, `/`, Duplikat).
 
-#### [DC-M14] Whitelist wird vor der Validierung persistiert, Stil-Ausreißer im Dialog
-**Datei:** `ssh_manager_app/dialogs_certificate_replace.py` (Z. 27–45, 94)
-**Problem:** `_ok` speichert die Whitelist, bevor die Eingabe geprüft ist. Dazu kommen Semikolon-Ketten, die vom Dialogstil der übrigen Module abweichen.
-**Fix:** Erst nach erfolgreicher Validierung persistieren.
-
 ### NIEDRIG
 #### [DC-L1] Root-`winreg.py`-Stub ist irreführend
 **Datei:** `winreg.py`, `ssh_manager_app/core.py` (Z. 18), `tests/conftest.py`
@@ -177,12 +172,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 
 ## 🖥️ Design — UI/UX
 
-### MITTEL
-#### [DX-M9] Settings-Import akzeptiert fremde JSON-Dateien und setzt still alles auf Default
-**Datei:** `ssh_manager_app/storage.py` (Z. 38–39), `ssh_manager_app/dialogs_settings_misc.py` (Z. 802–811)
-**Problem:** Der Import von z. B. `notes.json` meldet „Einstellungen importiert“ und setzt alles zurück, ohne Rückfrage.
-**Fix:** Mindestens einen bekannten Schlüssel verlangen, sonst `ValueError`. Vor dem Anwenden per `askyesno` bestätigen lassen.
-
 ---
 
 ## ✅ Best Practice
@@ -192,11 +181,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Datei:** `ssh_manager_app/dialogs_certificates.py` (Z. 358–386)
 **Problem:** `..`, Steuerzeichen und Systemwurzeln (`/`, `/etc`, `/usr`) werden für Schreiboperationen mit sudo akzeptiert.
 **Fix:** Mit `posixpath.normpath` normalisieren und `..` sowie Steuerzeichen ablehnen. Bei kritischen Wurzeln zusätzlich bestätigen lassen.
-
-#### [BP-H2] Ports aus Registry, JSON und XML werden nicht auf 1–65535 geprüft
-**Datei:** `ssh_manager_app/core.py` (Z. 1107), `ssh_manager_app/storage.py` (FileZilla- und App-Session-Loader)
-**Problem:** `int(...)` ohne Bereichsprüfung. Werte aus der Registry können einen beliebigen Typ haben.
-**Fix:** `1 <= int(port) <= 65535` prüfen, sonst 22 bzw. den Eintrag verwerfen.
 
 ### MITTEL
 #### [BP-M2] Verbleibende doppelte Settings-Allowlists
@@ -616,3 +600,27 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 - Übersprungene Sessions werden nur nach stderr geschrieben.
 
 **Fix:** `FileNotFoundError` still behandeln. `rebuild_sessions` gibt einen Status zurück. Einen Hinweis „n Sessions übersprungen“ anzeigen.
+
+#### ~~[DX-M9] Settings-Import akzeptiert fremde JSON-Dateien und setzt still alles auf Default~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/storage.py` (Z. 38–39), `ssh_manager_app/dialogs_settings_misc.py` (Z. 802–811)
+**Problem:** Der Import von z. B. `notes.json` meldet „Einstellungen importiert“ und setzt alles zurück, ohne Rückfrage.
+**Fix:** Mindestens einen bekannten Schlüssel verlangen, sonst `ValueError`. Vor dem Anwenden per `askyesno` bestätigen lassen.
+
+#### ~~[BP-H2] Ports aus Registry, JSON und XML werden nicht auf 1–65535 geprüft~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/core.py` (Z. 1107), `ssh_manager_app/storage.py` (FileZilla- und App-Session-Loader)
+**Problem:** `int(...)` ohne Bereichsprüfung. Werte aus der Registry können einen beliebigen Typ haben.
+**Fix:** `1 <= int(port) <= 65535` prüfen, sonst 22 bzw. den Eintrag verwerfen.
+
+#### ~~[DC-M14] Whitelist wird vor der Validierung persistiert, Stil-Ausreißer im Dialog~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/dialogs_certificate_replace.py` (Z. 27–45, 94)
+**Problem:** `_ok` speichert die Whitelist, bevor die Eingabe geprüft ist. Dazu kommen Semikolon-Ketten, die vom Dialogstil der übrigen Module abweichen.
+**Fix:** Erst nach erfolgreicher Validierung persistieren.

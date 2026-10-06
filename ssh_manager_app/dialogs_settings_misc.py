@@ -811,7 +811,7 @@ class SettingsView(ttk.Frame):
         if not path:
             return
         try:
-            settings = load_settings_from_path(Path(path))
+            settings = load_settings_from_path(Path(path), require_settings=True)
         except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
             messagebox.showerror("Import fehlgeschlagen", f"Datei konnte nicht gelesen werden:\n{e}", parent=self)
             return

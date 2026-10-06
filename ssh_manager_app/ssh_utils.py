@@ -35,6 +35,15 @@ def valid_port(value: int) -> int:
     return value
 
 
+def read_port(value) -> int:
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError("Port muss eine ganze Zahl zwischen 1 und 65535 sein.")
+    try:
+        return valid_port(int(value))
+    except (ValueError, TypeError) as error:
+        raise ValueError("Port muss eine ganze Zahl zwischen 1 und 65535 sein.") from error
+
+
 def shell_command(args: list[str]) -> str:
     return shlex.join(args)
 

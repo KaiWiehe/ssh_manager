@@ -6,6 +6,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .dialogs_certificates import RemoteFolderBrowserDialog
+from .secret_scripts import clear_password_fields
 
 
 class CertificateReplaceDialog(tk.Toplevel):
@@ -91,7 +92,7 @@ class CertificateReplaceDialog(tk.Toplevel):
             self._post.delete("1.0", "end"); self._post.insert("1.0", str(self._favorites[index]["command"]).strip())
 
     def _ok(self):
-        roots = self._roots_value(); self._on_whitelist_changed(roots)
+        roots = self._roots_value()
         if not roots:
             messagebox.showwarning("Leere Whitelist", "Bitte mindestens einen Whitelist-Suchpfad angeben.", parent=self); return
         if any(not root.startswith("/") for root in roots):
@@ -101,6 +102,7 @@ class CertificateReplaceDialog(tk.Toplevel):
         names = [Path(path).name for path in self._files]
         if len(names) != len(set(names)):
             messagebox.showwarning("Doppelte Namen", "Ausgewählte Dateien müssen unterschiedliche Namen haben.", parent=self); return
+        self._on_whitelist_changed(roots)
         self.result = {"files": list(self._files), "roots": roots, "sudo_password": self._sudo_password.get(), "keystore_password": self._keystore_password.get(), "post_command": self._post.get("1.0", "end").strip(), "close_on_success": self._close_on_success.get()}
         clear_password_fields(self)
         self.destroy()

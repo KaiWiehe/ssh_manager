@@ -287,3 +287,20 @@ def test_herdr_rejects_malformed_workspace_data(result):
     with patch.object(HerdrLauncher, "_run_json", return_value={"result": result}):
         with pytest.raises(RuntimeError):
             HerdrLauncher._find_workspace("herdr")
+
+
+@pytest.mark.parametrize("value", [0, -1, 65536, True, 22.5, "nope"])
+def test_imported_ports_are_never_silently_defaulted(value):
+    from ssh_manager_app.ssh_utils import read_port
+    with pytest.raises(ValueError):
+        read_port(value)
+
+
+def test_invalid_whitelist_is_not_persisted():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from ssh_manager_app.dialogs_certificate_replace import CertificateReplaceDialog
+    dialog = SimpleNamespace(_roots_value=lambda: ["relative/path"], _on_whitelist_changed=Mock())
+    with patch("ssh_manager_app.dialogs_certificate_replace.messagebox.showwarning"):
+        CertificateReplaceDialog._ok(dialog)
+    dialog._on_whitelist_changed.assert_not_called()

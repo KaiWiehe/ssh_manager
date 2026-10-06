@@ -1269,12 +1269,11 @@ def test_load_ssh_config_sessions_hostname_fallback():
     assert sessions[0].hostname == "myalias"
 
 
-def test_load_ssh_config_sessions_invalid_port_falls_back_to_22():
+def test_load_ssh_config_sessions_invalid_port_is_skipped():
     config = "Host broken\n  HostName 10.0.0.8\n  Port nope\n"
     with patch("ssh_manager_app.storage._SSH_CONFIG_FILE", _mock_ssh_config(config)):
         sessions = load_ssh_config_sessions()
-    assert len(sessions) == 1
-    assert sessions[0].port == 22
+    assert sessions == []
 
 
 def test_build_wt_command_ssh_config_session():

@@ -21,7 +21,7 @@ from . import PALETTE, REGISTRY_PATH, SKIP_SESSIONS, Session, WindowsTerminalSet
 from .constants import _SSH_CONFIG_FILE, _STATE_FILE
 from .storage import load_ssh_config_sessions
 from .secret_scripts import write_protected_script, cleanup_script, managed_scripts
-from .ssh_utils import connection_value, ssh_argv, shell_command, scp_target, valid_color, valid_port
+from .ssh_utils import connection_value, ssh_argv, shell_command, scp_target, valid_color, valid_port, read_port
 
 def parse_session_key(key: str) -> tuple[list[str], str]:
     """
@@ -1185,6 +1185,12 @@ class RegistryReader:
             return None
 
         if not isinstance(hostname, str) or not _HOSTNAME_RE.fullmatch(hostname) or hostname.startswith("-") or (username and (not isinstance(username, str) or not _USERNAME_RE.fullmatch(username) or username.startswith("-"))):
+            self._skipped = getattr(self, "_skipped", 0) + 1
+            return None
+
+        try:
+            port = read_port(port)
+        except ValueError:
             self._skipped = getattr(self, "_skipped", 0) + 1
             return None
 
