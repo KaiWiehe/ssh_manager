@@ -45,11 +45,6 @@ def _csv_safe(v: str) -> str:
 ## 🎨 Design — Code-Architektur
 
 ### KRITISCH
-#### [DC-C3] Startup-Crash bei Nicht-UTF-8-Config oder JSON-Wurzel ≠ Objekt
-**Datei:** `ssh_manager_app/storage.py` (Z. 188–189, 227, 328–330, 372–374), `ssh_manager.py` (Z. 213, 222)
-**Problem:** `load_ssh_config_sessions` fängt nur `OSError`, `load_filezilla_config_sessions` nur `OSError` und `ET.ParseError`. Eine ANSI-kodierte `~/.ssh/config` oder `sitemanager.xml` wirft `UnicodeDecodeError` im Konstruktor von `SSHManagerApp`, die App startet nicht. `load_ui_state` crasht mit `AttributeError`, wenn `ui_state.json` eine Liste oder `null` enthält.
-**Fix:** `isinstance(data, dict)` prüfen. `UnicodeDecodeError`/`ValueError` in die except-Tupel aufnehmen und `read_text(encoding="utf-8", errors="replace")` verwenden.
-
 #### [DC-C4] Zirkuläre Abhängigkeiten, nur durch Funktions-lokale Imports kaschiert
 **Datei:** `ssh_manager_app/actions_ui.py` (Z. 9), `ssh_manager_app/ui.py` (Z. 14, 139–505), `ssh_manager_app/dialogs_settings_misc.py` (Z. 807–1131), `ssh_manager_app/actions_remote.py`, `ssh_manager_app/actions_sessions.py`, `ssh_manager_app/actions_app.py`
 **Problem:** Es gibt folgende Zyklen:
@@ -240,20 +235,6 @@ def report_callback_exception(self, exc, val, tb):
 Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 
 ### HOCH
-#### [DX-H1] `save_*` ohne Fehlerbehandlung, `close_app` kann das Schließen blockieren
-**Datei:** `ssh_manager_app/storage.py` (Z. 31–33, 231–248, 264–266, 301–318), `ssh_manager_app/actions_app.py` (Z. 54–56), `ssh_manager_app/actions_sessions.py`, `ssh_manager_app/actions_notes.py` (Z. 38), `ssh_manager_app/actions_ui.py` (Z. 45, 130, 385)
-**Problem:** Mehrere Folgen bei einem `OSError` (Platte voll, Datei gesperrt):
-- Die Änderung ist nur im Speicher, und der User merkt es nicht.
-- `close_app` wirft vor `destroy()`, das Fenster lässt sich nicht schließen.
-- `add_session` kann Notes und Sessions inkonsistent speichern.
-
-**Fix:** Bei `close_app` `try/except OSError` → Warnung, `finally: app.destroy()`. Für Speicheraufrufe einen Wrapper `safe_save(app, fn, *args)` mit messagebox.
-
-#### [DX-H2] Korrupte JSON-Dateien führen still zu Datenverlust
-**Datei:** `ssh_manager_app/storage.py` (Z. 24–28, 186–228, 251–261, 269–298)
-**Problem:** Bei einem `JSONDecodeError` laden die Loader leere Defaults. Der nächste `save_app_sessions` überschreibt die defekte Datei, und alle eigenen Verbindungen sind weg, ohne Meldung und ohne Backup.
-**Fix:** Die defekte Datei nach `*.corrupt-<timestamp>` kopieren, eine Warnung sammeln und nach `build_main_ui` anzeigen. Zusätzlich atomar schreiben (siehe BP-M2).
-
 #### [DX-H3] Zertifikat-Replace: Worker ohne `try/except`, modaler Dialog hängt
 **Datei:** `ssh_manager_app/actions_certificate_replace.py` (Z. 183–193), `ssh_manager_app/dialogs_certificate_replace.py` (Z. 219–236)
 **Problem:** Eine unerwartete Exception lässt den Thread sterben. Der `grab_set`-Progress-Dialog bleibt offen. Der Fortschritt ist nur indeterminate (40 s Timeout pro Host, seriell), und es gibt keinen Abbrechen-Button.
@@ -356,10 +337,9 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 **Problem:** Es gibt drei Muster nebeneinander (messagebox, `print_exc`, `pass`). Der Herdr→WT-Fallback läuft still, ohne Hinweis.
 **Fix:** `logging` mit rotierendem Datei-Handler in `%APPDATA%\SSH-Manager` einführen. Konkrete Exceptions fangen. Beim Fallback einen Toast zeigen.
 
-#### [BP-M2] Nicht-atomare Schreibvorgänge, `save_ui_state` mutiert sein Argument
-**Datei:** `ssh_manager_app/storage.py` (Z. 31–33, 231–248, 264–266, 301–318, 88–102), `ssh_manager_app/dialogs_settings_misc.py` (Z. 85–111)
-**Problem:** Ein Absturz während `write_text` korrumpiert die Datei. `save_ui_state` entfernt per `pop` Keys aus dem übergebenen Dict. Ein einzelnes defektes Feld in `load_settings_from_path` (160 Z.) setzt alle Einstellungen zurück. Die Allowlists (Akzent, Schrift, Theme) sind doppelt gepflegt.
-**Fix:** Einen zentralen Helper `_atomic_write_json(path, data)` (Temp-Datei plus `os.replace`) einführen. Auf einer Kopie des Dicts arbeiten. Felder einzeln mit Fallback parsen. Die Allowlists einmal definieren.
+#### [BP-M2] Verbleibende doppelte Settings-Allowlists
+**Offen:** Die erlaubten Themes, Akzentfarben und Schriften sind zwischen Storage und Settings-UI doppelt gepflegt. Zentralisierung bleibt ein späterer Refactor.
+**Bereits erledigt:** Atomare JSON-Schreibvorgänge, beschädigte Originale sichern, Settings-Felder robust laden und save_ui_state ohne Mutation des Eingabe-Dicts; siehe Done.
 
 #### [BP-M3] Keine Retry-Logik oder `ConnectTimeout` für idempotente SSH-Probes
 **Datei:** `ssh_manager_app/actions_restart.py` (Z. 49–65, 120–143), `ssh_manager_app/dialogs_certificates.py` (Z. 21–23, 44–52)
@@ -522,3 +502,37 @@ tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.s
 **Datei:** `ssh_manager_app/core.py` (Z. 20, 171)
 **Problem:** `core.py` importiert aus dem Paket nur `PALETTE, REGISTRY_PATH, SKIP_SESSIONS, Session, WindowsTerminalSettings`. „Als SSH-Config speichern…“ stürzt ab. `actions_remote.py` (Z. 352–357) fängt nur `ValueError` und `OSError`.
 **Fix:** `from .storage import load_ssh_config_sessions` ergänzen. Mittelfristig die Funktion nach `storage.py` verschieben (Datei-Logik gehört laut AGENTS.md dorthin).
+
+#### ~~[DC-C3] Startup-Crash bei Nicht-UTF-8-Config oder JSON-Wurzel ≠ Objekt~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/storage.py` (Z. 188–189, 227, 328–330, 372–374), `ssh_manager.py` (Z. 213, 222)
+**Problem:** `load_ssh_config_sessions` fängt nur `OSError`, `load_filezilla_config_sessions` nur `OSError` und `ET.ParseError`. Eine ANSI-kodierte `~/.ssh/config` oder `sitemanager.xml` wirft `UnicodeDecodeError` im Konstruktor von `SSHManagerApp`, die App startet nicht. `load_ui_state` crasht mit `AttributeError`, wenn `ui_state.json` eine Liste oder `null` enthält.
+**Fix:** `isinstance(data, dict)` prüfen. `UnicodeDecodeError`/`ValueError` in die except-Tupel aufnehmen und `read_text(encoding="utf-8", errors="replace")` verwenden.
+
+#### ~~[DX-H1] `save_*` ohne Fehlerbehandlung, `close_app` kann das Schließen blockieren~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/storage.py` (Z. 31–33, 231–248, 264–266, 301–318), `ssh_manager_app/actions_app.py` (Z. 54–56), `ssh_manager_app/actions_sessions.py`, `ssh_manager_app/actions_notes.py` (Z. 38), `ssh_manager_app/actions_ui.py` (Z. 45, 130, 385)
+**Problem:** Mehrere Folgen bei einem `OSError` (Platte voll, Datei gesperrt):
+- Die Änderung ist nur im Speicher, und der User merkt es nicht.
+- `close_app` wirft vor `destroy()`, das Fenster lässt sich nicht schließen.
+- `add_session` kann Notes und Sessions inkonsistent speichern.
+
+**Fix:** Bei `close_app` `try/except OSError` → Warnung, `finally: app.destroy()`. Für Speicheraufrufe einen Wrapper `safe_save(app, fn, *args)` mit messagebox.
+
+#### ~~[DX-H2] Korrupte JSON-Dateien führen still zu Datenverlust~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/storage.py` (Z. 24–28, 186–228, 251–261, 269–298)
+**Problem:** Bei einem `JSONDecodeError` laden die Loader leere Defaults. Der nächste `save_app_sessions` überschreibt die defekte Datei, und alle eigenen Verbindungen sind weg, ohne Meldung und ohne Backup.
+**Fix:** Die defekte Datei nach `*.corrupt-<timestamp>` kopieren, eine Warnung sammeln und nach `build_main_ui` anzeigen. Zusätzlich atomar schreiben (siehe BP-M2).
+
+#### ~~[BP-M2a] Atomare Persistenz und Schutz der Originaldaten~~
+
+**Erledigt am 06.10.2026.**
+
+**Umgesetzt:** Atomare Writes, Sicherung beschädigter Daten und unverändertes Eingabe-Dict. Gemeinsames Speichern von Verbindungen/Notizen verwendet ein wiederherstellbares Journal.

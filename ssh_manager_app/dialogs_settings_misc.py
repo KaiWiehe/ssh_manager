@@ -10,7 +10,7 @@ from . import AppSettings, AppearanceSettings, ImportSettings, SourceVisibilityS
 from .ssh_utils import connection_value
 from .constants import _SSH_CONFIG_FILE
 from .dialogs_toast import ToastNotification
-from .storage import load_settings_from_path
+from .storage import load_settings_from_path, atomic_write_text
 
 
 class SshConfigInspectDialog(tk.Toplevel):
@@ -786,7 +786,7 @@ class SettingsView(ttk.Frame):
             return
         settings = self._collect_settings()
         try:
-            Path(path).write_text(__import__("json").dumps(settings_to_dict(settings), ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write_text(Path(path), json.dumps(settings_to_dict(settings), ensure_ascii=False, indent=2))
         except OSError as e:
             messagebox.showerror("Export fehlgeschlagen", f"Datei konnte nicht gespeichert werden:\n{e}", parent=self)
             return

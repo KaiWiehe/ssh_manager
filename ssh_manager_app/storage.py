@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import shutil
+import time
 from .ssh_utils import valid_color
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -25,6 +27,8 @@ from .shortcuts import merge_with_defaults as _merge_shortcuts
 
 def atomic_write_text(path: Path, text: str) -> None:
     """Replace only after a complete, flushed write in the same directory."""
+    if path.is_symlink():
+        path = path.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -39,21 +43,85 @@ def atomic_write_text(path: Path, text: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
+_load_warnings: dict[Path, str] = {}
+_blocked_paths: set[Path] = set()
+
+
+def take_load_warnings() -> list[str]:
+    warnings = list(_load_warnings.values())
+    _load_warnings.clear()
+    return warnings
+
+
+def _preserve_invalid(path: Path) -> None:
+    if path in _load_warnings or not path.exists():
+        return
+    backup = path.with_name(path.name + f".corrupt-{time.time_ns()}")
+    try:
+        shutil.copy2(path, backup)
+        _load_warnings[path] = f"{path.name}: ungültige Daten; Original gesichert unter {backup}."
+    except OSError:
+        _blocked_paths.add(path)
+        _load_warnings[path] = f"{path}: konnte nicht gesichert werden. Speichern ist zum Schutz der Originaldaten gesperrt."
+
+
+def _read_json(path: Path) -> dict:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("JSON-Wurzel muss ein Objekt sein.")
+    return data
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    if path in _blocked_paths:
+        raise OSError(f"Speichern gesperrt: Originaldaten konnten nicht gesichert werden ({path}).")
+    atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def _recover_session_transaction() -> None:
+    journal = _APP_SESSIONS_FILE.with_name("session-notes-pending.json")
+    if not journal.exists():
+        return
+    try:
+        payload = _read_json(journal)
+    except (ValueError, OSError):
+        _preserve_invalid(journal)
+        _blocked_paths.update({_APP_SESSIONS_FILE, _NOTES_FILE})
+        raise OSError("Verbindungen/Notizen: Wiederherstellungsjournal konnte nicht gelesen werden.")
+    if not isinstance(payload.get("sessions"), dict) or not isinstance(payload.get("notes"), dict):
+        _preserve_invalid(journal)
+        _blocked_paths.update({_APP_SESSIONS_FILE, _NOTES_FILE})
+        raise OSError("Ungültiges Journal; Verbindungen/Notizen werden vor Überschreiben geschützt.")
+    _atomic_write_json(_APP_SESSIONS_FILE, payload["sessions"])
+    _atomic_write_json(_NOTES_FILE, payload["notes"])
+    journal.unlink()
+
+
+def save_sessions_and_notes(sessions: list[Session], notes: dict[str, str]) -> None:
+    _recover_session_transaction()
+    if _APP_SESSIONS_FILE in _blocked_paths or _NOTES_FILE in _blocked_paths:
+        raise OSError("Speichern gesperrt: Originaldaten konnten nicht gesichert werden.")
+    journal = _APP_SESSIONS_FILE.with_name("session-notes-pending.json")
+    _atomic_write_json(journal, {"sessions": _session_payload(sessions), "notes": {"notes": notes}})
+    _recover_session_transaction()
+
+
 def load_settings() -> AppSettings:
     try:
         return load_settings_from_path(_SETTINGS_FILE)
-    except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError):
+    except (OSError, ValueError, TypeError, AttributeError):
+        _preserve_invalid(_SETTINGS_FILE)
         return default_settings()
 
 
 def save_settings(settings: AppSettings) -> None:
     _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _SETTINGS_FILE.write_text(json.dumps(settings_to_dict(settings), ensure_ascii=False, indent=2), encoding="utf-8")
+    _atomic_write_json(_SETTINGS_FILE, settings_to_dict(settings))
 
 
 def load_settings_from_path(path: Path) -> AppSettings:
     defaults = default_settings()
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = _read_json(path)
     raw_dict = raw if isinstance(raw, dict) else {}
     toolbar_raw = raw_dict.get("toolbar", {})
     if not isinstance(toolbar_raw, dict):
@@ -138,7 +206,10 @@ def load_settings_from_path(path: Path) -> AppSettings:
         tree_row_height = defaults.appearance.tree_row_height
 
     allowed_columns = {"username", "notes", "hostname", "port"}
-    column_order = [col for col in toolbar_raw.get("column_order", defaults.toolbar.column_order) if col in allowed_columns]
+    column_raw = toolbar_raw.get("column_order", defaults.toolbar.column_order)
+    if not isinstance(column_raw, list):
+        column_raw = defaults.toolbar.column_order
+    column_order = [col for col in column_raw if isinstance(col, str) and col in allowed_columns]
     if not column_order:
         column_order = list(defaults.toolbar.column_order)
     elif "username" not in column_order:
@@ -172,7 +243,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
         windows_terminal=WindowsTerminalSettings(
             profile_name=str(wt_raw.get("profile_name", defaults.windows_terminal.profile_name)).strip() or defaults.windows_terminal.profile_name,
             use_tab_color=bool(wt_raw.get("use_tab_color", defaults.windows_terminal.use_tab_color)),
-            title_mode=(wt_raw.get("title_mode") if wt_raw.get("title_mode") in {"default", "name", "host", "user_host", "name_host"} else defaults.windows_terminal.title_mode),
+            title_mode=(wt_raw.get("title_mode") if str(wt_raw.get("title_mode")) in {"default", "name", "host", "user_host", "name_host"} else defaults.windows_terminal.title_mode),
             ssh_open_mode=ssh_open_mode,
         ),
         winscp=WinSCPSettings(open_mode=winscp_open_mode),
@@ -203,7 +274,7 @@ def load_settings_from_path(path: Path) -> AppSettings:
 
 def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
     try:
-        data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+        data = _read_json(_STATE_FILE)
         expanded_raw = data.get("expanded_folders", [])
         if not isinstance(expanded_raw, list):
             raise TypeError("expanded_folders must be a list")
@@ -242,13 +313,14 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
         if recent_sessions:
             toolbar_texts["recent_sessions"] = recent_sessions
         return set(expanded_raw), {str(k): v for k, v in colors_raw.items() if valid_color(v)}, toolbar_texts
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+    except (OSError, TypeError, ValueError):
+        _preserve_invalid(_STATE_FILE)
         return set(), {}, {}
 
 
 def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], toolbar_search_texts: dict[str, str] | None = None) -> None:
     _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    toolbar_search_texts = toolbar_search_texts or {}
+    toolbar_search_texts = dict(toolbar_search_texts or {})
     favorite_sessions = toolbar_search_texts.pop("favorite_sessions", {})
     recent_sessions = toolbar_search_texts.pop("recent_sessions", [])
     user_overrides = toolbar_search_texts.pop("session_user_overrides", {})
@@ -263,34 +335,42 @@ def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], to
         payload["recent_sessions"] = recent_sessions
     if user_overrides:
         payload["session_user_overrides"] = user_overrides
-    _STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    _atomic_write_json(_STATE_FILE, payload)
 
 
 def load_notes() -> dict[str, str]:
     try:
-        data = json.loads(_NOTES_FILE.read_text(encoding="utf-8"))
+        _recover_session_transaction()
+        data = _read_json(_NOTES_FILE)
         if not isinstance(data, dict):
             return {}
         notes = data.get("notes", {})
         if not isinstance(notes, dict):
-            return {}
+            raise ValueError("notes must be an object")
         return {str(k): str(v) for k, v in notes.items() if str(v).strip()}
-    except (OSError, json.JSONDecodeError, ValueError):
+    except (OSError, ValueError):
+        _preserve_invalid(_NOTES_FILE)
         return {}
 
 
 def save_notes(notes: dict[str, str]) -> None:
     _NOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _NOTES_FILE.write_text(json.dumps({"notes": notes}, ensure_ascii=False, indent=2), encoding="utf-8")
+    _recover_session_transaction()
+    _atomic_write_json(_NOTES_FILE, {"notes": notes})
 
 
 def load_app_sessions() -> list[Session]:
     try:
-        raw = json.loads(_APP_SESSIONS_FILE.read_text(encoding="utf-8"))
+        _recover_session_transaction()
+        raw = _read_json(_APP_SESSIONS_FILE)
         data = raw if isinstance(raw, dict) else {}
         sessions: list[Session] = []
-        for entry in data.get("sessions", []):
+        entries = data.get("sessions", [])
+        if not isinstance(entries, list):
+            raise ValueError("sessions must be a list")
+        for entry in entries:
             if not isinstance(entry, dict):
+                _preserve_invalid(_APP_SESSIONS_FILE)
                 continue
             try:
                 source = str(entry.get("source", "app"))
@@ -310,14 +390,15 @@ def load_app_sessions() -> list[Session]:
                     source=source,
                 ))
             except (KeyError, TypeError, ValueError):
+                _preserve_invalid(_APP_SESSIONS_FILE)
                 continue
         return sessions
-    except (OSError, json.JSONDecodeError, TypeError):
+    except (OSError, ValueError, TypeError):
+        _preserve_invalid(_APP_SESSIONS_FILE)
         return []
 
 
-def save_app_sessions(sessions: list[Session]) -> None:
-    _APP_SESSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+def _session_payload(sessions: list[Session]) -> dict:
     entries = []
     for s in sessions:
         if s.source not in ("app", "ssh_alias"):
@@ -333,7 +414,12 @@ def save_app_sessions(sessions: list[Session]) -> None:
             "port": s.port,
             "source": s.source,
         })
-    _APP_SESSIONS_FILE.write_text(json.dumps({"sessions": entries}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"sessions": entries}
+
+
+def save_app_sessions(sessions: list[Session]) -> None:
+    _recover_session_transaction()
+    _atomic_write_json(_APP_SESSIONS_FILE, _session_payload(sessions))
 
 
 def load_filezilla_config_sessions() -> list[Session]:
@@ -343,8 +429,9 @@ def load_filezilla_config_sessions() -> list[Session]:
     if file_path is None:
         return []
     try:
-        root = ET.fromstring(file_path.read_text(encoding="utf-8"))
-    except (OSError, ET.ParseError):
+        root = ET.fromstring(file_path.read_bytes())
+    except (OSError, ET.ParseError, ValueError):
+        _load_warnings[file_path] = f"FileZilla-Quelle konnte nicht gelesen werden: {file_path}. Original unverändert."
         return []
 
     sessions: list[Session] = []
@@ -388,7 +475,8 @@ def load_filezilla_config_sessions() -> list[Session]:
 def load_ssh_config_sessions() -> list[Session]:
     try:
         text = _SSH_CONFIG_FILE.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):
+        _load_warnings[_SSH_CONFIG_FILE] = f"SSH-Config konnte nicht als UTF-8 gelesen werden: {_SSH_CONFIG_FILE}. Original unverändert."
         return []
 
     sessions: list[Session] = []

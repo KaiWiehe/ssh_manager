@@ -1,4 +1,5 @@
 import json
+import pytest
 import os
 import sys
 import tempfile
@@ -85,9 +86,10 @@ def test_load_settings_from_path_non_object_root_falls_back_to_defaults():
         path = Path(tmp) / "settings.json"
         path.write_text(json.dumps(["not", "an", "object"]), encoding="utf-8")
 
-        settings = load_settings_from_path(path)
+        with pytest.raises(ValueError):
+            load_settings_from_path(path)
 
-    assert settings == default_settings()
+
 
 
 def test_load_settings_from_path_keeps_windows_terminal_as_default_and_rejects_invalid_ssh_mode():

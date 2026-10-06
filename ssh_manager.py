@@ -194,7 +194,10 @@ class SSHManagerApp(tk.Tk):
 
         from ssh_manager_app.secret_scripts import secure_legacy_scripts
         from ssh_manager_app.constants import _STATE_FILE
-        secure_legacy_scripts(_STATE_FILE.parent / "tmp")
+        try:
+            secure_legacy_scripts(_STATE_FILE.parent / "tmp")
+        except OSError:
+            messagebox.showwarning("Temporäre Skripte", "Alte temporäre Skripte konnten nicht geschützt werden. Bitte Dateizugriff prüfen.", parent=self)
         self.settings = load_settings()
         self._persisted_settings = self.settings
         self._startup_settings = self.settings
@@ -248,6 +251,16 @@ class SSHManagerApp(tk.Tk):
         self._sessions = build_visible_sessions(self)
         self._tree.refresh(self._sessions)
         self.protocol("WM_DELETE_WINDOW", lambda: close_app_callback(self))
+        from ssh_manager_app.storage import take_load_warnings
+        warnings = take_load_warnings()
+        if warnings:
+            self.after_idle(lambda: messagebox.showwarning("Daten konnten nicht vollständig geladen werden", "\n\n".join(warnings), parent=self))
+
+    def report_callback_exception(self, exc, value, traceback):
+        if issubclass(exc, OSError):
+            messagebox.showerror("Dateizugriff fehlgeschlagen", f"Die Änderung konnte nicht gespeichert werden:\n{value}", parent=self)
+        else:
+            super().report_callback_exception(exc, value, traceback)
 
 # ---------------------------------------------------------------------------
 # Entry Point

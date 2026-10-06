@@ -11,7 +11,7 @@ from .dialogs_base import _USERNAME_RE, _build_quickselect_buttons
 from .dialogs_move_folder import MoveFolderDialog
 from .dialogs_session_edit import SessionEditDialog
 from .models import Session
-from .storage import save_app_sessions, save_notes
+from .storage import save_app_sessions, save_notes, save_sessions_and_notes
 
 
 def add_session(app, folder_preset: str = "") -> None:
@@ -31,8 +31,7 @@ def add_session(app, folder_preset: str = "") -> None:
         app._notes[dialog.result.key] = dialog.note_result
     else:
         app._notes.pop(dialog.result.key, None)
-    save_notes(app._notes)
-    save_app_sessions(app._app_sessions)
+    save_sessions_and_notes(app._app_sessions, app._notes)
     rebuild_sessions(app)
 
 
@@ -50,8 +49,7 @@ def edit_session(app, session: Session) -> None:
         app._notes[dialog.result.key] = dialog.note_result
     else:
         app._notes.pop(dialog.result.key, None)
-    save_notes(app._notes)
-    save_app_sessions(app._app_sessions)
+    save_sessions_and_notes(app._app_sessions, app._notes)
     rebuild_sessions(app)
 
 

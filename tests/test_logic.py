@@ -1885,7 +1885,7 @@ def test_add_session_appends_result_saves_and_rebuilds():
     with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["Prod"]) as get_folders, \
          patch("ssh_manager_app.actions_sessions.get_ssh_aliases", return_value=["alias1"]) as get_aliases, \
          patch("ssh_manager_app.actions_sessions.SessionEditDialog", return_value=dialog) as dialog_cls, \
-         patch("ssh_manager_app.actions_sessions.save_notes") as save_notes, \
+         patch("ssh_manager_app.actions_sessions.save_sessions_and_notes") as save_bundle, \
          patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
          patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
         add_session(app, folder_preset="Prod")
@@ -1896,8 +1896,8 @@ def test_add_session_appends_result_saves_and_rebuilds():
     app.wait_window.assert_called_once_with(dialog)
     assert app._app_sessions == [new_session]
     assert app._notes == {"s1": "wichtig"}
-    save_notes.assert_called_once_with(app._notes)
-    save_sessions.assert_called_once_with(app._app_sessions)
+    save_bundle.assert_called_once_with(app._app_sessions, app._notes)
+    save_sessions.assert_not_called()
     rebuild.assert_called_once_with(app)
 
 
@@ -1913,7 +1913,7 @@ def test_edit_session_replaces_existing_session_and_updates_note():
 
     with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["Prod", "Ops"]), \
          patch("ssh_manager_app.actions_sessions.SessionEditDialog", return_value=dialog) as dialog_cls, \
-         patch("ssh_manager_app.actions_sessions.save_notes") as save_notes, \
+         patch("ssh_manager_app.actions_sessions.save_sessions_and_notes") as save_bundle, \
          patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \
          patch("ssh_manager_app.actions_sessions.rebuild_sessions") as rebuild:
         edit_session(app, original)
@@ -1921,8 +1921,8 @@ def test_edit_session_replaces_existing_session_and_updates_note():
     dialog_cls.assert_called_once_with(app, ["Prod", "Ops"], session=original, note="alt", quick_users=[])
     assert app._app_sessions == [updated]
     assert app._notes == {"s1": "neu"}
-    save_notes.assert_called_once_with(app._notes)
-    save_sessions.assert_called_once_with(app._app_sessions)
+    save_bundle.assert_called_once_with(app._app_sessions, app._notes)
+    save_sessions.assert_not_called()
     rebuild.assert_called_once_with(app)
 
 
@@ -2392,7 +2392,7 @@ def test_ssh_manager_app_stays_thin_bootstrap_shell():
         if callable(value) and getattr(value, "__module__", None) == "ssh_manager"
     ]
 
-    assert method_names == ["__init__"]
+    assert method_names == ["__init__", "report_callback_exception"]
 
 
 def test_dialog_exports_use_split_modules():
@@ -2541,14 +2541,15 @@ def test_settings_view_export_settings_writes_json_and_shows_toast():
     path_mock = MagicMock()
     with patch("ssh_manager_app.dialogs_settings_misc.filedialog.asksaveasfilename", return_value="/tmp/settings.json"), \
          patch("ssh_manager_app.dialogs_settings_misc.Path", return_value=path_mock), \
+         patch("ssh_manager_app.dialogs_settings_misc.atomic_write_text", side_effect=path_mock.write_text), \
          patch("ssh_manager_app.dialogs_settings_misc.ToastNotification") as toast:
         SettingsView._export_settings(view)
 
     view._collect_settings.assert_called_once_with()
     path_mock.write_text.assert_called_once()
-    written_json = path_mock.write_text.call_args.args[0]
+    written_json = path_mock.write_text.call_args.args[1]
     assert '"default_user": "tool-admin"' in written_json
-    assert path_mock.write_text.call_args.kwargs == {"encoding": "utf-8"}
+    assert path_mock.write_text.call_args.args[0] is path_mock
     toast.assert_called_once_with(view._app, "Einstellungen exportiert")
 
 
@@ -2562,6 +2563,7 @@ def test_settings_view_export_settings_shows_error_on_write_failure():
 
     with patch("ssh_manager_app.dialogs_settings_misc.filedialog.asksaveasfilename", return_value="/tmp/settings.json"), \
          patch("ssh_manager_app.dialogs_settings_misc.Path", return_value=path_mock), \
+         patch("ssh_manager_app.dialogs_settings_misc.atomic_write_text", side_effect=path_mock.write_text), \
          patch("ssh_manager_app.dialogs_settings_misc.messagebox.showerror") as showerror:
         SettingsView._export_settings(view)
 

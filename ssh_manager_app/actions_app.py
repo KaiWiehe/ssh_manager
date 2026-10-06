@@ -52,7 +52,11 @@ def import_settings_dialog(app) -> None:
 
 
 def close_app(app) -> None:
-    persist_ui_state(app)
+    try:
+        persist_ui_state(app)
+    except OSError as exc:
+        if not messagebox.askyesno("Speichern fehlgeschlagen", f"Die Ansicht wurde nicht gespeichert:\n{exc}\n\nTrotzdem schließen?", parent=app, icon="warning"):
+            return
     app.destroy()
 
 

@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import patch
 import subprocess
+import json
 
 import pytest
 
@@ -119,3 +120,55 @@ def test_append_alias_uses_loader_and_preserves_config_backup(tmp_path, monkeypa
     assert path.with_suffix(".bak").read_text() == original
     with pytest.raises(ValueError):
         core._append_ssh_config_alias("old", Session("s", "Server", [], "host"), "ops", "jump")
+
+
+def test_corrupt_sessions_are_preserved_before_next_save(tmp_path, monkeypatch):
+    import ssh_manager_app.storage as storage
+    path = tmp_path / "app_sessions.json"
+    path.write_bytes(b'{broken')
+    monkeypatch.setattr(storage, "_APP_SESSIONS_FILE", path)
+    assert storage.load_app_sessions() == []
+    backup, = tmp_path.glob("app_sessions.json.corrupt-*")
+    storage.save_app_sessions([])
+    assert backup.read_bytes() == b'{broken'
+    assert storage.take_load_warnings()
+
+
+def test_failed_atomic_replace_preserves_original(tmp_path):
+    from ssh_manager_app.storage import atomic_write_text
+    path = tmp_path / "original.json"
+    path.write_text("original")
+    with patch("ssh_manager_app.storage.os.replace", side_effect=PermissionError("locked")):
+        with pytest.raises(PermissionError):
+            atomic_write_text(path, "new")
+    assert path.read_text() == "original"
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_interrupted_session_notes_save_recovers_both_files(tmp_path, monkeypatch):
+    import ssh_manager_app.storage as storage
+    sessions_file, notes_file = tmp_path / "sessions.json", tmp_path / "notes.json"
+    monkeypatch.setattr(storage, "_APP_SESSIONS_FILE", sessions_file)
+    monkeypatch.setattr(storage, "_NOTES_FILE", notes_file)
+    real_write = storage._atomic_write_json
+    def write(path, data):
+        if path == notes_file:
+            raise PermissionError("interrupted")
+        real_write(path, data)
+    session = Session("__app__s", "Server", [], "host", source="app")
+    with patch.object(storage, "_atomic_write_json", side_effect=write):
+        with pytest.raises(PermissionError):
+            storage.save_sessions_and_notes([session], {session.key: "note"})
+    assert (tmp_path / "session-notes-pending.json").exists()
+    assert len(storage.load_app_sessions()) == 1
+    assert storage.load_notes() == {session.key: "note"}
+    assert not (tmp_path / "session-notes-pending.json").exists()
+
+
+def test_save_ui_state_does_not_mutate_callers_dict(tmp_path, monkeypatch):
+    import ssh_manager_app.storage as storage
+    monkeypatch.setattr(storage, "_STATE_FILE", tmp_path / "state.json")
+    value = {"favorite_sessions": {"s": True}, "recent_sessions": ["s"]}
+    original = json.loads(json.dumps(value))
+    storage.save_ui_state(set(), {}, value)
+    assert value == original
