@@ -199,8 +199,9 @@ class SSHManagerApp(tk.Tk):
         except OSError:
             messagebox.showwarning("Temporäre Skripte", "Alte temporäre Skripte konnten nicht geschützt werden. Bitte Dateizugriff prüfen.", parent=self)
         self.settings = load_settings()
-        self._persisted_settings = self.settings
-        self._startup_settings = self.settings
+        from copy import deepcopy
+        self._persisted_settings = deepcopy(self.settings)
+        self._startup_settings = deepcopy(self.settings)
         configure_app_styles(self)
 
         # Registry laden

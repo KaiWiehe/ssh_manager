@@ -57,11 +57,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Fix:** Die Richtung Models/Storage → Core → Actions → UI festlegen. Die Verdrahtung in einem Composition-Root bündeln, Views bekommen Callbacks injiziert. Klein und schrittweise vorgehen (AGENTS.md-Refactor-Regeln).
 
 ### HOCH
-#### [DC-H1] Settings-Aliasing: „Zurück“ und „Gespeicherten Stand wiederherstellen“ wirken nicht
-**Datei:** `ssh_manager.py` (Z. 195–197), `ssh_manager_app/actions_ui.py` (Z. 12–15, 61–74), `ssh_manager_app/dialogs_settings_misc.py` (Z. 818–826, 1032, 1086–1099)
-**Problem:** `settings`, `_persisted_settings` und `_startup_settings` sind **dasselbe** Objekt. `preview_*` mutiert in-place, damit ändert sich der „gespeicherte“ Stand mit. `_import_settings` setzt `_persisted_settings` nicht neu. `_startup_settings` ist ungenutzt.
-**Fix:** Beim Start `copy.deepcopy` verwenden. `preview_*` per `dataclasses.replace` auf neue Objekte setzen. `_persisted_settings` nur in `apply_settings` und beim Laden schreiben.
-
 #### [DC-H2] Toter, nicht lauffähiger Duplikat-`SessionEditDialog` in `dialogs_remote.py`
 **Datei:** `ssh_manager_app/dialogs_remote.py` (Z. 1176–1442)
 **Problem:** Die zweite Kopie von `SessionEditDialog` (das Original liegt in `dialogs_session_edit.py`) referenziert die nicht importierten Namen `uuid`, `_APP_PREFIX` und `_SSH_ALIAS_PREFIX`. Das ist ein Rest eines Splits. `QUICK_USERS` ist ungenutzt importiert.
@@ -536,3 +531,11 @@ tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.s
 **Erledigt am 06.10.2026.**
 
 **Umgesetzt:** Atomare Writes, Sicherung beschädigter Daten und unverändertes Eingabe-Dict. Gemeinsames Speichern von Verbindungen/Notizen verwendet ein wiederherstellbares Journal.
+
+#### ~~[DC-H1] Settings-Aliasing: „Zurück“ und „Gespeicherten Stand wiederherstellen“ wirken nicht~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager.py` (Z. 195–197), `ssh_manager_app/actions_ui.py` (Z. 12–15, 61–74), `ssh_manager_app/dialogs_settings_misc.py` (Z. 818–826, 1032, 1086–1099)
+**Problem:** `settings`, `_persisted_settings` und `_startup_settings` sind **dasselbe** Objekt. `preview_*` mutiert in-place, damit ändert sich der „gespeicherte“ Stand mit. `_import_settings` setzt `_persisted_settings` nicht neu. `_startup_settings` ist ungenutzt.
+**Fix:** Beim Start `copy.deepcopy` verwenden. `preview_*` per `dataclasses.replace` auf neue Objekte setzen. `_persisted_settings` nur in `apply_settings` und beim Laden schreiben.

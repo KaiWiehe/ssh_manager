@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
+from dataclasses import replace
 import subprocess
 import tkinter as tk
 from pathlib import Path
@@ -819,10 +821,13 @@ class SettingsView(ttk.Frame):
     def _cancel_and_show_main_view(self) -> None:
         from .actions_ui import preview_appearance, preview_source_visibility, preview_toolbar_visibility, show_main_view
 
-        persisted = getattr(self._app, "_persisted_settings", self._app.settings)
+        persisted = deepcopy(getattr(self._app, "_persisted_settings", self._app.settings))
         preview_appearance(self._app, persisted.appearance)
         preview_toolbar_visibility(self._app, persisted.toolbar)
         preview_source_visibility(self._app, persisted.source_visibility)
+        self._app.settings = deepcopy(persisted)
+        from .ui import reapply_shortcut_bindings
+        reapply_shortcut_bindings(self._app)
         self.load_from_app()
         show_main_view(self._app)
 
@@ -851,7 +856,7 @@ class SettingsView(ttk.Frame):
             )
 
     def load_from_app(self) -> None:
-        settings = getattr(self._app, "_persisted_settings", self._app.settings)
+        settings = self._app.settings
         self._quick_users_text.delete("1.0", "end")
         self._quick_users_text.insert("1.0", "\n".join(settings.quick_users))
         self._default_user_combo.configure(values=settings.quick_users)
@@ -1084,7 +1089,7 @@ class SettingsView(ttk.Frame):
         from .actions_ui import apply_settings
 
         apply_settings(self._app, settings)
-        self._app._persisted_settings = settings
+        self._app._persisted_settings = deepcopy(settings)
         self._show_main_view()
 
     def _restore_section(self, section: str) -> None:
@@ -1096,7 +1101,7 @@ class SettingsView(ttk.Frame):
         elif section in {"toolbar", "columns"}:
             preview_toolbar_visibility(self._app, persisted.toolbar)
         elif section == "sources":
-            self._app.settings.import_settings = persisted.import_settings
+            self._app.settings = replace(self._app.settings, import_settings=deepcopy(persisted.import_settings))
             preview_source_visibility(self._app, persisted.source_visibility)
         elif section == "shortcuts":
             from .shortcuts import merge_with_defaults
@@ -1114,7 +1119,7 @@ class SettingsView(ttk.Frame):
         elif section in {"toolbar", "columns"}:
             preview_toolbar_visibility(self._app, defaults.toolbar)
         elif section == "sources":
-            self._app.settings.import_settings = defaults.import_settings
+            self._app.settings = replace(self._app.settings, import_settings=deepcopy(defaults.import_settings))
             preview_source_visibility(self._app, defaults.source_visibility)
         elif section == "shortcuts":
             self._shortcut_values = dict(defaults.keyboard_shortcuts)

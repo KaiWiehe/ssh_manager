@@ -1655,7 +1655,8 @@ def test_preview_toolbar_visibility_updates_toolbar_and_tree():
 
     preview_toolbar_visibility(app, toolbar)
 
-    assert app.settings.toolbar is toolbar
+    assert app.settings.toolbar == toolbar
+    assert app.settings.toolbar is not toolbar
     app._tree.update_toolbar_settings.assert_called_once_with(toolbar)
 
 
@@ -1765,7 +1766,9 @@ def test_apply_settings_persists_and_focuses_search():
          patch("ssh_manager_app.actions_ui.ToastNotification") as toast:
         apply_settings(app, settings)
 
-    assert app.settings is settings
+    assert app.settings == settings
+    assert app.settings is not settings
+    assert app._persisted_settings is not app.settings
     save_settings.assert_called_once_with(settings)
     configure_styles.assert_called_once_with(app)
     refresh_checkboxes.assert_called_once_with(app)

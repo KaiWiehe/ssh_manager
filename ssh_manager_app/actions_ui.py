@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from dataclasses import replace
+from copy import deepcopy
 
 from .dialogs_toast import ToastNotification
 from .models import AppearanceSettings, AppSettings, SourceVisibilitySettings, ToolbarSettings
@@ -10,7 +11,7 @@ from .ui import configure_app_styles, layout_toolbar_buttons, refresh_checkbox_i
 
 
 def preview_toolbar_visibility(app, toolbar_settings: ToolbarSettings) -> None:
-    app.settings.toolbar = toolbar_settings
+    app.settings = replace(app.settings, toolbar=deepcopy(toolbar_settings))
     layout_toolbar_buttons(app)
     app._tree.update_toolbar_settings(toolbar_settings)
 
@@ -40,9 +41,9 @@ def hide_column_from_header(app, column_key: str) -> None:
     new_order = [c for c in toolbar.column_order if c != column_key]
     new_toolbar = replace(toolbar, **{visibility_attr: False}, column_order=new_order)
     new_settings = replace(persisted, toolbar=new_toolbar)
-    app.settings = new_settings
-    app._persisted_settings = new_settings
     save_settings(new_settings)
+    app.settings = deepcopy(new_settings)
+    app._persisted_settings = deepcopy(new_settings)
     preview_toolbar_visibility(app, new_toolbar)
     if getattr(app, "_settings_view", None) is not None:
         try:
@@ -59,7 +60,7 @@ def hide_column_from_header(app, column_key: str) -> None:
 
 
 def preview_source_visibility(app, source_visibility: SourceVisibilitySettings) -> None:
-    app.settings.source_visibility = source_visibility
+    app.settings = replace(app.settings, source_visibility=deepcopy(source_visibility))
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
     persist_ui_state(app)
@@ -67,7 +68,9 @@ def preview_source_visibility(app, source_visibility: SourceVisibilitySettings) 
 
 
 def preview_appearance(app, appearance: AppearanceSettings) -> None:
-    app.settings.appearance = appearance
+    if app.settings.appearance == appearance:
+        return
+    app.settings = replace(app.settings, appearance=deepcopy(appearance))
     configure_app_styles(app)
     refresh_checkbox_images(app)
     if getattr(app, "_settings_view", None) is not None:
@@ -126,8 +129,9 @@ def show_main_view(app) -> None:
 
 
 def apply_settings(app, settings: AppSettings) -> None:
-    app.settings = settings
     save_settings(settings)
+    app.settings = deepcopy(settings)
+    app._persisted_settings = deepcopy(settings)
     configure_app_styles(app)
     refresh_checkbox_images(app)
     layout_toolbar_buttons(app)
@@ -142,7 +146,7 @@ def apply_settings(app, settings: AppSettings) -> None:
 
 def reset_settings(app) -> None:
     apply_settings(app, app._default_settings_factory())
-    app._persisted_settings = app.settings
+    app._persisted_settings = deepcopy(app.settings)
     if app._settings_view is not None:
         app._settings_view.load_from_app()
 
@@ -380,9 +384,9 @@ def toggle_recent_folder(app) -> None:
     new_visibility = replace(visibility, show_recent=not visibility.show_recent)
     persisted = getattr(app, "_persisted_settings", app.settings)
     new_settings = replace(persisted, source_visibility=new_visibility)
-    app.settings = new_settings
-    app._persisted_settings = new_settings
     save_settings(new_settings)
+    app.settings = deepcopy(new_settings)
+    app._persisted_settings = deepcopy(new_settings)
     preview_source_visibility(app, new_visibility)
     state = "sichtbar" if new_visibility.show_recent else "ausgeblendet"
     ToastNotification(app, f"'Zuletzt verwendet' jetzt {state}")

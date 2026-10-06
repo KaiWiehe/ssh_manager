@@ -475,6 +475,8 @@ def load_filezilla_config_sessions() -> list[Session]:
 def load_ssh_config_sessions() -> list[Session]:
     try:
         text = _SSH_CONFIG_FILE.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return []
     except (OSError, UnicodeError):
         _load_warnings[_SSH_CONFIG_FILE] = f"SSH-Config konnte nicht als UTF-8 gelesen werden: {_SSH_CONFIG_FILE}. Original unverändert."
         return []

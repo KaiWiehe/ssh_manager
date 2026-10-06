@@ -172,3 +172,49 @@ def test_save_ui_state_does_not_mutate_callers_dict(tmp_path, monkeypatch):
     original = json.loads(json.dumps(value))
     storage.save_ui_state(set(), {}, value)
     assert value == original
+
+
+def test_settings_preview_leaves_saved_nested_state_unchanged():
+    from copy import deepcopy
+    from unittest.mock import MagicMock
+    from ssh_manager_app.models import AppSettings, ToolbarSettings
+    from ssh_manager_app.actions_ui import preview_toolbar_visibility
+    app = MagicMock()
+    app.settings = AppSettings()
+    app._persisted_settings = deepcopy(app.settings)
+    original = deepcopy(app._persisted_settings)
+    with patch("ssh_manager_app.actions_ui.layout_toolbar_buttons"):
+        preview_toolbar_visibility(app, ToolbarSettings(show_add_connection=False))
+    assert not app.settings.toolbar.show_add_connection
+    assert app._persisted_settings == original
+    app.settings.toolbar.column_order.append("changed-draft")
+    assert app._persisted_settings.toolbar.column_order == original.toolbar.column_order
+
+
+def test_real_settings_cancel_restores_saved_toolbar(tmp_path, monkeypatch):
+    from copy import deepcopy
+    import ssh_manager_app.storage as storage
+    import ssh_manager_app.constants as constants
+    from ssh_manager import SSHManagerApp
+    from ssh_manager_app.core import RegistryReader
+    from ssh_manager_app.actions_ui import preview_toolbar_visibility, show_settings_view
+    from ssh_manager_app.models import ToolbarSettings
+    for name in ("_SETTINGS_FILE", "_STATE_FILE", "_APP_SESSIONS_FILE", "_NOTES_FILE", "_SSH_CONFIG_FILE"):
+        monkeypatch.setattr(storage, name, tmp_path / (name + ".json"))
+    monkeypatch.setattr(constants, "_STATE_FILE", tmp_path / "state.json")
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(RegistryReader, "load_sessions", lambda self: [])
+    storage.take_load_warnings()
+    monkeypatch.setattr("tkinter.messagebox.showwarning", lambda *a, **k: None)
+    monkeypatch.setattr("tkinter.messagebox.showerror", lambda *a, **k: None)
+    app = SSHManagerApp()
+    app.withdraw()
+    try:
+        saved = deepcopy(app._persisted_settings)
+        show_settings_view(app)
+        preview_toolbar_visibility(app, ToolbarSettings(show_add_connection=False))
+        app._settings_view._cancel_and_show_main_view()
+        assert app.settings == saved
+        assert app.settings is not app._persisted_settings
+    finally:
+        app.destroy()
