@@ -208,12 +208,11 @@ class SSHManagerApp(tk.Tk):
         try:
             reader = RegistryReader()
             winscp_sessions = reader.load_sessions()
-        except OSError as e:
-            messagebox.showerror(
-                "Registry-Fehler",
-                f"WinSCP-Sessions konnten nicht geladen werden:\n{e}\n\n"
-                f"Pfad: HKCU\\{REGISTRY_PATH}", parent=self)
+        except FileNotFoundError:
             winscp_sessions = []
+        except OSError:
+            winscp_sessions = []
+            reader.warnings = ["WinSCP-Registry konnte nicht gelesen werden. Zugriff bitte prüfen."]
 
         self._winscp_sessions = winscp_sessions
         self._filezilla_sessions = load_filezilla_config_sessions()
@@ -253,6 +252,9 @@ class SSHManagerApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", lambda: close_app_callback(self))
         from ssh_manager_app.storage import take_load_warnings
         warnings = take_load_warnings()
+        registry_warnings = getattr(reader, "warnings", [])
+        if isinstance(registry_warnings, list):
+            warnings.extend(registry_warnings)
         if warnings:
             self.after_idle(lambda: messagebox.showwarning("Daten konnten nicht vollständig geladen werden", "\n\n".join(warnings), parent=self))
 

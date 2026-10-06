@@ -203,24 +203,27 @@ class SessionTree(ttk.Frame):
         content.columnconfigure(0, weight=1)
 
         ttk.Label(content, text=">_", style="EmptyStateIcon.TLabel").grid(row=0, column=0, pady=(0, 18))
+        self._empty_title = tk.StringVar(value="Keine Verbindungen vorhanden")
+        self._empty_hint = tk.StringVar(value="Lege deine erste SSH-Verbindung an oder importiere später bestehende Quellen.")
         ttk.Label(
             content,
-            text="Keine Verbindungen vorhanden",
+            textvariable=self._empty_title,
             style="EmptyStateTitle.TLabel",
         ).grid(row=1, column=0, sticky="ew")
         ttk.Label(
             content,
-            text="Lege deine erste SSH-Verbindung an oder importiere später bestehende Quellen.",
+            textvariable=self._empty_hint,
             style="EmptyStateHint.TLabel",
             wraplength=390,
             justify="center",
         ).grid(row=2, column=0, sticky="ew", pady=(8, 22))
-        ttk.Button(
+        self._empty_add_button = ttk.Button(
             content,
             text="+ Verbindung hinzufügen",
             style="Accent.TButton",
             command=self._empty_add_session,
-        ).grid(row=3, column=0)
+        )
+        self._empty_add_button.grid(row=3, column=0)
 
         # Events
         self._tv.bind("<ButtonPress-1>", self._on_left_press)
@@ -261,6 +264,13 @@ class SessionTree(ttk.Frame):
         if sessions:
             self._empty_state.grid_remove()
         else:
+            searching = bool(self._active_filter_query.strip())
+            self._empty_title.set("Keine Suchtreffer" if searching else "Keine Verbindungen vorhanden")
+            self._empty_hint.set("Ändere oder leere die Suche, um deine Verbindungen wieder anzuzeigen." if searching else "Lege deine erste SSH-Verbindung an oder importiere später bestehende Quellen.")
+            if searching:
+                self._empty_add_button.grid_remove()
+            else:
+                self._empty_add_button.grid()
             self._empty_state.grid(row=0, column=0, sticky="nsew")
             self._empty_state.tkraise()
 

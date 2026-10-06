@@ -362,3 +362,12 @@ def test_host_checks_deduplicate_and_discard_results_after_rebuild(monkeypatch):
     SessionTree._pump_host_checks(owner)
     assert statuses == [("row", "checking")]
     assert not owner._host_pending
+
+
+def test_empty_search_does_not_offer_first_connection_prompt():
+    from types import SimpleNamespace
+    owner = SimpleNamespace(_empty_state=MagicMock(), _active_filter_query="missing",
+                            _empty_title=MagicMock(), _empty_hint=MagicMock(), _empty_add_button=MagicMock())
+    SessionTree._update_empty_state(owner, [])
+    owner._empty_title.set.assert_called_once_with("Keine Suchtreffer")
+    owner._empty_add_button.grid_remove.assert_called_once()

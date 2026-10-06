@@ -1127,6 +1127,8 @@ class RegistryReader:
         Raises OSError wenn der Registry-Pfad nicht existiert.
         """
         sessions: list[Session] = []
+        self.warnings = []
+        self._skipped = 0
 
         with winreg.OpenKey(self.REGISTRY_BASE, REGISTRY_PATH) as base_key:
             index = 0
@@ -1134,7 +1136,9 @@ class RegistryReader:
                 try:
                     subkey_name = winreg.EnumKey(base_key, index)
                     index += 1
-                except OSError:
+                except OSError as error:
+                    if getattr(error, "winerror", None) not in (None, 259):
+                        raise
                     break
 
                 # "Default Settings" überspringen
@@ -1146,6 +1150,8 @@ class RegistryReader:
                 if session is not None:
                     sessions.append(session)
 
+        if self._skipped:
+            self.warnings.append(f"WinSCP: {self._skipped} Einträge konnten nicht gelesen werden oder enthalten ungültige Verbindungsdaten.")
         sessions.sort(key=lambda s: (s.folder_key.lower(), s.display_name.lower()))
         return sessions
 
@@ -1175,23 +1181,11 @@ class RegistryReader:
                     pass
 
         except OSError:
+            self._skipped = getattr(self, "_skipped", 0) + 1
             return None
 
-        # Input validation: reject entries with shell metacharacters
-        if not _HOSTNAME_RE.fullmatch(hostname) or hostname.startswith("-"):
-            print(
-                f"WARNING: Skipping session '{subkey_name}' – "
-                f"hostname contains invalid characters: {hostname!r}",
-                file=sys.stderr,
-            )
-            return None
-
-        if username and (not _USERNAME_RE.fullmatch(username) or username.startswith("-")):
-            print(
-                f"WARNING: Skipping session '{subkey_name}' – "
-                f"username contains invalid characters: {username!r}",
-                file=sys.stderr,
-            )
+        if not isinstance(hostname, str) or not _HOSTNAME_RE.fullmatch(hostname) or hostname.startswith("-") or (username and (not isinstance(username, str) or not _USERNAME_RE.fullmatch(username) or username.startswith("-"))):
+            self._skipped = getattr(self, "_skipped", 0) + 1
             return None
 
         folder_path, display_name = parse_session_key(subkey_name)

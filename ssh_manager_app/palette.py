@@ -590,6 +590,8 @@ class CommandPaletteDialog(tk.Toplevel):
             if item.subtitle:
                 line += f"   \u2014 {item.subtitle}"
             self._listbox.insert("end", line)
+        if not ranked:
+            self._listbox.insert("end", "  Keine Treffer – Suchbegriff ändern")
         if ranked:
             self._listbox.selection_set(0)
             self._listbox.activate(0)

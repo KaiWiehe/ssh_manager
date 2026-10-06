@@ -178,25 +178,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 ## 🖥️ Design — UI/UX
 
 ### MITTEL
-#### [DX-M1] Empty State zeigt bei 0 Suchtreffern den Erstnutzer-Text
-**Datei:** `ssh_manager_app/tree.py` (Z. 255–262, 836, 1726)
-**Problem:** „Keine Verbindungen vorhanden“ plus „+ Verbindung hinzufügen“ erscheint auch bei einer aktiven Suche ohne Treffer. Das wirkt, als wären alle Verbindungen verschwunden.
-**Fix:** `_update_empty_state(sessions, filtered=bool(q))` verwenden. Bei aktiver Suche: „Keine Treffer für ‚…‘“ plus „Suche zurücksetzen“.
-
-#### [DX-M2] Command Palette ohne „Keine Treffer“-Hinweis
-**Datei:** `ssh_manager_app/palette.py` (Z. 573–600)
-**Problem:** Die Liste ist leer, und der Placeholder ist ausgeblendet. Der User sieht eine leere Fläche.
-**Fix:** Bei `not ranked and raw_query.strip()` ein Label „Keine Treffer“ einblenden.
-
-#### [DX-M8] Registry-Fehler: modaler Dialog bei jedem Start, falscher Erfolgs-Toast, stille Skips
-**Datei:** `ssh_manager.py` (Z. 201–210), `ssh_manager_app/actions_ui.py` (Z. 295–308, 412–414), `ssh_manager_app/core.py` (Z. 1115–1129)
-**Problem:** Mehrere Schwächen:
-- Der Fehlerdialog erscheint auch ohne installiertes WinSCP oder bei ausgeblendeter Quelle, und das ohne `parent`.
-- Nach einem Fehler kommt trotzdem der Toast „neu geladen“.
-- Übersprungene Sessions werden nur nach stderr geschrieben.
-
-**Fix:** `FileNotFoundError` still behandeln. `rebuild_sessions` gibt einen Status zurück. Einen Hinweis „n Sessions übersprungen“ anzeigen.
-
 #### [DX-M9] Settings-Import akzeptiert fremde JSON-Dateien und setzt still alles auf Default
 **Datei:** `ssh_manager_app/storage.py` (Z. 38–39), `ssh_manager_app/dialogs_settings_misc.py` (Z. 802–811)
 **Problem:** Der Import von z. B. `notes.json` meldet „Einstellungen importiert“ und setzt alles zurück, ohne Rückfrage.
@@ -607,3 +588,31 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 **Datei:** `ssh_manager_app/dns_lookup.py` (Z. 243–254)
 **Problem:** Der Aufruf beeinflusst parallel laufende Host-Checks (Race).
 **Fix:** Einen Resolver-Thread mit `Future.result(timeout)` verwenden.
+
+#### ~~[DX-M1] Empty State zeigt bei 0 Suchtreffern den Erstnutzer-Text~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/tree.py` (Z. 255–262, 836, 1726)
+**Problem:** „Keine Verbindungen vorhanden“ plus „+ Verbindung hinzufügen“ erscheint auch bei einer aktiven Suche ohne Treffer. Das wirkt, als wären alle Verbindungen verschwunden.
+**Fix:** `_update_empty_state(sessions, filtered=bool(q))` verwenden. Bei aktiver Suche: „Keine Treffer für ‚…‘“ plus „Suche zurücksetzen“.
+
+#### ~~[DX-M2] Command Palette ohne „Keine Treffer“-Hinweis~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/palette.py` (Z. 573–600)
+**Problem:** Die Liste ist leer, und der Placeholder ist ausgeblendet. Der User sieht eine leere Fläche.
+**Fix:** Bei `not ranked and raw_query.strip()` ein Label „Keine Treffer“ einblenden.
+
+#### ~~[DX-M8] Registry-Fehler: modaler Dialog bei jedem Start, falscher Erfolgs-Toast, stille Skips~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager.py` (Z. 201–210), `ssh_manager_app/actions_ui.py` (Z. 295–308, 412–414), `ssh_manager_app/core.py` (Z. 1115–1129)
+**Problem:** Mehrere Schwächen:
+- Der Fehlerdialog erscheint auch ohne installiertes WinSCP oder bei ausgeblendeter Quelle, und das ohne `parent`.
+- Nach einem Fehler kommt trotzdem der Toast „neu geladen“.
+- Übersprungene Sessions werden nur nach stderr geschrieben.
+
+**Fix:** `FileNotFoundError` still behandeln. `rebuild_sessions` gibt einen Status zurück. Einen Hinweis „n Sessions übersprungen“ anzeigen.

@@ -299,19 +299,24 @@ def build_visible_sessions(app) -> list[Session]:
 def rebuild_sessions(app, *, reload_winscp: bool = False) -> None:
     app._ssh_config_sessions = load_ssh_config_sessions()
     app._filezilla_sessions = load_filezilla_config_sessions()
+    success = True
     if reload_winscp:
+        from tkinter import messagebox
         try:
-            app._winscp_sessions = app._registry_reader().load_sessions()
-        except OSError as exc:
-            from tkinter import messagebox
-            messagebox.showerror(
-                "Registry-Fehler",
-                f"WinSCP-Sessions konnten nicht geladen werden:\n{exc}\n\nPfad: HKCU\\{app._registry_path}",
-                parent=app,
-            )
+            reader = app._registry_reader()
+            app._winscp_sessions = reader.load_sessions()
+            warnings = getattr(reader, "warnings", [])
+            if isinstance(warnings, list) and warnings:
+                messagebox.showwarning("WinSCP-Import", "\n".join(warnings), parent=app)
+                success = False
+        except FileNotFoundError:
             app._winscp_sessions = []
+        except OSError:
+            messagebox.showerror("Registry-Fehler", "WinSCP-Sessions konnten nicht neu geladen werden. Der bisherige Stand bleibt angezeigt.", parent=app)
+            success = False
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
+    return success
 
 
 
@@ -414,5 +419,5 @@ def open_command_palette(app) -> None:
 
 
 def reload_sessions(app) -> None:
-    rebuild_sessions(app, reload_winscp=True)
-    ToastNotification(app, "Verbindungen neu geladen")
+    if rebuild_sessions(app, reload_winscp=True) is not False:
+        ToastNotification(app, "Verbindungen neu geladen")
