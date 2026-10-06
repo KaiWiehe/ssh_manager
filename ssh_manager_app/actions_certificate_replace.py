@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from .workers import run_worker
 import os
 import re
@@ -177,11 +178,15 @@ def replace_certificates(app, sessions: list[Session]) -> None:
     def worker():
         try:
             source_summary = [(Path(path).name, _local_certificate_expiry(path, spec["keystore_password"])) for path in spec["files"]]
-            scanned = []
-            for session, user in users:
+            def scan(entry):
+                session, user = entry
                 if progress.cancelled:
                     return None
-                scanned.append((session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"], spec["keystore_password"])))
+                return session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"], spec["keystore_password"])
+            with ThreadPoolExecutor(max_workers=min(8, len(users)), thread_name_prefix="certificate-scan") as pool:
+                scanned = list(pool.map(scan, users))
+            if progress.cancelled:
+                return None
             return scanned, source_summary
         finally:
             spec["keystore_password"] = ""

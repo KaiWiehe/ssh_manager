@@ -265,6 +265,7 @@ def restart_servers(app, sessions: list[Session]) -> None:
     sudo_password = str(spec.pop("sudo_password", ""))
     service = str(spec.get("service", ""))
     timeout_seconds = int(spec.get("timeout_seconds", 300))
+    max_parallel = int(spec.get("max_parallel", 0))
 
     progress = ServerRestartProgressDialog(app, session_users, service)
     events: queue.Queue[tuple[str, str, str, str]] = queue.Queue()
@@ -274,6 +275,9 @@ def restart_servers(app, sessions: list[Session]) -> None:
             events.put(("status", session.key, state, detail))
 
         try:
+            if progress.cancel_event.is_set():
+                events.put(("done", session.key, "stopped", "Neustart wurde noch nicht ausgelöst"))
+                return
             result = monitor_server_restart(
                 session, user, sudo_password, service, timeout_seconds,
                 progress.cancel_event, report,
@@ -282,10 +286,28 @@ def restart_servers(app, sessions: list[Session]) -> None:
         except Exception:
             events.put(("done", session.key, "error", "Neustart-Prüfung unerwartet fehlgeschlagen. Zustand bitte manuell prüfen; kein automatischer Neustartversuch."))
 
-    for session, user in session_users:
+    pending = queue.Queue()
+    for entry in session_users:
+        pending.put(entry)
+
+    def run_pending() -> None:
+        while True:
+            try:
+                session, user = pending.get_nowait()
+            except queue.Empty:
+                return
+            run_one(session, user)
+
+    worker_count = min(max_parallel, len(session_users)) if max_parallel > 0 else len(session_users)
+    started = 0
+    for _ in range(worker_count):
         try:
-            threading.Thread(target=run_one, args=(session, user), daemon=True).start()
+            threading.Thread(target=run_pending, daemon=True).start()
+            started += 1
         except (RuntimeError, OSError):
+            continue
+    if not started:
+        for session, _user in session_users:
             events.put(("done", session.key, "error", "Hintergrundaufgabe konnte nicht gestartet werden."))
 
     completed: set[str] = set()

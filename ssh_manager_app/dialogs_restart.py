@@ -22,6 +22,9 @@ class ServerRestartDialog(tk.Toplevel):
         self._show_password_var = tk.BooleanVar(value=False)
         self._service_var = tk.StringVar()
         self._timeout_var = tk.StringVar(value="5")
+        self._limit_var = tk.BooleanVar(value=False)
+        self._parallel_var = tk.StringVar(value="8")
+        self._target_count = len(session_users)
         self.transient(parent)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
@@ -42,7 +45,7 @@ class ServerRestartDialog(tk.Toplevel):
         )
         ttk.Label(
             frame,
-            text="Achtung: Bereits ausgelöste Neustarts können nicht rückgängig gemacht werden.",
+            text=f"Achtung: {len(session_users)} Server ausgewählt. Bereits ausgelöste Neustarts können nicht rückgängig gemacht werden.",
             style="Warning.TLabel",
         ).grid(row=1, column=0, sticky="w", pady=(0, 12))
 
@@ -92,6 +95,12 @@ class ServerRestartDialog(tk.Toplevel):
             text="Das Passwort wird nur für diesen Lauf verwendet und nicht gespeichert.",
             style="Muted.TLabel",
         ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(options, text="Gleichzeitige Neustarts begrenzen", variable=self._limit_var,
+                        command=self._toggle_limit).grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self._parallel_entry = ttk.Spinbox(options, from_=1, to=max(1, self._target_count), textvariable=self._parallel_var, width=6, state="disabled")
+        self._parallel_entry.grid(row=5, column=2, sticky="w", pady=(8, 0))
+        ttk.Label(options, text="Ohne Begrenzung: alle gleichzeitig. Mit Begrenzung startet der nächste Host erst nach Abschluss der Prüfung eines Hosts.",
+                  style="Muted.TLabel", wraplength=560).grid(row=6, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=4, column=0, sticky="e", pady=(14, 0))
@@ -101,6 +110,11 @@ class ServerRestartDialog(tk.Toplevel):
 
     def _toggle_password(self) -> None:
         self._password_entry.configure(show="" if self._show_password_var.get() else "•")
+
+    def _toggle_limit(self) -> None:
+        self._parallel_entry.configure(state="normal" if self._limit_var.get() else "disabled")
+        if self._limit_var.get():
+            self._parallel_var.set(str(min(8, self._target_count)))
 
     def _on_ok(self) -> None:
         try:
@@ -115,11 +129,25 @@ class ServerRestartDialog(tk.Toplevel):
         if any(character in service for character in ("\n", "\r", "\x00")):
             messagebox.showwarning("Server neu starten", "Die systemd-Unit enthält ungültige Zeichen.", parent=self)
             return
+        max_parallel = 0
+        if getattr(self, "_limit_var", None) is not None and self._limit_var.get():
+            try:
+                max_parallel = int(self._parallel_var.get())
+                if not 1 <= max_parallel <= self._target_count:
+                    raise ValueError
+            except ValueError:
+                messagebox.showwarning("Server neu starten", "Die Anzahl paralleler Neustarts muss zwischen 1 und der Hostanzahl liegen.", parent=self)
+                return
+        if getattr(self, "_target_count", 0) > 5:
+            mode = f"höchstens {max_parallel} gleichzeitig" if max_parallel else "alle gleichzeitig"
+            if not messagebox.askyesno("Viele Server neu starten", f"{self._target_count} Server werden neu gestartet ({mode}).\n\nNeustarts jetzt auslösen?", parent=self, icon="warning"):
+                return
         self.result = {
             "sudo_password": self._password_var.get(),
             "service": service,
             "timeout_seconds": timeout_minutes * 60,
         }
+        self.result["max_parallel"] = max_parallel
         clear_password_fields(self)
         self.destroy()
 
@@ -252,7 +280,7 @@ class ServerRestartProgressDialog(tk.Toplevel):
             return
         confirmed = messagebox.askyesno(
             "Überwachung stoppen",
-            "Die lokale Überwachung wird beendet. Bereits ausgelöste Server-Neustarts laufen weiter.\n\nÜberwachung wirklich stoppen?",
+            "Die lokale Überwachung wird beendet. Noch wartende Server werden nicht neu gestartet. Bereits ausgelöste Server-Neustarts laufen weiter.\n\nÜberwachung wirklich stoppen?",
             parent=self,
         )
         if confirmed:

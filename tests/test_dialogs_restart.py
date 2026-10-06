@@ -23,6 +23,7 @@ def test_restart_dialog_returns_password_service_and_seconds():
         "sudo_password": "secret",
         "service": "wildfly.service",
         "timeout_seconds": 420,
+        "max_parallel": 0,
     }
     dialog.destroy.assert_called_once_with()
 

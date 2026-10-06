@@ -141,11 +141,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Problem:** Ein einzelner Netzwerkaussetzer bricht ab. Bei den Probes fehlen `-o ConnectTimeout` und `BatchMode`.
 **Fix:** Die Probes (`_read_boot_id`, `_service_*`) mit 2–3 Versuchen und Backoff ausführen, aber nicht `reboot`. `-o ConnectTimeout=5 -o BatchMode=yes` ergänzen.
 
-#### [BP-M4] Unbegrenzte Parallelität bei Restart und serieller Zertifikat-Scan
-**Datei:** `ssh_manager_app/actions_restart.py` (Z. 17–19, 286), `ssh_manager_app/actions_certificate_replace.py`
-**Problem:** Es läuft ein Thread pro Host, ohne Obergrenze. Der Scan ist seriell mit 40 s pro Host. Bei Massen-Reboots wird die Hostanzahl nicht hervorgehoben.
-**Fix:** `ThreadPoolExecutor(max_workers=8)` verwenden. Bei mehr als 5 Hosts die Anzahl in der Bestätigung hervorheben.
-
 ### NIEDRIG
 #### [BP-L2] Build: UPX aktiv, kein Hash-Pinning, keine Signatur
 **Datei:** `ssh_manager.spec` (Z. 38), `scripts/build_windows.ps1` (Z. 15)
@@ -176,6 +171,15 @@ Keine.
 ---
 
 ## Done
+
+~~#### [BP-M4] Unbegrenzte Parallelität bei Restart und serieller Zertifikat-Scan~~
+~~**Datei:** `ssh_manager_app/actions_restart.py` (Z. 17–19, 286), `ssh_manager_app/actions_certificate_replace.py`~~
+~~**Problem:** Es läuft ein Thread pro Host, ohne Obergrenze. Der Scan ist seriell mit 40 s pro Host. Bei Massen-Reboots wird die Hostanzahl nicht hervorgehoben.~~
+~~**Fix:** `ThreadPoolExecutor(max_workers=8)` verwenden. Bei mehr als 5 Hosts die Anzahl in der Bestätigung hervorheben.~~
+
+**Umgesetzt 06.10.2026:** Neustartlimit optional, bisheriger Standard alle gleichzeitig erhalten. Wartende Hosts starten erst nach Abschluss vorheriger Prüfungen; Stop verwirft Wartende. Hostanzahl bei mehr als 5 zusätzlich bestätigen. Zertifikatssuche parallel mit maximal 8 Workern und stabiler Ergebnisreihenfolge.
+
+
 
 ~~#### [DC-M13] Verbleibende Ordnernamen- und Konfliktentscheidung~~
 ~~**Teilweise erledigt:** Identische Session-Kopien verwenden dataclasses.replace; leere Mehrfachauswahl wird abgefangen. Namen/Konflikte bleiben bewusst offen.~~
