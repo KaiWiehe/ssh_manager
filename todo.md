@@ -99,7 +99,8 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 
 **Fix:** Service-Module (`services/certificates.py`, `services/winscp.py`) einführen. `EXPORT_COLUMNS` nach `exports.py` verschieben.
 
-#### [DC-M6] Polymorphe Dialog-Results und toter Legacy-Pfad
+#### [DC-M6] Verbleibende polymorphe Dialog-Results und Legacy-Pfad
+**Teilweise erledigt:** Benutzerabfragen verwenden konfigurierte Quick-Users und Default-User. Result-Dataclasses und Legacy-Umbau bleiben offen.
 **Datei:** `ssh_manager_app/dialogs_base.py` (Z. 140), `ssh_manager_app/dialogs_remote.py` (Z. 527, 868–899), `ssh_manager_app/actions_remote.py` (Z. 168–230)
 **Problem:** `UserDialog.result` ist `str` oder `tuple`. `RemoteCommandDialog.result` hat 3, 4 oder 5 Elemente. `hasattr(self, "_run_mode")` ist ein toter Legacy-Zweig. `resolve_users_for_sessions` ignoriert Quick-Users und Default-User aus den Settings.
 **Fix:** Result-Dataclasses (`UserChoice`, `RemoteRunSpec`) einführen und den Legacy-Zweig entfernen.
@@ -638,3 +639,7 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 - verwaiste Abschnittskommentare
 
 **Fix:** Mit ruff/pyflakes prüfen und aufräumen.
+
+#### ~~[DC-M6a] Konfigurierte Benutzerdefaults in Remote-Aktionen~~
+
+**Erledigt am 06.10.2026.** Gemeinsame und individuelle Benutzerabfragen erhalten die aktuellen Settings.

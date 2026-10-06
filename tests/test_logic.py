@@ -3265,6 +3265,8 @@ def test_resolve_single_session_user_returns_fixed_username_without_dialog():
 
 def test_resolve_users_for_sessions_all_mode_uses_shared_user_for_missing_hosts():
     app = MagicMock()
+    app.settings.quick_users = ["custom-one", "custom-two"]
+    app.settings.default_user = "custom-default"
     ssh_cfg = Session("s1", "cfg", [], "cfg", username="deploy", source="ssh_config")
     regular = Session("s2", "srv2", [], "10.0.0.2")
     dialog = MagicMock()
@@ -3273,13 +3275,15 @@ def test_resolve_users_for_sessions_all_mode_uses_shared_user_for_missing_hosts(
     with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog) as dialog_cls:
         result = resolve_users_for_sessions(app, [ssh_cfg, regular], "all")
 
-    dialog_cls.assert_called_once_with(app, title="Benutzername für alle Hosts")
+    dialog_cls.assert_called_once_with(app, title="Benutzername für alle Hosts", quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
     app.wait_window.assert_called_once_with(dialog)
     assert result == [(ssh_cfg, "deploy"), (regular, "ops")]
 
 
 def test_resolve_users_for_sessions_per_host_mode_returns_none_on_cancel():
     app = MagicMock()
+    app.settings.quick_users = ["custom-one", "custom-two"]
+    app.settings.default_user = "custom-default"
     regular = Session("s2", "srv2", [], "10.0.0.2")
     dialog = MagicMock()
     dialog.result = None
@@ -3287,7 +3291,7 @@ def test_resolve_users_for_sessions_per_host_mode_returns_none_on_cancel():
     with patch("ssh_manager_app.actions_remote.UserDialog", return_value=dialog) as dialog_cls:
         result = resolve_users_for_sessions(app, [regular], "per_host")
 
-    dialog_cls.assert_called_once_with(app, title="Benutzername für srv2")
+    dialog_cls.assert_called_once_with(app, title="Benutzername für srv2", quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
     app.wait_window.assert_called_once_with(dialog)
     assert result is None
 

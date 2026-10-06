@@ -172,7 +172,7 @@ def resolve_users_for_sessions(app, sessions: list[Session], mode: str) -> list[
         missing = [session for session in sessions if not session.username]
         shared_user = None
         if missing:
-            dialog = UserDialog(app, title="Benutzername für alle Hosts")
+            dialog = UserDialog(app, title="Benutzername für alle Hosts", quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
             app.wait_window(dialog)
             if dialog.result is None:
                 return None
@@ -189,7 +189,7 @@ def resolve_users_for_sessions(app, sessions: list[Session], mode: str) -> list[
         if session.username:
             resolved.append((session, session.username))
             continue
-        dialog = UserDialog(app, title=f"Benutzername für {session.display_name}")
+        dialog = UserDialog(app, title=f"Benutzername für {session.display_name}", quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
         app.wait_window(dialog)
         if dialog.result is None:
             return None
