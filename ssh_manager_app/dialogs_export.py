@@ -24,6 +24,8 @@ class ExportColumnsDialog(tk.Toplevel):
         self.title(f"{export_label} exportieren")
         self.resizable(False, False)
         self.result: list[str] | None = None
+        self._excel_safe_var = tk.BooleanVar(value=True)
+        self.excel_safe = True
         self._vars = {
             key: tk.BooleanVar(value=key in {"display_name", "hostname"})
             for key, _label in EXPORT_COLUMNS
@@ -49,9 +51,16 @@ class ExportColumnsDialog(tk.Toplevel):
                 row=row, column=0, sticky="w", pady=2
             )
 
+        if export_label == "CSV":
+            ttk.Checkbutton(frame, text="Excel-sicher: mögliche Formeln als Text exportieren", variable=self._excel_safe_var).grid(
+                row=len(EXPORT_COLUMNS) + 1, column=0, sticky="w", pady=(10, 0)
+            )
+            ttk.Label(frame, text="Ohne Haken: unveränderte Rohdaten, beim Öffnen in Excel können Formeln ausgeführt werden.",
+                      wraplength=440, style="Muted.TLabel").grid(row=len(EXPORT_COLUMNS) + 2, column=0, sticky="w", pady=(4, 0))
+
         build_dialog_actions(
             frame,
-            row=len(EXPORT_COLUMNS) + 1,
+            row=len(EXPORT_COLUMNS) + 3,
             primary_text="Exportieren",
             primary_command=self._on_ok,
             cancel_command=self._on_cancel,
@@ -61,6 +70,7 @@ class ExportColumnsDialog(tk.Toplevel):
         self.result = [key for key, _label in EXPORT_COLUMNS if self._vars[key].get()]
         if not self.result:
             return
+        self.excel_safe = self._excel_safe_var.get()
         self.destroy()
 
     def _on_cancel(self) -> None:

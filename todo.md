@@ -16,15 +16,6 @@ Umsetzung 06.10.2026: Freigegebene Gruppen 1–18 abgeschlossen (Version 0.2.38)
 **Bereits erledigt:** Private temporäre Upload-Verzeichnisse und Cleanup; siehe Done.
 
 ### MITTEL
-#### [S-M4] CSV-/Formula-Injection im Export
-**Datei:** `ssh_manager_app/exports.py` (Z. 31–41)
-**Problem:** Namen, Hosts und Notizen, die mit `=`, `+`, `-` oder `@` beginnen, wertet Excel als Formel aus. XLSX ist nicht betroffen (`inlineStr`).
-**Fix:**
-```python
-def _csv_safe(v: str) -> str:
-    return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
-```
-
 #### [S-M6] FileZilla-XML ohne Entity-Schutz und Größenlimit
 **Datei:** `ssh_manager_app/storage.py` (Z. 321–367)
 **Problem:** `ET.fromstring` expandiert interne Entities (Billion-Laughs-Risiko). Die Datei hat kein Größenlimit. `session_key` enthält `name`, `host` und `port` unescaped, gleiche Einträge kollidieren.
@@ -201,6 +192,19 @@ Keine.
 ---
 
 ## Done
+
+~~#### [S-M4] CSV-/Formula-Injection im Export~~
+~~**Datei:** `ssh_manager_app/exports.py` (Z. 31–41)~~
+~~**Problem:** Namen, Hosts und Notizen, die mit `=`, `+`, `-` oder `@` beginnen, wertet Excel als Formel aus. XLSX ist nicht betroffen (`inlineStr`).~~
+~~**Fix:**~~
+~~```python~~
+~~def _csv_safe(v: str) -> str:~~
+~~    return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v~~
+~~```~~
+
+**Umgesetzt 06.10.2026:** Excel-sicherer CSV-Export standardmäßig aktiv, optional unveränderte Rohdaten; Schutz gilt auch für Ordnerüberschriften. XLSX unverändert.
+
+
 
 Abgeschlossene Punkte; ursprüngliche Beschreibung zur Nachvollziehbarkeit.
 

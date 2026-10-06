@@ -28,17 +28,25 @@ def folder_export_title(folder_key: str) -> str:
     return folder_key or "Verbindungen ohne Ordner"
 
 
-def write_csv_export(path: str | Path, groups: list[ExportGroup], fields: list[str], notes_getter) -> None:
+def _csv_safe(value: str) -> str:
+    """Keep spreadsheet applications from interpreting untrusted text as formulas."""
+    if value[:1] in ("=", "+", "-", "@", "\t", "\r", "\n") or value.lstrip()[:1] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
+def write_csv_export(path: str | Path, groups: list[ExportGroup], fields: list[str], notes_getter, *, excel_safe: bool = True) -> None:
     """Write grouped connection tables to a UTF-8 CSV that Excel opens cleanly."""
     with Path(path).open("w", encoding="utf-8-sig", newline="") as file:
         writer = csv.writer(file, delimiter=";")
         for index, (folder_key, sessions) in enumerate(groups):
             if index:
                 writer.writerow([])
-            writer.writerow([folder_export_title(folder_key)])
+            convert = _csv_safe if excel_safe else str
+            writer.writerow([convert(folder_export_title(folder_key))])
             writer.writerow([export_column_label(field) for field in fields])
             for session in sessions:
-                writer.writerow([export_value(session, field, notes_getter) for field in fields])
+                writer.writerow([convert(export_value(session, field, notes_getter)) for field in fields])
 
 
 def _xlsx_cell(reference: str, value: str, style: int = 0) -> str:

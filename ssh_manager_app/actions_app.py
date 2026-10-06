@@ -102,8 +102,10 @@ def export_visible_sessions(app, export_format: str) -> None:
     if not path:
         return
     try:
-        writer = write_csv_export if export_format == "csv" else write_xlsx_export
-        writer(path, groups, fields, lambda key: app._notes.get(key, ""))
+        if export_format == "csv":
+            write_csv_export(path, groups, fields, lambda key: app._notes.get(key, ""), excel_safe=bool(dialog.excel_safe))
+        else:
+            write_xlsx_export(path, groups, fields, lambda key: app._notes.get(key, ""))
     except OSError as exc:
         messagebox.showerror("Export fehlgeschlagen", f"Datei konnte nicht gespeichert werden:\n{exc}", parent=app)
         return
