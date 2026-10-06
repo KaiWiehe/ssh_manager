@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import socket
-import threading
+import queue
+from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -9,6 +10,8 @@ from . import PALETTE, Session, ToolbarSettings, color_tag
 from .constants import _SSH_CONFIG_DEFAULT_FOLDER
 from .core import check_host_reachable
 from .ui_components import TooltipPopup
+
+_HOST_PROBES = ThreadPoolExecutor(max_workers=8, thread_name_prefix="ssh-host-check")
 
 
 def _session_values_text(sessions: list[Session], attribute: str) -> str:
@@ -773,6 +776,7 @@ class SessionTree(ttk.Frame):
         update_open_state: bool = True,
     ) -> None:
         """Füllt den Baum mit Sessions. Löscht vorherige Inhalte."""
+        self._populate_generation = getattr(self, "_populate_generation", 0) + 1
         focus_identity = self._focused_identity()
         # Zustand merken (welche Ordner waren offen?) – falls nicht extern übergeben
         if open_folders is None:
@@ -1806,50 +1810,64 @@ class SessionTree(ttk.Frame):
         if session:
             self._tv.item(item_id, text=self._session_label(session, status))
 
-    def check_hosts(self, item_session_pairs: list[tuple[str, Session]]) -> None:
-        """Prüft TCP-Erreichbarkeit aller übergebenen Sessions asynchron."""
-        for item_id, _ in item_session_pairs:
-            self._set_item_status(item_id, "checking")
+    def check_hosts(self, item_session_pairs: list[tuple[str, Session]], timeout: int = 3) -> None:
+        """Bounded probes; only this thread accesses widgets or tree mappings."""
+        if not hasattr(self, "_host_pending"):
+            self._host_pending = set()
+            self._host_results = queue.SimpleQueue()
+            self._host_pumping = False
+        generation = getattr(self, "_populate_generation", 0)
 
-        def _probe(item_id: str, hostname: str, port: int) -> None:
-            ok = check_host_reachable(hostname, port, timeout=getattr(self, "_host_check_timeout", 3))
-            self.after(0, lambda iid=item_id, s=ok: self._set_item_status(iid, "ok" if s else "fail"))
+        def completed(future, item_id, session):
+            try:
+                ok = future.result()
+            except Exception as error:
+                from .errors import record_failure
+                record_failure(error)
+                ok = False
+            self._host_results.put((generation, item_id, session, ok))
 
         for item_id, session in item_session_pairs:
-            if session.hostname:
-                threading.Thread(
-                    target=_probe,
-                    args=(item_id, session.hostname, session.port or 22),
-                    daemon=True,
-                ).start()
+            if not session.hostname or session.key in self._host_pending:
+                continue
+            self._host_pending.add(session.key)
+            self._set_item_status(item_id, "checking")
+            try:
+                future = _HOST_PROBES.submit(check_host_reachable, session.hostname, session.port, timeout=timeout)
+                future.add_done_callback(lambda result, iid=item_id, value=session: completed(result, iid, value))
+            except RuntimeError:
+                self._host_results.put((generation, item_id, session, False))
+        if self._host_pending and not self._host_pumping:
+            self._host_pumping = True
+            self.after(50, self._pump_host_checks)
+
+    def _pump_host_checks(self) -> None:
+        if not self.winfo_exists():
+            return
+        while True:
+            try:
+                generation, item_id, session, ok = self._host_results.get_nowait()
+            except queue.Empty:
+                break
+            self._host_pending.discard(session.key)
+            if generation == getattr(self, "_populate_generation", 0) and self._item_to_session.get(item_id) is session:
+                self._set_item_status(item_id, "ok" if ok else "fail")
+        if self._host_pending:
+            self.after(50, self._pump_host_checks)
+        else:
+            self._host_pumping = False
 
     def check_selected_hosts(self, timeout: int = 3) -> None:
-        """Prüft alle aktuell ausgewählten Sessions."""
-        self._host_check_timeout = timeout
-        pairs = [
-            (iid, s) for iid, s in self._item_to_session.items()
-            if self._checked.get(iid) and s.hostname
-        ]
+        pairs = [(iid, session) for iid, session in self._item_to_session.items()
+                 if self._checked.get(iid) and session.hostname]
         if pairs:
-            self.check_hosts(pairs)
+            self.check_hosts(pairs, timeout=timeout)
 
     def check_folder_hosts(self, folder_item_id: str) -> None:
-        """Prüft alle Sessions eines Ordners."""
-        pairs = [
-            (iid, s)
-            for iid, s in self._item_to_session.items()
-            if s.hostname and self._tv.parent(iid) == folder_item_id
-               or self._is_in_folder(iid, folder_item_id)
-        ]
-        # eindeutige Paare (durch zwei Bedingungen oben keine Duplikate nötig)
-        seen: set[str] = set()
-        unique = []
-        for iid, s in pairs:
-            if iid not in seen and self._is_in_folder(iid, folder_item_id) and s.hostname:
-                seen.add(iid)
-                unique.append((iid, s))
-        if unique:
-            self.check_hosts(unique)
+        pairs = [(iid, session) for iid, session in self._item_to_session.items()
+                 if session.hostname and self._is_in_folder(iid, folder_item_id)]
+        if pairs:
+            self.check_hosts(pairs)
 
     def _is_in_folder(self, item_id: str, folder_item_id: str) -> bool:
         """Prüft rekursiv ob item_id unter folder_item_id liegt."""

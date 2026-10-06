@@ -333,3 +333,32 @@ def test_filter_uses_temporary_open_state_for_active_search():
         update_open_state=False,
     )
     assert tree.get_open_folders() == {"Prod"}
+
+
+def test_host_checks_deduplicate_and_discard_results_after_rebuild(monkeypatch):
+    from types import SimpleNamespace
+    from concurrent.futures import Future
+    from ssh_manager_app import tree
+    futures = []
+    submitted = []
+    def submit(*args, **kwargs):
+        submitted.append((args, kwargs))
+        future = Future()
+        futures.append(future)
+        return future
+    monkeypatch.setattr(tree, "_HOST_PROBES", SimpleNamespace(submit=submit))
+    session = Session("key", "host", [], "example", port=2222)
+    statuses = []
+    owner = SimpleNamespace(_populate_generation=1, _item_to_session={"row": session},
+                            _set_item_status=lambda *args: statuses.append(args),
+                            after=lambda *args: None, winfo_exists=lambda: True,
+                            _pump_host_checks=lambda: None)
+    SessionTree.check_hosts(owner, [("row", session)], timeout=7)
+    SessionTree.check_hosts(owner, [("row", session)], timeout=7)
+    assert len(submitted) == 1
+    assert submitted[0][1] == {"timeout": 7}
+    owner._populate_generation = 2
+    futures[0].set_result(True)
+    SessionTree._pump_host_checks(owner)
+    assert statuses == [("row", "checking")]
+    assert not owner._host_pending

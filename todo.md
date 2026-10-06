@@ -78,16 +78,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Fix:** Einen `AppState`-Dataclass und ein `AppContext`-Protocol einführen. `load_ui_state` und `save_ui_state` typisieren.
 
 ### MITTEL
-#### [DC-M1] Worker-Threads ohne Fehlerbehandlung hinterlassen hängende Dialoge
-**Datei:** `ssh_manager_app/actions_certificate_replace.py` (Z. 183–193), `ssh_manager_app/actions_restart.py` (Z. 270–286), `ssh_manager_app/actions_dns.py` (Z. 69–95), `ssh_manager_app/dns_lookup.py` (Z. 85–86)
-**Problem:** Siehe DX-H3 und DX-H4. Bei `dns_lookup` liegt `normalize_*` außerhalb des `try`-Blocks.
-**Fix:** Ein einheitliches Worker-Muster (`try/except` → Queue → `after`-Polling) als Hilfsklasse.
-
-#### [DC-M2] `after()` wird aus Worker-Threads aufgerufen (nicht thread-sicher)
-**Datei:** `ssh_manager_app/tree.py` (Z. 1814–1816), `ssh_manager_app/dialogs_certificates.py` (Z. 144–154), `ssh_manager_app/actions_certificate_replace.py` (Z. 191), `ssh_manager_app/actions_dns.py` (Z. 91–93)
-**Problem:** Wird das Fenster geschlossen, entsteht `RuntimeError` bzw. `TclError`. Die Behandlung ist inkonsistent.
-**Fix:** `queue.Queue` plus `after`-Polling im Main-Thread verwenden (wie bereits in `actions_restart`).
-
 #### [DC-M3] Duplizierte SSH-Hilfslogik (Quoting, Sudo-Prelude, ssh-Argv, Regexes)
 **Datei:** `ssh_manager_app/core.py` (Z. 104–106, 135–143, 681, 702–711, 1048–1049), `ssh_manager_app/actions_certificate_replace.py` (Z. 20–22, 105–114), `ssh_manager_app/dialogs_certificates.py` (Z. 14–63), `ssh_manager_app/actions_restart.py` (Z. 30–46), `ssh_manager_app/dialogs_base.py` (Z. 10–11)
 **Problem:** Folgende Logik ist mehrfach vorhanden:
@@ -165,11 +155,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Problem:** Die Annotation lautet `Session`, aufgerufen wird der Callback mit `list[Session]`. `copy_ssh_command` ist ungenutzt.
 **Fix:** Die Signatur auf `list[Session]` vereinheitlichen und den toten Wrapper entfernen.
 
-#### [DC-L3] `check_folder_hosts`: `and`/`or`-Präzedenz und verstecktes Timeout-Attribut
-**Datei:** `ssh_manager_app/tree.py` (Z. 1836–1852)
-**Problem:** Die Bedingung steht ohne Klammern, danach wird doppelt gefiltert. Das Timeout kommt per `getattr(self, "_host_check_timeout", 3)`.
-**Fix:** Einmal filtern und das Timeout als Parameter übergeben.
-
 #### [DC-L4] Tote Reste und unbenutzte Imports
 **Datei:** `ssh_manager_app/tree.py` (Z. 3, 812, 1875), `ssh_manager_app/core.py` (Z. 212), `ssh_manager_app/actions_ui.py` (Z. 151, 251, 262), `ssh_manager_app/dialogs_settings_misc.py` (Z. 667, 699–706)
 **Problem:** Gefunden wurden:
@@ -207,16 +192,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Datei:** `ssh_manager_app/palette.py` (Z. 573–600)
 **Problem:** Die Liste ist leer, und der Placeholder ist ausgeblendet. Der User sieht eine leere Fläche.
 **Fix:** Bei `not ranked and raw_query.strip()` ein Label „Keine Treffer“ einblenden.
-
-#### [DX-M4] Hosts prüfen: Mehrfachauslösung, unbegrenzte Threads, veraltete Item-IDs, kein Feedback
-**Datei:** `ssh_manager_app/tree.py` (Z. 1809–1824), `ssh_manager_app/core.py` (Z. 718–724)
-**Problem:** Mehrere Schwachstellen:
-- Jeder Klick startet neue Threads, ohne Limit.
-- Nach einem Rebuild führt eine veraltete Item-ID zu `TclError: Item not found`.
-- Der Grund (DNS-Fehler oder Timeout) wird nicht angezeigt.
-- Bei leerer Auswahl gibt es keine Meldung.
-
-**Fix:** `self._tv.exists(iid)` prüfen und einen Generations-Zähler einführen. `ThreadPoolExecutor(max_workers=20)` verwenden. Bei leerer Auswahl einen Toast zeigen.
 
 #### [DX-M7] „In WinSCP öffnen“ friert die UI ein (`wait` + `sleep` im UI-Thread)
 **Datei:** `ssh_manager_app/actions_open.py` (Z. 70–80)
@@ -587,3 +562,40 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 **Datei:** `ssh_manager_app/tree.py` (Z. 321, 351, 359, 385, 637), `ssh_manager_app/palette.py` (Z. 443, 498, 677), `ssh_manager_app/shortcuts.py` (Z. 364–411), `ssh_manager_app/actions_ui.py` (Z. 50, 222), `ssh_manager_app/actions_app.py` (Z. 130, 268), `ssh_manager_app/core.py` (Z. 880–884, 1015–1036, 1116–1128), `ssh_manager_app/dns_lookup.py` (Z. 99–101)
 **Problem:** Es gibt drei Muster nebeneinander (messagebox, `print_exc`, `pass`). Der Herdr→WT-Fallback läuft still, ohne Hinweis.
 **Fix:** `logging` mit rotierendem Datei-Handler in `%APPDATA%\SSH-Manager` einführen. Konkrete Exceptions fangen. Beim Fallback einen Toast zeigen.
+
+#### ~~[DX-M4] Hosts prüfen: Mehrfachauslösung, unbegrenzte Threads, veraltete Item-IDs, kein Feedback~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/tree.py` (Z. 1809–1824), `ssh_manager_app/core.py` (Z. 718–724)
+**Problem:** Mehrere Schwachstellen:
+- Jeder Klick startet neue Threads, ohne Limit.
+- Nach einem Rebuild führt eine veraltete Item-ID zu `TclError: Item not found`.
+- Der Grund (DNS-Fehler oder Timeout) wird nicht angezeigt.
+- Bei leerer Auswahl gibt es keine Meldung.
+
+**Fix:** `self._tv.exists(iid)` prüfen und einen Generations-Zähler einführen. `ThreadPoolExecutor(max_workers=20)` verwenden. Bei leerer Auswahl einen Toast zeigen.
+
+#### ~~[DC-L3] `check_folder_hosts`: `and`/`or`-Präzedenz und verstecktes Timeout-Attribut~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/tree.py` (Z. 1836–1852)
+**Problem:** Die Bedingung steht ohne Klammern, danach wird doppelt gefiltert. Das Timeout kommt per `getattr(self, "_host_check_timeout", 3)`.
+**Fix:** Einmal filtern und das Timeout als Parameter übergeben.
+
+#### ~~[DC-M1] Worker-Threads ohne Fehlerbehandlung hinterlassen hängende Dialoge~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/actions_certificate_replace.py` (Z. 183–193), `ssh_manager_app/actions_restart.py` (Z. 270–286), `ssh_manager_app/actions_dns.py` (Z. 69–95), `ssh_manager_app/dns_lookup.py` (Z. 85–86)
+**Problem:** Siehe DX-H3 und DX-H4. Bei `dns_lookup` liegt `normalize_*` außerhalb des `try`-Blocks.
+**Fix:** Ein einheitliches Worker-Muster (`try/except` → Queue → `after`-Polling) als Hilfsklasse.
+
+#### ~~[DC-M2] `after()` wird aus Worker-Threads aufgerufen (nicht thread-sicher)~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/tree.py` (Z. 1814–1816), `ssh_manager_app/dialogs_certificates.py` (Z. 144–154), `ssh_manager_app/actions_certificate_replace.py` (Z. 191), `ssh_manager_app/actions_dns.py` (Z. 91–93)
+**Problem:** Wird das Fenster geschlossen, entsteht `RuntimeError` bzw. `TclError`. Die Behandlung ist inkonsistent.
+**Fix:** `queue.Queue` plus `after`-Polling im Main-Thread verwenden (wie bereits in `actions_restart`).
