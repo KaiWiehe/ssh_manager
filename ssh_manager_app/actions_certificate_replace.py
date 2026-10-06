@@ -69,21 +69,17 @@ def _local_certificate_expiry(path: str, keystore_password: str) -> str:
     suffix = Path(path).suffix.lower()
     if suffix not in {".crt", ".pem", ".p12", ".pfx", ".jks"}:
         return "nicht ermittelt (kein unterstütztes Zertifikatsformat)"
-    password_file = None
     try:
         if suffix in {".crt", ".pem"}:
             command = ["openssl", "x509", "-in", path, "-noout", "-enddate"]
         else:
             if not keystore_password:
                 return "nicht ermittelt (Keystore-/P12-Passwort fehlt)"
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False, prefix="ssh-manager-keystore-") as handle:
-                handle.write(keystore_password)
-                password_file = handle.name
             if suffix in {".p12", ".pfx"}:
-                command = ["openssl", "pkcs12", "-in", path, "-passin", f"file:{password_file}", "-clcerts", "-nokeys"]
+                command = ["openssl", "pkcs12", "-in", path, "-passin", "stdin", "-clcerts", "-nokeys"]
             else:
-                command = ["keytool", "-J-Duser.language=en", "-J-Duser.country=US", "-list", "-v", "-keystore", path, "-storepass:file", password_file]
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
+                command = ["keytool", "-J-Duser.language=en", "-J-Duser.country=US", "-list", "-v", "-keystore", path]
+        completed = subprocess.run(command, input=(keystore_password + "\n") if suffix not in {".crt", ".pem"} else None, capture_output=True, text=True, timeout=10, check=False)
         if completed.returncode != 0:
             return "nicht ermittelt (Format oder Passwort nicht lesbar)"
         output = completed.stdout
@@ -97,10 +93,6 @@ def _local_certificate_expiry(path: str, keystore_password: str) -> str:
         return _format_timestamp(date)
     except (OSError, subprocess.TimeoutExpired):
         return "nicht ermittelt (openssl/keytool nicht verfügbar)"
-    finally:
-        if password_file:
-            try: os.unlink(password_file)
-            except OSError: pass
 
 
 def _scan_host(session: Session, user: str, roots: list[str], names: list[str], sudo_password: str, keystore_password: str = "") -> dict:
@@ -110,7 +102,7 @@ def _scan_host(session: Session, user: str, roots: list[str], names: list[str], 
         command = ["ssh", "-o", "BatchMode=yes"]
         if session.port != 22: command.extend(["-p", str(session.port)])
         command.extend(["--", f"{connection_value(user)}@{connection_value(session.hostname)}", "bash", "-s"])
-    script = ["set -u"]
+    script = ["set -u", "umask 077"]
     if sudo_password:
         script.extend([f"SSH_MANAGER_SUDO_PASSWORD={_quote(sudo_password)}", "sudo() { printf '%s\\n' \"$SSH_MANAGER_SUDO_PASSWORD\" | command sudo -S -p '' \"$@\"; }"])
     if keystore_password:
@@ -177,7 +169,8 @@ def replace_certificates(app, sessions: list[Session]) -> None:
     )
     app.wait_window(dialog)
     if dialog.result is None: return
-    spec = dialog.result
+    spec = dict(dialog.result)
+    dialog.result = None
     names = [Path(path).name for path in spec["files"]]
     progress = CertificateReplaceScanProgressDialog(app, len(users))
 
@@ -188,6 +181,7 @@ def replace_certificates(app, sessions: list[Session]) -> None:
             if progress.cancelled:
                 return
             scanned.append((session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"], spec["keystore_password"])))
+        spec["keystore_password"] = ""
         if not progress.cancelled:
             app.after(0, lambda: _show_replace_preview(app, progress, scanned, spec, source_summary))
 
@@ -239,6 +233,9 @@ def _show_replace_preview(app, progress, scanned, spec, source_summary) -> None:
         return
     try:
         command = build_certificate_replace_wt_command(deployments, session_colors=app._tree.get_session_colors(), terminal_settings=app.settings.windows_terminal)
+        spec["sudo_password"] = ""
+        for _session, _user, run_spec in deployments:
+            run_spec["sudo_password"] = ""
         TerminalLauncher.launch_built_command(
             command,
             [session.display_name for session, _user, _spec in deployments],

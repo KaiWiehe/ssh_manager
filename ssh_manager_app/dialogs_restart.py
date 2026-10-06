@@ -4,6 +4,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
+from .secret_scripts import clear_password_fields
 from .models import Session
 from .ui_components import build_dialog_header, fit_window_to_parent
 
@@ -119,10 +120,12 @@ class ServerRestartDialog(tk.Toplevel):
             "service": service,
             "timeout_seconds": timeout_minutes * 60,
         }
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
@@ -242,6 +245,7 @@ class ServerRestartProgressDialog(tk.Toplevel):
 
     def _on_stop(self) -> None:
         if self._finished:
+            clear_password_fields(self)
             self.destroy()
             return
         if self._cancel_event.is_set():

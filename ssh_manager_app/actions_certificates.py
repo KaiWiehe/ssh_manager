@@ -30,7 +30,8 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
     if dialog.result is None:
         return
 
-    deployment = dialog.result
+    deployment = dict(dialog.result)
+    dialog.result = None
     overwrite_text = "Ja" if deployment["overwrite"] else "Nein (vorhandene Dateien blockieren den Host)"
     post_text = "Ja" if deployment["post_command"] else "Nein"
     target_dirs = deployment["target_dirs"]
@@ -52,10 +53,12 @@ def deploy_certificate_files(app, sessions: list[Session]) -> None:
             session_colors=app._tree.get_session_colors(),
             terminal_settings=app.settings.windows_terminal,
         )
+        deployment.pop("sudo_password", None)
         TerminalLauncher.launch_built_command(
             command,
             [session.display_name for session, _user in session_users],
             app.settings.windows_terminal,
         )
     except (OSError, RuntimeError, ValueError) as exc:
+        deployment.pop("sudo_password", None)
         messagebox.showerror("Übertragung fehlgeschlagen", f"Terminal konnte nicht gestartet werden:\n{exc}", parent=app)

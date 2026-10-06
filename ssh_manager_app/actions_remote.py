@@ -272,6 +272,8 @@ def run_remote_command(app, sessions: list[Session]) -> None:
         if sudo_password:
             build_kwargs["sudo_password"] = sudo_password
         cmd = build_remote_script_wt_command([(session, user, spec) for session, user in session_users], **build_kwargs)
+    sudo_password = ""
+    dialog.result = None
     try:
         TerminalLauncher.launch_built_command(
             cmd,

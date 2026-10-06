@@ -10,11 +10,6 @@ Geprüft: Frontend + Backend + Package-Scan
 ## 🔒 Security
 
 ### HOCH
-#### [S-H1] Sudo-Passwort im Klartext in lokalen Temp-Skripten, Skripte werden nicht zuverlässig gelöscht
-**Datei:** `ssh_manager_app/core.py` (Z. 109–123, 220–244, 364–390, 618–625, 741), `ssh_manager_app/actions_remote.py` (Z. 281)
-**Problem:** `SSH_MANAGER_SUDO_PASSWORD='...'` wird in eine `.sh` unter `%APPDATA%\SSH-Manager\tmp` geschrieben. Gelöscht wird nur per `trap` beim Skriptende. Startet WT nicht, wird der Tab hart geschlossen oder greift der Herdr-Fallback, bleibt das Passwort auf der Platte. Skripte ohne Sudo-Passwort (Remote-Befehl, Remote-Skript, Tunnel) werden nie gelöscht und sammeln Hosts, User und Befehle an. Keine restriktiven ACLs. Der Kommentar „encrypted SSH payload“ trifft für die lokale Datei nicht zu.
-**Fix:** Passwort nicht ins Skript schreiben, sondern per stdin oder Umgebungsvariable des Child-Prozesses übergeben. Jedes Skript bekommt `trap 'rm -f "$0"' EXIT`. Beim Start-Fehler die Datei löschen. Beim App-Start `tmp/*.sh` älter als 1 h aufräumen.
-
 #### [S-H2] Zertifikate und private Keys liegen auf dem Zielhost weltlesbar in `/tmp`, Deploy setzt keine Rechte
 **Datei:** `ssh_manager_app/core.py` (Z. 440–444, 489, 574, 589)
 **Problem:** Der Upload per `scp` nach `/tmp/ssh-manager-cert-<uuid>-N` passiert ohne `umask` und `chmod`. Je nach Remote-umask können andere lokale User die Dateien lesen. Bei fehlgeschlagenem Upload wird nicht aufgeräumt. Das Deploy mit `sudo cp -f` erzeugt neue Zieldateien mit Default-Rechten (typisch 0644), private Keys in `/etc/ssl/private` wären dann lesbar.
@@ -44,17 +39,6 @@ def _csv_safe(v: str) -> str:
 **Datei:** `ssh_manager_app/storage.py` (Z. 321–367)
 **Problem:** `ET.fromstring` expandiert interne Entities (Billion-Laughs-Risiko). Die Datei hat kein Größenlimit. `session_key` enthält `name`, `host` und `port` unescaped, gleiche Einträge kollidieren.
 **Fix:** DOCTYPE/ENTITY ablehnen und die Größe begrenzen (`st_size < 5_000_000`), alternativ `defusedxml`. Den Key um einen Index ergänzen.
-
-### NIEDRIG
-#### [S-L1] Keystore-Passwort in lokaler Temp-Datei im Standard-Temp-Verzeichnis
-**Datei:** `ssh_manager_app/actions_certificate_replace.py` (Z. 78–85, 114–124)
-**Problem:** Die Datei wird nur im `finally` gelöscht und bleibt bei einem Prozessabbruch liegen. Remote fehlt `umask 077` vor `printf >`.
-**Fix:** Remote `umask 077` setzen. Lokal im App-tmp anlegen und beim Start alte `ssh-manager-keystore-*`-Dateien aufräumen.
-
-#### [S-L2] Passwörter bleiben nach Nutzung in `StringVar` und Result-Dicts
-**Datei:** `ssh_manager_app/dialogs_remote.py` (Z. 687–698, 897–898), `ssh_manager_app/dialogs_certificates.py` (Z. 225–226, 382), `ssh_manager_app/dialogs_certificate_replace.py` (Z. 23–24, 104), `ssh_manager_app/dialogs_restart.py` (Z. 20, 118)
-**Problem:** Sudo- und Keystore-Passwörter werden nach dem Bauen der Befehle nicht geleert.
-**Fix:** Nach dem Bauen der Befehle `var.set("")` und `spec["sudo_password"] = ""` setzen.
 
 ---
 
@@ -508,3 +492,27 @@ Titel bereinigen, `profile_name` und Farbe (`#[0-9a-fA-F]{6}`) prüfen. Mittelfr
 ```bash
 tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.ssh/authorized_keys; rm -f "$tmp"
 ```
+
+#### ~~[S-H1] Sudo-Passwort im Klartext in lokalen Temp-Skripten, Skripte werden nicht zuverlässig gelöscht~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/core.py` (Z. 109–123, 220–244, 364–390, 618–625, 741), `ssh_manager_app/actions_remote.py` (Z. 281)
+**Problem:** `SSH_MANAGER_SUDO_PASSWORD='...'` wird in eine `.sh` unter `%APPDATA%\SSH-Manager\tmp` geschrieben. Gelöscht wird nur per `trap` beim Skriptende. Startet WT nicht, wird der Tab hart geschlossen oder greift der Herdr-Fallback, bleibt das Passwort auf der Platte. Skripte ohne Sudo-Passwort (Remote-Befehl, Remote-Skript, Tunnel) werden nie gelöscht und sammeln Hosts, User und Befehle an. Keine restriktiven ACLs. Der Kommentar „encrypted SSH payload“ trifft für die lokale Datei nicht zu.
+**Fix:** Passwort nicht ins Skript schreiben, sondern per stdin oder Umgebungsvariable des Child-Prozesses übergeben. Jedes Skript bekommt `trap 'rm -f "$0"' EXIT`. Beim Start-Fehler die Datei löschen. Beim App-Start `tmp/*.sh` älter als 1 h aufräumen.
+
+#### ~~[S-L1] Keystore-Passwort in lokaler Temp-Datei im Standard-Temp-Verzeichnis~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/actions_certificate_replace.py` (Z. 78–85, 114–124)
+**Problem:** Die Datei wird nur im `finally` gelöscht und bleibt bei einem Prozessabbruch liegen. Remote fehlt `umask 077` vor `printf >`.
+**Fix:** Remote `umask 077` setzen. Lokal im App-tmp anlegen und beim Start alte `ssh-manager-keystore-*`-Dateien aufräumen.
+
+#### ~~[S-L2] Passwörter bleiben nach Nutzung in `StringVar` und Result-Dicts~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/dialogs_remote.py` (Z. 687–698, 897–898), `ssh_manager_app/dialogs_certificates.py` (Z. 225–226, 382), `ssh_manager_app/dialogs_certificate_replace.py` (Z. 23–24, 104), `ssh_manager_app/dialogs_restart.py` (Z. 20, 118)
+**Problem:** Sudo- und Keystore-Passwörter werden nach dem Bauen der Befehle nicht geleert.
+**Fix:** Nach dem Bauen der Befehle `var.set("")` und `spec["sudo_password"] = ""` setzen.

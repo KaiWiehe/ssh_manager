@@ -60,3 +60,30 @@ printf '%s\\n' 'ssh-ed25519 last-key' | bash -c ''' + __import__('shlex').quote(
 '''
     result = subprocess.run([_find_git_bash()], input=script, text=True, capture_output=True, timeout=10)
     assert result.returncode == 0, result.stderr
+
+
+def test_protected_script_decrypts_in_memory_and_cleans_files(tmp_path):
+    from ssh_manager_app.core import _find_git_bash
+    from ssh_manager_app.secret_scripts import write_protected_script
+    secret = 'secret ä " value'
+    script = write_protected_script(tmp_path, "offline_", "printf '%s' " + __import__('shlex').quote(secret) + "\n")
+    assert secret not in Path(script).read_text(encoding="utf-8")
+    assert secret.encode() not in Path(script).with_suffix(".payload").read_bytes()
+    result = subprocess.run([_find_git_bash(), script], capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.decode("utf-8") == secret
+    assert not Path(script).exists()
+    assert not Path(script).with_suffix(".payload").exists()
+
+
+def test_failed_terminal_start_cleans_protected_files(tmp_path):
+    from ssh_manager_app.core import TerminalCommand, _make_tab
+    from ssh_manager_app.secret_scripts import write_protected_script
+    script = write_protected_script(tmp_path, "offline_", "echo test\n")
+    session = Session("s", "Server", [], "host")
+    command = TerminalCommand([_make_tab(session, "ops", ["bash", script], WindowsTerminalSettings())])
+    with patch("ssh_manager_app.core.subprocess.Popen", side_effect=OSError("offline")):
+        with pytest.raises(OSError):
+            TerminalLauncher._launch_windows_command(command)
+    assert not Path(script).exists()
+    assert not Path(script).with_suffix(".payload").exists()

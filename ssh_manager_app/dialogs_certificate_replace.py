@@ -102,9 +102,10 @@ class CertificateReplaceDialog(tk.Toplevel):
         if len(names) != len(set(names)):
             messagebox.showwarning("Doppelte Namen", "Ausgewählte Dateien müssen unterschiedliche Namen haben.", parent=self); return
         self.result = {"files": list(self._files), "roots": roots, "sudo_password": self._sudo_password.get(), "keystore_password": self._keystore_password.get(), "post_command": self._post.get("1.0", "end").strip(), "close_on_success": self._close_on_success.get()}
+        clear_password_fields(self)
         self.destroy()
 
-    def _cancel(self): self.result = None; self.destroy()
+    def _cancel(self): self.result = None; clear_password_fields(self); self.destroy()
 
 
 class CertificateReplacePreviewDialog(tk.Toplevel):
@@ -201,9 +202,10 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
 
     def _confirm(self):
         self.result = {key for key, value in self._choice_vars if value.get()}
+        clear_password_fields(self)
         self.destroy()
 
-    def _cancel(self): self.result = None; self.destroy()
+    def _cancel(self): self.result = None; clear_password_fields(self); self.destroy()
 
     @staticmethod
     def _line_tag(line: str) -> str | None:

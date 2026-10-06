@@ -7,6 +7,7 @@ from typing import Callable
 from .constants import DEFAULT_USER, QUICK_USERS, _SSH_CONFIG_FILE
 from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons, resolve_user_dialog_defaults
 from .dialogs_toast import ToastNotification
+from .secret_scripts import clear_password_fields
 from .models import Session
 from .ui_components import build_dialog_header, fit_window_to_parent
 
@@ -182,6 +183,7 @@ class JumpHostDialog(tk.Toplevel):
         if not validated:
             return
         self.result = validated
+        clear_password_fields(self)
         self.destroy()
 
     def _on_save(self) -> None:
@@ -197,11 +199,13 @@ class JumpHostDialog(tk.Toplevel):
             return
         jump_host, jump_user, jump_port = validated
         self.save_result = (alias, jump_host, jump_port, jump_user, self._target_session.key)
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
         self.save_result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
@@ -306,10 +310,12 @@ class SshCopyIdDialog(tk.Toplevel):
             )
             return
         self.result = (key, user)
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
@@ -411,10 +417,12 @@ class SshRemoveKeyDialog(tk.Toplevel):
             )
             return
         self.result = (key, user)
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
@@ -506,10 +514,12 @@ class RemoteFavoriteEditDialog(tk.Toplevel):
         item["note"] = self._note_text.get("1.0", "end").strip()
         item["pinned"] = self._pinned_var.get()
         self.result = item
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
@@ -880,6 +890,7 @@ class RemoteCommandDialog(tk.Toplevel):
         if legacy_mode:
             command = self._command_text.get("1.0", "end").strip()
             self.result = (self._user_mode.get(), command, self._close_on_success.get())
+            clear_password_fields(self)
             self.destroy()
             return
         spec = self._current_spec()
@@ -896,10 +907,12 @@ class RemoteCommandDialog(tk.Toplevel):
             spec.update(item)
         sudo_password = self._sudo_password_var.get()
         self.result = (self._user_mode.get(), spec, self._close_on_success.get(), save_favorite, sudo_password)
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
@@ -1005,10 +1018,12 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
         return "\n".join(lines).strip()
     def _on_ok(self) -> None:
         self.result = True
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = False
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
@@ -1154,10 +1169,12 @@ class SshTunnelDialog(tk.Toplevel):
             )
             return
         self.result = (ssh_server, local_port, remote_host, remote_port, user)
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
@@ -1367,6 +1384,7 @@ class SessionEditDialog(tk.Toplevel):
             port=22,
             source="ssh_alias",
         )
+        clear_password_fields(self)
         self.destroy()
 
     def _on_ok_verbindung(self) -> None:
@@ -1420,10 +1438,12 @@ class SessionEditDialog(tk.Toplevel):
             source="app",
         )
         self.note_result = self._note_text.get("1.0", "end").strip()
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:

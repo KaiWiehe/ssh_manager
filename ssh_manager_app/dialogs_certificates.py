@@ -8,6 +8,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .ssh_utils import connection_value
+from .secret_scripts import clear_password_fields
 from .models import Session
 from .ui_components import build_dialog_header, fit_window_to_parent
 
@@ -197,10 +198,12 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
 
     def _use_current(self) -> None:
         self.result = self._path_var.get().strip() or "/"
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Toplevel) -> None:
@@ -384,10 +387,12 @@ class CertificateDeployDialog(tk.Toplevel):
             "post_command": self._post_command.get("1.0", "end").strip(),
             "close_on_success": self._close_on_success_var.get(),
         }
+        clear_password_fields(self)
         self.destroy()
 
     def _on_cancel(self) -> None:
         self.result = None
+        clear_password_fields(self)
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:

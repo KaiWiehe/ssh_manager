@@ -19,6 +19,7 @@ import winreg
 
 from . import PALETTE, REGISTRY_PATH, SKIP_SESSIONS, Session, WindowsTerminalSettings
 from .constants import _SSH_CONFIG_FILE, _STATE_FILE
+from .secret_scripts import write_protected_script, cleanup_script, managed_scripts
 from .ssh_utils import connection_value, ssh_argv, shell_command, scp_target, valid_color, valid_port
 
 def parse_session_key(key: str) -> tuple[list[str], str]:
@@ -97,8 +98,8 @@ def _sudo_password_prelude(sudo_password: str | None) -> list[str]:
     """Return a remote-shell wrapper for a one-off sudo password.
 
     The password is deliberately kept out of command-line arguments.  It is
-    only embedded in the temporary, encrypted SSH payload and is not part of
-    command history or remote-command favourites.
+    streamed to SSH at runtime. Local scripts are encrypted with user-bound
+    Windows DPAPI; no plaintext password is written to a script file.
     """
     if not sudo_password:
         return []
@@ -191,6 +192,7 @@ def _append_ssh_config_alias(alias: str, target: Session, target_user: str, jump
 
 
 
+@managed_scripts
 def build_remote_command_wt_command(
     session_commands: list[tuple[Session, str, str]],
     *,
@@ -230,7 +232,7 @@ def build_remote_command_wt_command(
             if sudo_password:
                 script_lines.append(f"if [ $status -eq 0 ]; then unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec {ssh_cmd}; fi")
             else:
-                script_lines.append(f"if [ $status -eq 0 ]; then exec {ssh_cmd}; fi")
+                script_lines.append(f'if [ $status -eq 0 ]; then rm -f "$0"; exec {ssh_cmd}; fi')
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
         script_path = _write_temp_bash_script("remote_cmd_", "\n".join(script_lines) + "\n")
@@ -299,6 +301,7 @@ def _format_remote_execution_preview(spec: dict) -> str:
     return "\n".join(lines).strip()
 
 
+@managed_scripts
 def build_remote_script_wt_command(
     session_commands: list[tuple[Session, str, dict]],
     *,
@@ -372,7 +375,7 @@ def build_remote_script_wt_command(
             if sudo_password:
                 script_lines.append(f"if [ $status -eq 0 ]; then unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"; exec {ssh_cmd}; fi")
             else:
-                script_lines.append(f"if [ $status -eq 0 ]; then exec {ssh_cmd}; fi")
+                script_lines.append(f'if [ $status -eq 0 ]; then rm -f "$0"; exec {ssh_cmd}; fi')
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
         script_path = _write_temp_bash_script("remote_script_", "\n".join(script_lines) + "\n")
@@ -380,6 +383,7 @@ def build_remote_script_wt_command(
     return TerminalCommand(parts)
 
 
+@managed_scripts
 def build_certificate_deploy_wt_command(
     session_deployments: list[tuple[Session, str, dict]],
     *,
@@ -520,6 +524,7 @@ def build_certificate_deploy_wt_command(
     return TerminalCommand(parts)
 
 
+@managed_scripts
 def build_certificate_replace_wt_command(
     session_replacements: list[tuple[Session, str, dict]],
     *,
@@ -593,12 +598,8 @@ def build_certificate_replace_wt_command(
 
 def _write_temp_bash_script(prefix: str, content: str) -> str:
     """Schreibt ein temporäres Bash-Skript für WT/Git Bash und gibt den Windows-Pfad zurück."""
-    script_dir = _STATE_FILE.parent / "tmp"
-    script_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".sh", prefix=prefix, dir=script_dir, delete=False) as f:
-        f.write(content)
-        script_path = Path(f.name)
-    return str(script_path)
+    return write_protected_script(_STATE_FILE.parent / "tmp", prefix, content)
+
 
 def _find_git_bash() -> str:
     """
@@ -659,6 +660,7 @@ def _remove_key_remote_script() -> str:
     ])
 
 
+@managed_scripts
 def _build_key_command(sessions: list[Session], key_filename: str, user: str, settings: WindowsTerminalSettings, *, remove: bool) -> TerminalCommand:
     key = _public_key_filename(key_filename)
     connection_value(user, "Benutzer")
@@ -695,6 +697,7 @@ def check_host_reachable(hostname: str, port: int = 22, timeout: int = 3) -> boo
         return False
 
 
+@managed_scripts
 def build_ssh_tunnel_command(
     ssh_server: str, local_port: int, remote_host: str, remote_port: int, user: str, terminal_settings: WindowsTerminalSettings | None = None
 ) -> TerminalCommand:
@@ -737,6 +740,11 @@ class TerminalCommand:
     """A launch plan; never parse an already-rendered shell command."""
     def __init__(self, tabs: list[TerminalTabSpec]):
         self.tabs = tabs
+
+    def cleanup(self) -> None:
+        for tab in self.tabs:
+            if len(tab.argv) == 2 and tab.argv[-1].endswith(".sh"):
+                cleanup_script(tab.argv[-1])
 
     @property
     def argv(self) -> list[str]:
@@ -995,7 +1003,11 @@ class TerminalLauncher:
         if not isinstance(command, TerminalCommand):
             raise ValueError("Terminal-Start benötigt einen strukturierten Startplan.")
         if command.tabs:
-            subprocess.Popen(command.argv, shell=False)
+            try:
+                subprocess.Popen(command.argv, shell=False)
+            except OSError:
+                command.cleanup()
+                raise
 
     @classmethod
     def launch_built_command(

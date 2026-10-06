@@ -261,6 +261,7 @@ def restart_servers(app, sessions: list[Session]) -> None:
     if dialog.result is None:
         return
     spec = dict(dialog.result)
+    dialog.result = None
     sudo_password = str(spec.pop("sudo_password", ""))
     service = str(spec.get("service", ""))
     timeout_seconds = int(spec.get("timeout_seconds", 300))

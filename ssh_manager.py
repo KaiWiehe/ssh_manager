@@ -192,6 +192,9 @@ class SSHManagerApp(tk.Tk):
         set_window_icon(self)
         self.minsize(*WINDOW_MIN_SIZE)
 
+        from ssh_manager_app.secret_scripts import secure_legacy_scripts
+        from ssh_manager_app.constants import _STATE_FILE
+        secure_legacy_scripts(_STATE_FILE.parent / "tmp")
         self.settings = load_settings()
         self._persisted_settings = self.settings
         self._startup_settings = self.settings
