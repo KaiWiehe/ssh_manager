@@ -639,50 +639,51 @@ def _find_winscp() -> str | None:
     return found if found else None
 
 
-def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: str, terminal_settings: WindowsTerminalSettings | None = None) -> TerminalCommand:
-    """
-    Erzeugt den wt.exe-Befehl für ssh-copy-id. Pro Host ein eigener WT-Tab.
-    - Expliziter Git-Bash-Pfad statt 'bash' (System-bash = WSL unter Windows).
-    - Kein ';' im bash-Befehl (WT parst es als Subcommand-Separator).
-    - 'read' hält den Tab offen, braucht keine Anführungszeichen.
-    - '~' unquoted → Tilde-Expansion funktioniert.
-    """
-    settings = terminal_settings or WindowsTerminalSettings()
-    git_bash = _find_git_bash()
+def _public_key_filename(value: str) -> str:
+    if not value or Path(value).name != value or not value.endswith('.pub') or any(ord(c) < 32 for c in value):
+        raise ValueError("Bitte den Dateinamen eines öffentlichen SSH-Keys (.pub) angeben.")
+    return value
 
-    parts = []
-    for i, session in enumerate(sessions):
-        target = connection_value(user, "Benutzer") + "@" + connection_value(session.hostname, "Hostname")
-        inner = f"ssh-copy-id -i ~/.ssh/{key_filename} {target} && read || read"
-        parts.append(_make_tab(session, user, [git_bash, "-c", inner], settings))
-    return TerminalCommand(parts)
+
+def _remove_key_remote_script() -> str:
+    return "\n".join([
+        'set -u',
+        'auth="$HOME/.ssh/authorized_keys"',
+        'tmp=$(mktemp "$HOME/.ssh/authorized_keys.ssh-manager.XXXXXX") || exit 1',
+        "trap 'rm -f -- \"$tmp\"' EXIT",
+        'grep -vxFf /dev/stdin -- "$auth" > "$tmp"',
+        'status=$?',
+        '# grep 1 means a successful empty result, not an I/O error.',
+        '[ "$status" -le 1 ] || exit "$status"',
+        'cat -- "$tmp" > "$auth" || exit 1',
+    ])
+
+
+def _build_key_command(sessions: list[Session], key_filename: str, user: str, settings: WindowsTerminalSettings, *, remove: bool) -> TerminalCommand:
+    key = _public_key_filename(key_filename)
+    connection_value(user, "Benutzer")
+    git_bash = _find_git_bash()
+    tabs = []
+    for session in sessions:
+        argv = ssh_argv(session, user)
+        key_path = '\"$HOME/.ssh/\"' + _shell_single_quote(key)
+        if remove:
+            inner = shell_command(argv) + ' ' + _shell_single_quote(_remove_key_remote_script()) + ' < ' + key_path
+        else:
+            port = f" -p {valid_port(session.port)}" if session.port != 22 else ""
+            inner = 'ssh-copy-id -i ' + key_path + port + ' -- ' + _shell_single_quote(argv[-1])
+        content = '#!/usr/bin/env bash\ntrap \'rm -f "$0"\' EXIT\n' + inner + '\nstatus=$?\nif [ $status -eq 0 ]; then echo OK; else echo FEHLER; fi\nread\nexit $status\n'
+        path = _write_temp_bash_script("ssh_key_", content)
+        tabs.append(_make_tab(session, user, [git_bash, path], settings))
+    return TerminalCommand(tabs)
+
+
+def build_ssh_copy_id_command(sessions: list[Session], key_filename: str, user: str, terminal_settings: WindowsTerminalSettings | None = None) -> TerminalCommand:
+    return _build_key_command(sessions, key_filename, user, terminal_settings or WindowsTerminalSettings(), remove=False)
 
 
 def build_ssh_remove_key_command(sessions: list[Session], key_filename: str, user: str, terminal_settings: WindowsTerminalSettings | None = None) -> TerminalCommand:
-    """
-    Erzeugt den wt.exe-Befehl zum Entfernen eines SSH Public Keys aus authorized_keys.
-    Pro Host ein eigener WT-Tab.
-    - Stdin-Redirect (< ~/.ssh/key.pub) statt KEY-Variable → keine nested double quotes.
-    - grep -vxFf /dev/stdin: liest Muster aus stdin (Public Key), Fixed-String, ganze Zeile.
-    - Single-Quotes für den Remote-Befehl (in bash -c "..." literal, für SSH quote-delimiter).
-    - '~' unquoted außerhalb der äußeren Anführungszeichen → Tilde-Expansion.
-    """
-    settings = terminal_settings or WindowsTerminalSettings()
-    git_bash = _find_git_bash()
-
-    parts = []
-    for i, session in enumerate(sessions):
-        target = connection_value(user, "Benutzer") + "@" + connection_value(session.hostname, "Hostname")
-        remote_cmd = (
-            "grep -vxFf /dev/stdin ~/.ssh/authorized_keys > /tmp/ak_tmp "
-            "&& mv /tmp/ak_tmp ~/.ssh/authorized_keys"
-        )
-        inner = (
-            f"ssh {target} '{remote_cmd}' "
-            f"< ~/.ssh/{key_filename} && echo OK || echo FEHLER && read"
-        )
-        parts.append(_make_tab(session, user, [git_bash, "-c", inner], settings))
-    return TerminalCommand(parts)
+    return _build_key_command(sessions, key_filename, user, terminal_settings or WindowsTerminalSettings(), remove=True)
 
 
 def check_host_reachable(hostname: str, port: int = 22, timeout: int = 3) -> bool:

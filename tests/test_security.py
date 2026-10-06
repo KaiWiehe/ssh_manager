@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import patch
+import subprocess
 
 import pytest
 
@@ -34,3 +35,28 @@ def test_launcher_refuses_raw_shell_command():
         with pytest.raises(ValueError):
             TerminalLauncher._launch_windows_command("wt.exe & calc")
     start.assert_not_called()
+
+
+@pytest.mark.parametrize("key", ["../id.pub", "a\nb.pub", "id", "C:\\key.pub"])
+def test_key_actions_reject_non_public_or_outside_filenames(key):
+    from ssh_manager_app.core import build_ssh_remove_key_command
+    with pytest.raises(ValueError):
+        build_ssh_remove_key_command([Session("s", "Server", [], "host")], key, "ops")
+
+
+def test_key_removal_handles_last_key_and_preserves_file_mode():
+    from ssh_manager_app.core import _find_git_bash, _remove_key_remote_script
+    script = '''
+HOME=$(mktemp -d)
+trap 'rm -rf "$HOME"' EXIT
+mkdir "$HOME/.ssh"
+printf '%s\\n' 'ssh-ed25519 last-key' > "$HOME/.ssh/authorized_keys"
+chmod 600 "$HOME/.ssh/authorized_keys"
+before=$(stat -c %a "$HOME/.ssh/authorized_keys")
+printf '%s\\n' 'ssh-ed25519 last-key' | bash -c ''' + __import__('shlex').quote(_remove_key_remote_script()) + '''
+[ $? -eq 0 ] || exit 5
+[ ! -s "$HOME/.ssh/authorized_keys" ] || exit 6
+[ "$(stat -c %a "$HOME/.ssh/authorized_keys")" = "$before" ] || exit 7
+'''
+    result = subprocess.run([_find_git_bash()], input=script, text=True, capture_output=True, timeout=10)
+    assert result.returncode == 0, result.stderr

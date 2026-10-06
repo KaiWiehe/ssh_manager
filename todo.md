@@ -9,15 +9,6 @@ Geprüft: Frontend + Backend + Package-Scan
 
 ## 🔒 Security
 
-### KRITISCH
-#### [S-C2] Injection in `ssh-copy-id`- und Key-Entfernen-Befehl über `key_filename` und Hostname
-**Datei:** `ssh_manager_app/core.py` (Z. 666–715), `ssh_manager_app/dialogs_remote.py` (Z. 267, 294–308, 374, 399ff)
-**Problem:** `key_filename`, `user` und `hostname` werden in `bash -c "..."` innerhalb des `shell=True`-Strings eingesetzt. Die Key-Combobox ist editierbar (`state="normal"`), wenn keine `.pub` gefunden wird. Eine Eingabe wie `x"; calc; "` wird ausgeführt. Zusätzlich verwendet das Key-Entfernen auf dem Zielhost den festen Pfad `/tmp/ak_tmp` (Symlink-/Race-Risiko), und `mv` ersetzt `authorized_keys` mit Besitzer und Rechten der Temp-Datei.
-**Fix:** `re.fullmatch(r"[A-Za-z0-9._-]+\.pub", key)` und `Path(key).name == key` prüfen. Remote `mktemp` verwenden und den Inhalt zurückschreiben statt `mv`:
-```bash
-tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.ssh/authorized_keys; rm -f "$tmp"
-```
-
 ### HOCH
 #### [S-H1] Sudo-Passwort im Klartext in lokalen Temp-Skripten, Skripte werden nicht zuverlässig gelöscht
 **Datei:** `ssh_manager_app/core.py` (Z. 109–123, 220–244, 364–390, 618–625, 741), `ssh_manager_app/actions_remote.py` (Z. 281)
@@ -506,3 +497,14 @@ Titel bereinigen, `profile_name` und Farbe (`#[0-9a-fA-F]{6}`) prüfen. Mittelfr
 **Datei:** `ssh_manager_app/core.py` (Z. 971–1017)
 **Problem:** `split(" ; ")` und `partition(" -- ")` schlagen fehl, wenn ein Titel oder Pfad diese Zeichenfolgen enthält. Builder liefern mal einen String, mal eine Liste.
 **Fix:** Builder liefern strukturierte `TerminalTabSpec`-Objekte, die Launcher rendern daraus ihr Format.
+
+#### ~~[S-C2] Injection in `ssh-copy-id`- und Key-Entfernen-Befehl über `key_filename` und Hostname~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/core.py` (Z. 666–715), `ssh_manager_app/dialogs_remote.py` (Z. 267, 294–308, 374, 399ff)
+**Problem:** `key_filename`, `user` und `hostname` werden in `bash -c "..."` innerhalb des `shell=True`-Strings eingesetzt. Die Key-Combobox ist editierbar (`state="normal"`), wenn keine `.pub` gefunden wird. Eine Eingabe wie `x"; calc; "` wird ausgeführt. Zusätzlich verwendet das Key-Entfernen auf dem Zielhost den festen Pfad `/tmp/ak_tmp` (Symlink-/Race-Risiko), und `mv` ersetzt `authorized_keys` mit Besitzer und Rechten der Temp-Datei.
+**Fix:** `re.fullmatch(r"[A-Za-z0-9._-]+\.pub", key)` und `Path(key).name == key` prüfen. Remote `mktemp` verwenden und den Inhalt zurückschreiben statt `mv`:
+```bash
+tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.ssh/authorized_keys; rm -f "$tmp"
+```
