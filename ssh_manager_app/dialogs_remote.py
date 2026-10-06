@@ -62,7 +62,7 @@ class JumpHostDialog(tk.Toplevel):
         form.columnconfigure(1, weight=1)
 
         self._jump_host_var = tk.StringVar()
-        self._jump_user_var = tk.StringVar(value=_resolve_jump_host_default_user(parent))
+        self._jump_user_var = tk.StringVar(value=_resolve_jump_host_default_user(self.master))
         self._jump_port_var = tk.StringVar(value="22")
         self._filter_var = tk.StringVar()
 

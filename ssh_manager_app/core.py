@@ -19,6 +19,7 @@ import winreg
 
 from . import PALETTE, REGISTRY_PATH, SKIP_SESSIONS, Session, WindowsTerminalSettings
 from .constants import _SSH_CONFIG_FILE, _STATE_FILE
+from .storage import load_ssh_config_sessions
 from .secret_scripts import write_protected_script, cleanup_script, managed_scripts
 from .ssh_utils import connection_value, ssh_argv, shell_command, scp_target, valid_color, valid_port
 

@@ -87,3 +87,35 @@ def test_failed_terminal_start_cleans_protected_files(tmp_path):
             TerminalLauncher._launch_windows_command(command)
     assert not Path(script).exists()
     assert not Path(script).with_suffix(".payload").exists()
+
+
+def test_jump_dialog_really_constructs_and_uses_configured_user():
+    import tkinter as tk
+    from ssh_manager_app.dialogs_remote import JumpHostDialog
+    from ssh_manager_app.models import AppSettings
+    root = tk.Tk()
+    root.withdraw()
+    root.settings = AppSettings(default_user="configured")
+    try:
+        session = Session("s", "Server", [], "host")
+        dialog = JumpHostDialog(root, session, [session])
+        assert dialog._jump_user_var.get() == "configured"
+        dialog.destroy()
+    finally:
+        root.destroy()
+
+
+def test_append_alias_uses_loader_and_preserves_config_backup(tmp_path, monkeypatch):
+    import ssh_manager_app.core as core
+    import ssh_manager_app.storage as storage
+    path = tmp_path / "config"
+    original = "Host old\n    HostName old.example\n"
+    path.write_text(original)
+    monkeypatch.setattr(core, "_SSH_CONFIG_FILE", path)
+    monkeypatch.setattr(storage, "_SSH_CONFIG_FILE", path)
+    core._append_ssh_config_alias("new", Session("s", "Server", [], "host"), "ops", "jump", "jumper", 2200)
+    assert "Host new" in path.read_text()
+    assert "ProxyJump jumper@jump:2200" in path.read_text()
+    assert path.with_suffix(".bak").read_text() == original
+    with pytest.raises(ValueError):
+        core._append_ssh_config_alias("old", Session("s", "Server", [], "host"), "ops", "jump")

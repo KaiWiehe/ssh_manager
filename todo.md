@@ -45,16 +45,6 @@ def _csv_safe(v: str) -> str:
 ## 🎨 Design — Code-Architektur
 
 ### KRITISCH
-#### [DC-C1] `JumpHostDialog._build()` wirft `NameError` (`parent` nicht im Scope) ✔ verifiziert
-**Datei:** `ssh_manager_app/dialogs_remote.py` (Z. 64)
-**Problem:** `_resolve_jump_host_default_user(parent)` steht in `_build(self)`, `parent` existiert nur in `__init__`. „Über Jumphost öffnen“ stürzt ab. Die Tests umgehen das mit `__new__`.
-**Fix:** `_resolve_jump_host_default_user(self.master)` aufrufen und einen Test ergänzen, der den Dialog wirklich konstruiert.
-
-#### [DC-C2] `_append_ssh_config_alias()` wirft `NameError` (`load_ssh_config_sessions` nicht importiert) ✔ verifiziert
-**Datei:** `ssh_manager_app/core.py` (Z. 20, 171)
-**Problem:** `core.py` importiert aus dem Paket nur `PALETTE, REGISTRY_PATH, SKIP_SESSIONS, Session, WindowsTerminalSettings`. „Als SSH-Config speichern…“ stürzt ab. `actions_remote.py` (Z. 352–357) fängt nur `ValueError` und `OSError`.
-**Fix:** `from .storage import load_ssh_config_sessions` ergänzen. Mittelfristig die Funktion nach `storage.py` verschieben (Datei-Logik gehört laut AGENTS.md dorthin).
-
 #### [DC-C3] Startup-Crash bei Nicht-UTF-8-Config oder JSON-Wurzel ≠ Objekt
 **Datei:** `ssh_manager_app/storage.py` (Z. 188–189, 227, 328–330, 372–374), `ssh_manager.py` (Z. 213, 222)
 **Problem:** `load_ssh_config_sessions` fängt nur `OSError`, `load_filezilla_config_sessions` nur `OSError` und `ET.ParseError`. Eine ANSI-kodierte `~/.ssh/config` oder `sitemanager.xml` wirft `UnicodeDecodeError` im Konstruktor von `SSHManagerApp`, die App startet nicht. `load_ui_state` crasht mit `AttributeError`, wenn `ui_state.json` eine Liste oder `null` enthält.
@@ -516,3 +506,19 @@ tmp=$(mktemp) && grep -vxFf - ~/.ssh/authorized_keys > "$tmp"; cat "$tmp" > ~/.s
 **Datei:** `ssh_manager_app/dialogs_remote.py` (Z. 687–698, 897–898), `ssh_manager_app/dialogs_certificates.py` (Z. 225–226, 382), `ssh_manager_app/dialogs_certificate_replace.py` (Z. 23–24, 104), `ssh_manager_app/dialogs_restart.py` (Z. 20, 118)
 **Problem:** Sudo- und Keystore-Passwörter werden nach dem Bauen der Befehle nicht geleert.
 **Fix:** Nach dem Bauen der Befehle `var.set("")` und `spec["sudo_password"] = ""` setzen.
+
+#### ~~[DC-C1] `JumpHostDialog._build()` wirft `NameError` (`parent` nicht im Scope) ✔ verifiziert~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/dialogs_remote.py` (Z. 64)
+**Problem:** `_resolve_jump_host_default_user(parent)` steht in `_build(self)`, `parent` existiert nur in `__init__`. „Über Jumphost öffnen“ stürzt ab. Die Tests umgehen das mit `__new__`.
+**Fix:** `_resolve_jump_host_default_user(self.master)` aufrufen und einen Test ergänzen, der den Dialog wirklich konstruiert.
+
+#### ~~[DC-C2] `_append_ssh_config_alias()` wirft `NameError` (`load_ssh_config_sessions` nicht importiert) ✔ verifiziert~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/core.py` (Z. 20, 171)
+**Problem:** `core.py` importiert aus dem Paket nur `PALETTE, REGISTRY_PATH, SKIP_SESSIONS, Session, WindowsTerminalSettings`. „Als SSH-Config speichern…“ stürzt ab. `actions_remote.py` (Z. 352–357) fängt nur `ValueError` und `OSError`.
+**Fix:** `from .storage import load_ssh_config_sessions` ergänzen. Mittelfristig die Funktion nach `storage.py` verschieben (Datei-Logik gehört laut AGENTS.md dorthin).
