@@ -114,11 +114,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Problem:** `label.startswith("löschen")` steuert Stil und Icon. Eine Textänderung ändert unbemerkt das Verhalten. Der Widget-Baum wird bei jedem Map dreimal durchlaufen.
 **Fix:** Den Stil explizit über `build_dialog_actions(primary_style=…)` setzen. Restyle nur einmal pro Toplevel.
 
-#### [DC-M10] `socket.setdefaulttimeout()` prozessweit aus Worker-Threads
-**Datei:** `ssh_manager_app/dns_lookup.py` (Z. 243–254)
-**Problem:** Der Aufruf beeinflusst parallel laufende Host-Checks (Race).
-**Fix:** Einen Resolver-Thread mit `Future.result(timeout)` verwenden.
-
 #### [DC-M11] `ssh_manager.py` ist keine dünne Bootstrap-Shell mehr
 **Datei:** `ssh_manager.py` (Z. 42–183, 242)
 **Problem:** Dort stehen 140 Zeilen Win32-ctypes-Code für das Icon, dazu Magic Numbers (`"750x550"`, 250 ms, AppUserModelID).
@@ -193,11 +188,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Problem:** Die Liste ist leer, und der Placeholder ist ausgeblendet. Der User sieht eine leere Fläche.
 **Fix:** Bei `not ranked and raw_query.strip()` ein Label „Keine Treffer“ einblenden.
 
-#### [DX-M7] „In WinSCP öffnen“ friert die UI ein (`wait` + `sleep` im UI-Thread)
-**Datei:** `ssh_manager_app/actions_open.py` (Z. 70–80)
-**Problem:** Im Tab-Modus bis zu ca. 5 s pro Session, bei 5 Sessions rund 25 s „Keine Rückmeldung“.
-**Fix:** Die Schleife in einen Daemon-Thread oder eine `after`-Kette verlagern und einen Toast „WinSCP wird geöffnet…“ zeigen.
-
 #### [DX-M8] Registry-Fehler: modaler Dialog bei jedem Start, falscher Erfolgs-Toast, stille Skips
 **Datei:** `ssh_manager.py` (Z. 201–210), `ssh_manager_app/actions_ui.py` (Z. 295–308, 412–414), `ssh_manager_app/core.py` (Z. 1115–1129)
 **Problem:** Mehrere Schwächen:
@@ -211,12 +201,6 @@ Dazu kommen rund 70 Einzeiler-`*_callback`-Wrapper in `ui.py`, die nur den Lazy-
 **Datei:** `ssh_manager_app/storage.py` (Z. 38–39), `ssh_manager_app/dialogs_settings_misc.py` (Z. 802–811)
 **Problem:** Der Import von z. B. `notes.json` meldet „Einstellungen importiert“ und setzt alles zurück, ohne Rückfrage.
 **Fix:** Mindestens einen bekannten Schlüssel verlangen, sonst `ValueError`. Vor dem Anwenden per `askyesno` bestätigen lassen.
-
-### NIEDRIG
-#### [DX-L1] SSH-Config-Inspect blockiert die UI (`ssh -G` synchron im Konstruktor)
-**Datei:** `ssh_manager_app/dialogs_settings_misc.py` (Z. 48–58)
-**Problem:** Die App friert bis zu 5 s ein. Timeout und fehlendes `ssh` erscheinen als generische Fehlermeldung.
-**Fix:** Den Dialog sofort mit „Lade…“ öffnen und `ssh -G` im Thread ausführen. `TimeoutExpired` und `FileNotFoundError` gezielt melden.
 
 ---
 
@@ -599,3 +583,27 @@ Dazu ein Logfile unter `%APPDATA%\SSH-Manager\error.log` einrichten.
 **Datei:** `ssh_manager_app/tree.py` (Z. 1814–1816), `ssh_manager_app/dialogs_certificates.py` (Z. 144–154), `ssh_manager_app/actions_certificate_replace.py` (Z. 191), `ssh_manager_app/actions_dns.py` (Z. 91–93)
 **Problem:** Wird das Fenster geschlossen, entsteht `RuntimeError` bzw. `TclError`. Die Behandlung ist inkonsistent.
 **Fix:** `queue.Queue` plus `after`-Polling im Main-Thread verwenden (wie bereits in `actions_restart`).
+
+#### ~~[DX-M7] „In WinSCP öffnen“ friert die UI ein (`wait` + `sleep` im UI-Thread)~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/actions_open.py` (Z. 70–80)
+**Problem:** Im Tab-Modus bis zu ca. 5 s pro Session, bei 5 Sessions rund 25 s „Keine Rückmeldung“.
+**Fix:** Die Schleife in einen Daemon-Thread oder eine `after`-Kette verlagern und einen Toast „WinSCP wird geöffnet…“ zeigen.
+
+#### ~~[DX-L1] SSH-Config-Inspect blockiert die UI (`ssh -G` synchron im Konstruktor)~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/dialogs_settings_misc.py` (Z. 48–58)
+**Problem:** Die App friert bis zu 5 s ein. Timeout und fehlendes `ssh` erscheinen als generische Fehlermeldung.
+**Fix:** Den Dialog sofort mit „Lade…“ öffnen und `ssh -G` im Thread ausführen. `TimeoutExpired` und `FileNotFoundError` gezielt melden.
+
+#### ~~[DC-M10] `socket.setdefaulttimeout()` prozessweit aus Worker-Threads~~
+
+**Erledigt am 06.10.2026.**
+
+**Datei:** `ssh_manager_app/dns_lookup.py` (Z. 243–254)
+**Problem:** Der Aufruf beeinflusst parallel laufende Host-Checks (Race).
+**Fix:** Einen Resolver-Thread mit `Future.result(timeout)` verwenden.

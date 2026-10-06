@@ -824,3 +824,11 @@ def test_main_actions_menu_contains_dns_entries():
     assert "DNS/IP auflösen…" in labels
     assert "DNS/IP für Auswahl auflösen…" in labels
     assert "DNS/IP für Auswahl auflösen… (DNS-Auswahl)" in labels
+
+
+def test_socket_lookup_never_changes_global_socket_timeout():
+    from ssh_manager_app.dns_lookup import _resolve_with_socket
+    with patch("ssh_manager_app.dns_lookup.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("10.0.0.1", 0))]), \
+         patch("ssh_manager_app.dns_lookup.socket.setdefaulttimeout") as change:
+        assert _resolve_with_socket("example", "forward", 2) == ["10.0.0.1"]
+    change.assert_not_called()

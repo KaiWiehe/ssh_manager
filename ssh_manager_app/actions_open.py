@@ -8,6 +8,7 @@ from .constants import _SSH_CONFIG_FILE
 from .core import _find_winscp
 from .dialogs_settings_misc import SshConfigInspectDialog
 from .models import Session
+from .workers import run_worker
 
 
 def inspect_ssh_config(app, session: Session) -> None:
@@ -60,23 +61,34 @@ def open_in_winscp(app, sessions: list[Session]) -> None:
             parent=app,
         )
         return
-    try:
-        winscp_settings = getattr(getattr(app, "settings", None), "winscp", None)
-        open_mode = getattr(winscp_settings, "open_mode", "tabs")
-        if open_mode not in {"tabs", "windows"}:
-            open_mode = "tabs"
+    if getattr(app, "_winscp_opening", False) is True:
+        return
+    winscp_settings = getattr(getattr(app, "settings", None), "winscp", None)
+    open_mode = getattr(winscp_settings, "open_mode", "tabs")
+    if open_mode not in {"tabs", "windows"}:
+        open_mode = "tabs"
+    paths = ["/".join(session.folder_path + [session.display_name]) for session in sessions]
+    app._winscp_opening = True
+
+    def worker():
         if open_mode == "tabs":
             _set_winscp_external_sessions_in_existing_window(True)
-        for index, session in enumerate(sessions):
-            full_path = "/".join(session.folder_path + [session.display_name])
+        for index, full_path in enumerate(paths):
             cmd = [winscp, full_path]
             if open_mode == "windows":
                 cmd.append("/newinstance")
             process = subprocess.Popen(cmd)
-            if open_mode == "tabs" and index < len(sessions) - 1:
+            if open_mode == "tabs" and index < len(paths) - 1:
                 try:
                     process.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     time.sleep(2)
-    except OSError as exc:
-        messagebox.showerror("Fehler", f"Fehler beim Starten von WinSCP:\n{exc}", parent=app)
+
+    def done(_):
+        app._winscp_opening = False
+
+    def failed(error):
+        app._winscp_opening = False
+        messagebox.showerror("Fehler", f"Fehler beim Starten von WinSCP:\n{error}", parent=app)
+
+    run_worker(app, worker, done, failed)

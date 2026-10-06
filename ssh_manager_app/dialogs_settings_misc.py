@@ -13,6 +13,7 @@ from .ssh_utils import connection_value
 from .constants import _SSH_CONFIG_FILE
 from .dialogs_toast import ToastNotification
 from .storage import load_settings_from_path, atomic_write_text
+from .workers import run_worker
 
 
 class SshConfigInspectDialog(tk.Toplevel):
@@ -48,17 +49,24 @@ class SshConfigInspectDialog(tk.Toplevel):
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
 
-        try:
+        txt.insert("1.0", "SSH-Konfiguration wird geladen …")
+        txt.configure(state="disabled")
+
+        def worker():
             result = subprocess.run(
                 ["ssh", "-G", "--", connection_value(alias)],
                 capture_output=True, text=True, timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
-            output = result.stdout or result.stderr or "(keine Ausgabe)"
-        except Exception as exc:
-            output = f"Fehler: {exc}"
+            return result.stdout or result.stderr or "(keine Ausgabe)"
 
-        txt.insert("1.0", output)
-        txt.configure(state="disabled")
+        def show(output):
+            txt.configure(state="normal")
+            txt.delete("1.0", "end")
+            txt.insert("1.0", output)
+            txt.configure(state="disabled")
+
+        run_worker(self, worker, show, lambda error: show("SSH-Konfiguration konnte nicht abgefragt werden. Bitte SSH-Installation und Alias prüfen."))
 
         btn_frame = ttk.Frame(self, padding=(8, 4, 8, 8))
         btn_frame.grid(row=1, column=0)

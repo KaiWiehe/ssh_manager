@@ -2268,6 +2268,15 @@ def test_open_ssh_config_in_vscode_launches_code_with_shell():
     assert kwargs == {"shell": True}
 
 
+def _run_open_worker(owner, work, done, failed):
+    try:
+        value = work()
+    except Exception as error:
+        failed(error)
+    else:
+        done(value)
+
+
 def test_open_in_winscp_opens_all_selected_sessions():
     app = MagicMock()
     sessions = [
@@ -2275,7 +2284,8 @@ def test_open_in_winscp_opens_all_selected_sessions():
         Session("s2", "srv2", ["Prod", "Db"], "10.0.0.2"),
     ]
 
-    with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
+    with patch("ssh_manager_app.actions_open.run_worker", side_effect=_run_open_worker), \
+         patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
          patch("ssh_manager_app.actions_open._set_winscp_external_sessions_in_existing_window") as set_existing_window, \
          patch("ssh_manager_app.actions_open.subprocess.Popen") as popen, \
          patch("ssh_manager_app.actions_open.time.sleep") as sleep:
@@ -2296,7 +2306,8 @@ def test_open_in_winscp_waits_between_tab_launches_when_handoff_stays_open():
         Session("s2", "srv2", ["Prod", "Db"], "10.0.0.2"),
     ]
 
-    with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
+    with patch("ssh_manager_app.actions_open.run_worker", side_effect=_run_open_worker), \
+         patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
          patch("ssh_manager_app.actions_open._set_winscp_external_sessions_in_existing_window"), \
          patch("ssh_manager_app.actions_open.subprocess.Popen") as popen, \
          patch("ssh_manager_app.actions_open.time.sleep") as sleep:
@@ -2314,7 +2325,8 @@ def test_open_in_winscp_can_force_separate_windows():
         Session("s2", "srv2", ["Prod", "Db"], "10.0.0.2"),
     ]
 
-    with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
+    with patch("ssh_manager_app.actions_open.run_worker", side_effect=_run_open_worker), \
+         patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
          patch("ssh_manager_app.actions_open._set_winscp_external_sessions_in_existing_window") as set_existing_window, \
          patch("ssh_manager_app.actions_open.subprocess.Popen") as popen, \
          patch("ssh_manager_app.actions_open.time.sleep") as sleep:
@@ -2363,7 +2375,8 @@ def test_open_in_winscp_shows_error_when_winscp_missing():
     app = MagicMock()
     sessions = [Session("s1", "srv1", [], "10.0.0.1")]
 
-    with patch("ssh_manager_app.actions_open._find_winscp", return_value=""), \
+    with patch("ssh_manager_app.actions_open.run_worker", side_effect=_run_open_worker), \
+         patch("ssh_manager_app.actions_open._find_winscp", return_value=""), \
          patch("ssh_manager_app.actions_open.messagebox.showerror") as showerror:
         open_in_winscp(app, sessions)
 
@@ -2378,7 +2391,8 @@ def test_open_in_winscp_shows_error_on_launch_failure():
     app = MagicMock()
     sessions = [Session("s1", "srv1", ["Prod"], "10.0.0.1")]
 
-    with patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
+    with patch("ssh_manager_app.actions_open.run_worker", side_effect=_run_open_worker), \
+         patch("ssh_manager_app.actions_open._find_winscp", return_value="C:/Program Files/WinSCP/WinSCP.exe"), \
          patch("ssh_manager_app.actions_open.subprocess.Popen", side_effect=OSError("broken")), \
          patch("ssh_manager_app.actions_open.messagebox.showerror") as showerror:
         open_in_winscp(app, sessions)
@@ -2700,16 +2714,17 @@ def test_ssh_config_inspect_dialog_build_uses_stdout_and_disables_text():
     btn_frame = MagicMock()
     close_button = MagicMock()
 
-    with patch("ssh_manager_app.dialogs_settings_misc.ttk.Frame", side_effect=[txt_frame, btn_frame]) as frame_cls, \
+    with patch("ssh_manager_app.dialogs_settings_misc.run_worker", side_effect=_run_open_worker), \
+         patch("ssh_manager_app.dialogs_settings_misc.ttk.Frame", side_effect=[txt_frame, btn_frame]) as frame_cls, \
          patch("ssh_manager_app.dialogs_settings_misc.tk.Text", return_value=txt) as text_cls, \
          patch("ssh_manager_app.dialogs_settings_misc.ttk.Scrollbar", side_effect=[vsb, hsb]) as scrollbar_cls, \
          patch("ssh_manager_app.dialogs_settings_misc.ttk.Button", return_value=close_button) as button_cls, \
          patch("ssh_manager_app.dialogs_settings_misc.subprocess.run", return_value=SimpleNamespace(stdout="host x\n", stderr="")) as run:
         SshConfigInspectDialog._build(dialog, "prod")
 
-    run.assert_called_once_with(["ssh", "-G", "--", "prod"], capture_output=True, text=True, timeout=5)
+    run.assert_called_once_with(["ssh", "-G", "--", "prod"], capture_output=True, text=True, timeout=5, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     text_cls.assert_called_once_with(txt_frame, wrap="none", font=("Consolas", 9))
-    txt.insert.assert_called_once_with("1.0", "host x\n")
+    txt.insert.assert_any_call("1.0", "host x\n")
     txt.configure.assert_any_call(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
     txt.configure.assert_any_call(state="disabled")
     button_cls.assert_called_once_with(btn_frame, text="Schließen", command=dialog.destroy, width=12)
@@ -2722,14 +2737,15 @@ def test_ssh_config_inspect_dialog_build_shows_exception_text():
     dialog.rowconfigure = MagicMock()
     txt = MagicMock()
 
-    with patch("ssh_manager_app.dialogs_settings_misc.ttk.Frame", side_effect=[MagicMock(), MagicMock()]), \
+    with patch("ssh_manager_app.dialogs_settings_misc.run_worker", side_effect=_run_open_worker), \
+         patch("ssh_manager_app.dialogs_settings_misc.ttk.Frame", side_effect=[MagicMock(), MagicMock()]), \
          patch("ssh_manager_app.dialogs_settings_misc.tk.Text", return_value=txt), \
          patch("ssh_manager_app.dialogs_settings_misc.ttk.Scrollbar", side_effect=[MagicMock(), MagicMock()]), \
          patch("ssh_manager_app.dialogs_settings_misc.ttk.Button", return_value=MagicMock()), \
          patch("ssh_manager_app.dialogs_settings_misc.subprocess.run", side_effect=RuntimeError("boom")):
         SshConfigInspectDialog._build(dialog, "prod")
 
-    txt.insert.assert_called_once_with("1.0", "Fehler: boom")
+    txt.insert.assert_any_call("1.0", "SSH-Konfiguration konnte nicht abgefragt werden. Bitte SSH-Installation und Alias prüfen.")
     txt.configure.assert_any_call(state="disabled")
 
 
@@ -2739,14 +2755,15 @@ def test_ssh_config_inspect_dialog_build_falls_back_to_stderr_when_stdout_is_emp
     dialog.rowconfigure = MagicMock()
     txt = MagicMock()
 
-    with patch("ssh_manager_app.dialogs_settings_misc.ttk.Frame", side_effect=[MagicMock(), MagicMock()]), \
+    with patch("ssh_manager_app.dialogs_settings_misc.run_worker", side_effect=_run_open_worker), \
+         patch("ssh_manager_app.dialogs_settings_misc.ttk.Frame", side_effect=[MagicMock(), MagicMock()]), \
          patch("ssh_manager_app.dialogs_settings_misc.tk.Text", return_value=txt), \
          patch("ssh_manager_app.dialogs_settings_misc.ttk.Scrollbar", side_effect=[MagicMock(), MagicMock()]), \
          patch("ssh_manager_app.dialogs_settings_misc.ttk.Button", return_value=MagicMock()), \
          patch("ssh_manager_app.dialogs_settings_misc.subprocess.run", return_value=SimpleNamespace(stdout="", stderr="warning")):
         SshConfigInspectDialog._build(dialog, "prod")
 
-    txt.insert.assert_called_once_with("1.0", "warning")
+    txt.insert.assert_any_call("1.0", "warning")
     txt.configure.assert_any_call(state="disabled")
 
 

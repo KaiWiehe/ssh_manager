@@ -5,6 +5,7 @@ import base64
 import json
 import re
 import socket
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 import subprocess
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -242,15 +243,21 @@ def parse_nslookup_output(output: str, mode: str) -> list[str]:
     return _dedupe(values)
 
 
+_SOCKET_LOOKUPS = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ssh-dns")
+
+
+def _socket_lookup(query: str, mode: str) -> list[str]:
+    if mode == "reverse":
+        host, aliases, _addresses = socket.gethostbyaddr(query)
+        return _dedupe([host] + list(aliases))
+    infos = socket.getaddrinfo(query, None, type=socket.SOCK_STREAM)
+    return _dedupe([info[4][0] for info in infos if info and len(info) >= 5])
+
+
 def _resolve_with_socket(query: str, mode: str, timeout: int, _dns_server: str | None = None) -> list[str]:
-    previous_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(timeout)
+    future = _SOCKET_LOOKUPS.submit(_socket_lookup, query, mode)
     try:
-        if mode == "reverse":
-            host, aliases, _addresses = socket.gethostbyaddr(query)
-            return _dedupe([host] + list(aliases))
-        infos = socket.getaddrinfo(query, None, type=socket.SOCK_STREAM)
-        addresses = [info[4][0] for info in infos if info and len(info) >= 5]
-        return _dedupe(addresses)
-    finally:
-        socket.setdefaulttimeout(previous_timeout)
+        return future.result(timeout=timeout)
+    except FutureTimeout as error:
+        future.cancel()
+        raise socket.timeout("DNS-Auflösung hat das Zeitlimit überschritten.") from error
