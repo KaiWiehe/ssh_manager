@@ -82,13 +82,14 @@ def export_visible_sessions(app, export_format: str) -> None:
         "xlsx": ("Excel", ".xlsx", "ssh-manager-verbindungen.xlsx", [("Excel-Dateien", "*.xlsx"), ("Alle Dateien", "*.*")]),
     }
     label, extension, filename, filetypes = export_options[export_format]
-    dialog = ExportColumnsDialog(app, label)
+    scope_counts = {scope: len({s.key for _folder, sessions in export_scope_groups(app, scope) for s in sessions}) for scope in ("view", "selection", "all")}
+    dialog = ExportColumnsDialog(app, label, scope_counts=scope_counts)
     app.wait_window(dialog)
     fields = dialog.result
     if not fields:
         return
 
-    groups = app._tree.get_visible_sessions_by_folder()
+    groups = export_scope_groups(app, dialog.__dict__.get("scope", "view"))
     if not groups:
         messagebox.showinfo("Keine Verbindungen", "Es sind keine Verbindungen zum Exportieren sichtbar.", parent=app)
         return
@@ -110,6 +111,26 @@ def export_visible_sessions(app, export_format: str) -> None:
         messagebox.showerror("Export fehlgeschlagen", f"Datei konnte nicht gespeichert werden:\n{exc}", parent=app)
         return
     ToastNotification(app, f"{label}-Export erstellt")
+
+
+def export_scope_groups(app, scope):
+    if scope == "view":
+        return app._tree.get_visible_sessions_by_folder()
+    if scope == "selection":
+        sessions = app._tree.get_selected_sessions()
+    elif scope == "all":
+        from .actions_ui import _with_effective_username
+        sessions = []
+        for key in ("_winscp_sessions", "_ssh_config_sessions", "_filezilla_sessions", "_app_sessions"):
+            sessions.extend(_with_effective_username(app, s) for s in app.__dict__.get(key, []))
+    else:
+        raise ValueError("Unbekannter Exportumfang")
+    seen, groups = set(), {}
+    for session in sessions:
+        if session.key not in seen:
+            seen.add(session.key)
+            groups.setdefault(session.folder_key, []).append(session)
+    return list(groups.items())
 
 
 def open_command_palette(app) -> None:

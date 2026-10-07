@@ -965,6 +965,9 @@ def build_main_ui(self) -> None:
     file_menu.add_separator()
     file_menu.add_command(label="Einstellungen", accelerator=_acc("open_settings"), command=lambda: show_settings_view_callback(self))
     file_menu.add_command(label="JSONs in VS Code öffnen", command=lambda: open_appdata_jsons_in_vscode_callback(self))
+    from .actions_backup import backup_app, restore_app
+    file_menu.add_command(label="App sichern…", command=lambda: backup_app(self))
+    file_menu.add_command(label="App-Backup wiederherstellen…", command=lambda: restore_app(self))
     file_menu.add_separator()
     file_menu.add_command(label="Beenden", command=lambda: close_app_callback(self))
     menubar.add_cascade(label="Datei", menu=file_menu)

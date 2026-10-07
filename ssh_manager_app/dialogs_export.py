@@ -19,13 +19,16 @@ EXPORT_COLUMNS = (
 class ExportColumnsDialog(tk.Toplevel):
     """Modal selection dialog for the columns of a connection export."""
 
-    def __init__(self, parent: tk.Tk, export_label: str):
+    def __init__(self, parent: tk.Tk, export_label: str, scope_counts: dict[str, int] | None = None):
         super().__init__(parent)
         self.title(f"{export_label} exportieren")
         self.resizable(False, False)
         self.result: list[str] | None = None
         self._excel_safe_var = tk.BooleanVar(value=True)
         self.excel_safe = True
+        self.scope = "view"
+        self._scope_var = tk.StringVar(value="view")
+        self._scope_counts = scope_counts or {}
         self._vars = {
             key: tk.BooleanVar(value=key in {"display_name", "hostname"})
             for key, _label in EXPORT_COLUMNS
@@ -44,23 +47,29 @@ class ExportColumnsDialog(tk.Toplevel):
         build_dialog_header(
             frame,
             f"{export_label} exportieren",
-            "Spalten auswählen. Jeder sichtbare Ordner wird als eigene Tabelle exportiert.",
+            "Verbindungsliste exportieren. Dies ist kein vollständiges App-Backup.",
         )
-        for row, (key, label) in enumerate(EXPORT_COLUMNS, start=1):
+        scope = ttk.LabelFrame(frame, text="Umfang", padding=8)
+        scope.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        for key, label in (("view", "Aktuelle Ansicht"), ("selection", "Häkchen-Auswahl (auch verborgene Hosts)"), ("all", "Alle geladenen Verbindungen")):
+            count = self._scope_counts.get(key)
+            text = f"{label}: {count}" if count is not None else label
+            ttk.Radiobutton(scope, text=text, variable=self._scope_var, value=key).pack(anchor="w")
+        for row, (key, label) in enumerate(EXPORT_COLUMNS, start=2):
             ttk.Checkbutton(frame, text=label, variable=self._vars[key]).grid(
                 row=row, column=0, sticky="w", pady=2
             )
 
         if export_label == "CSV":
             ttk.Checkbutton(frame, text="Excel-sicher: mögliche Formeln als Text exportieren", variable=self._excel_safe_var).grid(
-                row=len(EXPORT_COLUMNS) + 1, column=0, sticky="w", pady=(10, 0)
+                row=len(EXPORT_COLUMNS) + 2, column=0, sticky="w", pady=(10, 0)
             )
             ttk.Label(frame, text="Ohne Haken: unveränderte Rohdaten, beim Öffnen in Excel können Formeln ausgeführt werden.",
-                      wraplength=440, style="Muted.TLabel").grid(row=len(EXPORT_COLUMNS) + 2, column=0, sticky="w", pady=(4, 0))
+                      wraplength=440, style="Muted.TLabel").grid(row=len(EXPORT_COLUMNS) + 3, column=0, sticky="w", pady=(4, 0))
 
         build_dialog_actions(
             frame,
-            row=len(EXPORT_COLUMNS) + 3,
+            row=len(EXPORT_COLUMNS) + 4,
             primary_text="Exportieren",
             primary_command=self._on_ok,
             cancel_command=self._on_cancel,
@@ -71,6 +80,7 @@ class ExportColumnsDialog(tk.Toplevel):
         if not self.result:
             return
         self.excel_safe = self._excel_safe_var.get()
+        self.scope = self._scope_var.get()
         self.destroy()
 
     def _on_cancel(self) -> None:

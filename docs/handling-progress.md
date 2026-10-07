@@ -15,7 +15,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 5 | Einheitliche Auswahlregeln | fertig, 0.2.46 |
 | 6 | Auswahlleiste | fertig, 0.2.47 |
 | 8 | Verbindungsdetails | fertig, 0.2.48 |
-| 13 | Export und Backup | offen |
+| 13 | Export und Backup | fertig, 0.2.49 |
 | 2 | Runbook-Bibliothek | offen |
 | 3 | Runbook-Parameter | offen |
 | 4 | Upload und Verteilung | offen |
@@ -63,3 +63,9 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   Benutzerherkunft, Alias, Host/Port/Ordner und app-interne Notizen.
   Editierbare Verbindungen und reine App-Anpassungen sind klar getrennt.
   209 Tests (handling, help, logic) inkl. echtem Windows-Panel bestanden.
+- Punkt 13: Tabellenexport mit Ansicht/Auswahl/allen geladenen Verbindungen
+  und Anzahl. Separates App-Backup enthält exakt vier App-Datendateien;
+  externe Quellen/SSH-Keys nicht enthalten. Restore mit Vorschau, vorheriger
+  Sicherung und wiederaufnehmbarem Journal; danach App-Neustart erforderlich.
+  231 relevante Tests und vollständige Suite: 531 bestanden, 20 bestehende
+  Pillow-Deprecation-Warnungen. Fehler-/Recovery-Tests schreiben nur in Testpfade.

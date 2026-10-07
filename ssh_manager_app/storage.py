@@ -79,6 +79,107 @@ def _atomic_write_json(path: Path, data: dict) -> None:
     atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
 
 
+def _backup_paths() -> dict[str, Path]:
+    return {"settings.json": _SETTINGS_FILE, "app_sessions.json": _APP_SESSIONS_FILE,
+            "notes.json": _NOTES_FILE, "ui_state.json": _STATE_FILE}
+
+
+def validate_app_backup(payload: dict) -> dict[str, dict]:
+    """Accept only our four app stores. Never interpret archive paths."""
+    if payload.get("format") != "ssh-manager-backup" or payload.get("schema") != 1:
+        raise ValueError("Kein unterstütztes SSH-Manager-App-Backup.")
+    documents = payload.get("documents")
+    if not isinstance(documents, dict) or set(documents) != set(_backup_paths()):
+        raise ValueError("Das Backup muss genau die vier App-Datendateien enthalten.")
+    if not all(isinstance(value, dict) for value in documents.values()):
+        raise ValueError("Ungültige App-Datendatei im Backup.")
+    settings = documents["settings.json"]
+    schema = settings_to_dict(default_settings())
+    if not settings or not any(key in schema for key in settings):
+        raise ValueError("Einstellungen fehlen.")
+    for key, value in settings.items():
+        if key in schema and type(value) is not type(schema[key]):
+            raise ValueError("Ungültige Einstellungen.")
+        if key in schema and isinstance(value, dict):
+            for field, item in value.items():
+                if field in schema[key] and type(item) is not type(schema[key][field]):
+                    raise ValueError("Ungültige Einstellungseigenschaft.")
+    entries = documents["app_sessions.json"].get("sessions")
+    if not isinstance(entries, list):
+        raise ValueError("Verbindungsliste fehlt.")
+    seen = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("source", "app") not in ("app", "ssh_alias"):
+            raise ValueError("Ungültige eigene Verbindung.")
+        for field in ("id", "name", "hostname", "folder", "username"):
+            if not isinstance(entry.get(field, ""), str):
+                raise ValueError("Ungültiges Verbindungsfeld.")
+        if not entry.get("id") or not entry.get("name"):
+            raise ValueError("Verbindungs-ID oder Name fehlt.")
+        identity = (entry.get("source", "app"), entry["id"])
+        if identity in seen:
+            raise ValueError("Doppelte Verbindungs-ID.")
+        seen.add(identity)
+        read_port(entry.get("port", 22))
+    notes = documents["notes.json"].get("notes")
+    if not isinstance(notes, dict) or not all(isinstance(v, str) for v in notes.values()):
+        raise ValueError("Ungültige Notizen.")
+    state = documents["ui_state.json"]
+    if not isinstance(state.get("expanded_folders", []), list) or not all(isinstance(v, str) for v in state.get("expanded_folders", [])):
+        raise ValueError("Ungültiger Ordnerzustand.")
+    for key in ("session_colors", "toolbar_search_texts", "favorite_sessions", "session_user_overrides"):
+        if not isinstance(state.get(key, {}), dict):
+            raise ValueError("Ungültiger Ansichtsstatus.")
+    return documents
+
+
+def read_app_backup(path: Path) -> dict:
+    if path.stat().st_size > 20 * 1024 * 1024:
+        raise ValueError("Backup ist größer als 20 MB.")
+    payload = _read_json(path)
+    validate_app_backup(payload)
+    return payload
+
+
+def create_app_backup(path: Path) -> None:
+    _recover_app_restore()
+    _recover_session_transaction()
+    defaults = {"settings.json": settings_to_dict(default_settings()), "app_sessions.json": {"sessions": []},
+                "notes.json": {"notes": {}}, "ui_state.json": {}}
+    if path.resolve() in {p.resolve() for p in _backup_paths().values()}:
+        raise ValueError("Backup darf keine App-Datendatei überschreiben.")
+    documents = {name: _read_json(source) if source.exists() else defaults[name] for name, source in _backup_paths().items()}
+    payload = {"format": "ssh-manager-backup", "schema": 1, "documents": documents}
+    validate_app_backup(payload)
+    _atomic_write_json(path, payload)
+
+
+def _recover_app_restore() -> None:
+    journal = _STATE_FILE.with_name("app-restore-pending.json")
+    if not journal.exists():
+        return
+    try:
+        documents = validate_app_backup(_read_json(journal))
+    except (ValueError, TypeError, OSError) as exc:
+        raise OSError("App-Wiederherstellung: Journal ungültig; Originaldateien bleiben geschützt.") from exc
+    for name, path in _backup_paths().items():
+        _atomic_write_json(path, documents[name])
+    journal.unlink()
+
+
+def restore_app_backup(payload: dict) -> Path:
+    validate_app_backup(payload)
+    _recover_app_restore()
+    _recover_session_transaction()
+    if any(path in _blocked_paths for path in _backup_paths().values()):
+        raise OSError("App-Daten sind wegen eines fehlgeschlagenen Sicherungsversuchs gesperrt.")
+    safety = _STATE_FILE.with_name(f"before-restore-{time.time_ns()}.json")
+    create_app_backup(safety)
+    _atomic_write_json(_STATE_FILE.with_name("app-restore-pending.json"), payload)
+    _recover_app_restore()
+    return safety
+
+
 def _recover_session_transaction() -> None:
     journal = _APP_SESSIONS_FILE.with_name("session-notes-pending.json")
     if not journal.exists():
@@ -108,6 +209,7 @@ def save_sessions_and_notes(sessions: list[Session], notes: dict[str, str]) -> N
 
 
 def load_settings() -> AppSettings:
+    _recover_app_restore()
     try:
         return load_settings_from_path(_SETTINGS_FILE)
     except (OSError, ValueError, TypeError, AttributeError):
@@ -298,6 +400,7 @@ def load_settings_from_path(path: Path, *, require_settings: bool = False) -> Ap
 
 
 def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
+    _recover_app_restore()
     try:
         data = _read_json(_STATE_FILE)
         expanded_raw = data.get("expanded_folders", [])
@@ -364,6 +467,7 @@ def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], to
 
 
 def load_notes() -> dict[str, str]:
+    _recover_app_restore()
     try:
         _recover_session_transaction()
         data = _read_json(_NOTES_FILE)
@@ -385,6 +489,7 @@ def save_notes(notes: dict[str, str]) -> None:
 
 
 def load_app_sessions() -> list[Session]:
+    _recover_app_restore()
     try:
         _recover_session_transaction()
         raw = _read_json(_APP_SESSIONS_FILE)
