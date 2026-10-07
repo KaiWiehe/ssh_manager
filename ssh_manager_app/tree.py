@@ -66,6 +66,7 @@ class SessionTree(ttk.Frame):
         on_duplicate_ssh_alias=None,     # Callable[[list[Session]], None] | None
         on_inspect_ssh_config=None,      # Callable[[list[Session]], None] | None
         on_duplicate_app_session=None,   # Callable[[list[Session]], None] | None
+        on_copy_external_session=None,
         on_move_session=None,            # Callable[[list[Session]], None] | None
         on_move_sessions=None,           # Callable[[list[Session]], None] | None
         on_open_ssh_config_in_vscode=None,  # Callable[[], None] | None
@@ -110,6 +111,7 @@ class SessionTree(ttk.Frame):
         self._on_duplicate_ssh_alias = on_duplicate_ssh_alias
         self._on_inspect_ssh_config = on_inspect_ssh_config
         self._on_duplicate_app_session = on_duplicate_app_session
+        self._on_copy_external_session = on_copy_external_session
         self._on_move_session = on_move_session
         self._on_move_sessions = on_move_sessions
         self._on_open_ssh_config_in_vscode = on_open_ssh_config_in_vscode
@@ -1424,6 +1426,8 @@ class SessionTree(ttk.Frame):
                 label="Bearbeiten…",
                 command=lambda s=session: self._on_edit_session(s),
             )
+        if session.source in ("winscp", "filezilla_config") and self._on_copy_external_session:
+            manage_menu.add_command(label="Als eigene Verbindung übernehmen…", command=lambda s=session: self._on_copy_external_session(s))
         if session.is_app_session:
             if self._on_duplicate_app_session:
                 manage_menu.add_command(
@@ -1448,7 +1452,7 @@ class SessionTree(ttk.Frame):
         if session.source == "ssh_config":
             if self._on_duplicate_ssh_alias:
                 manage_menu.add_command(
-                    label="Als Alias in Ordner duplizieren…",
+                    label="Alias als App-Eintrag übernehmen…",
                     command=lambda s=session: self._on_duplicate_ssh_alias(s),
                 )
         elif session.is_ssh_alias_copy:

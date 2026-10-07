@@ -968,6 +968,8 @@ def build_main_ui(self) -> None:
     file_menu = tk.Menu(menubar, tearoff=False)
     file_menu.add_command(label="Neue Verbindung", accelerator=_acc("new_session"), command=lambda: add_session_callback(self))
     file_menu.add_command(label="Neu laden", accelerator=_acc("refresh"), command=lambda: reload_sessions_callback(self))
+    from .source_status import SourceStatusDialog
+    file_menu.add_command(label="Quellenstatus…", command=lambda: SourceStatusDialog(self))
     file_menu.add_command(label="Befehlspalette\u2026", accelerator=_acc("open_command_palette"), command=lambda: open_command_palette_callback(self))
     file_menu.add_separator()
     file_menu.add_command(label="Einstellungen", accelerator=_acc("open_settings"), command=lambda: show_settings_view_callback(self))
@@ -1163,6 +1165,7 @@ def build_main_ui(self) -> None:
 
     self._session_area = ttk.PanedWindow(self._main_frame, orient="horizontal")
     self._session_area.grid(row=3, column=0, sticky="nsew", padx=18, pady=(8, 0))
+    from .actions_sessions import copy_external_session
     self._tree = SessionTree(
         self._session_area,
         sessions=self._sessions,
@@ -1188,6 +1191,7 @@ def build_main_ui(self) -> None:
         on_duplicate_ssh_alias=lambda session: duplicate_ssh_alias_callback(self, session),
         on_inspect_ssh_config=lambda session: inspect_ssh_config_callback(self, session),
         on_duplicate_app_session=lambda session: duplicate_app_session_callback(self, session),
+        on_copy_external_session=lambda session: copy_external_session(self, session),
         on_move_session=lambda session: move_session_callback(self, session),
         on_move_sessions=lambda sessions: move_sessions_callback(self, sessions),
         on_open_ssh_config_in_vscode=lambda: open_ssh_config_in_vscode_callback(self),

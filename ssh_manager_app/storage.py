@@ -24,6 +24,7 @@ from .constants import (
 )
 from .models import AppSettings, AppearanceSettings, ImportSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, WinSCPSettings, default_settings, settings_to_dict
 from .shortcuts import merge_with_defaults as _merge_shortcuts
+from .source_status import source_load
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -488,6 +489,7 @@ def save_notes(notes: dict[str, str]) -> None:
     _atomic_write_json(_NOTES_FILE, {"notes": notes})
 
 
+@source_load("app")
 def load_app_sessions() -> list[Session]:
     _recover_app_restore()
     try:
@@ -600,6 +602,7 @@ def save_filezilla_migration(expanded: set[str], notes: dict, colors: dict, tool
     save_ui_state(expanded, colors, toolbar)
 
 
+@source_load("filezilla_config")
 def load_filezilla_config_sessions() -> list[Session]:
     appdata = Path(os.environ.get("APPDATA", Path.home()))
     candidates = [appdata / "FileZilla" / "sitemanager.xml", appdata / "filezilla" / "sitemanager.xml"]
@@ -666,6 +669,7 @@ def load_filezilla_config_sessions() -> list[Session]:
     return sessions
 
 
+@source_load("ssh_config")
 def load_ssh_config_sessions() -> list[Session]:
     try:
         text = _SSH_CONFIG_FILE.read_text(encoding="utf-8")

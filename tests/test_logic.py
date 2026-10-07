@@ -2054,7 +2054,8 @@ def test_duplicate_ssh_alias_creates_app_session_and_rebuilds():
     dialog = MagicMock()
     dialog.result = duplicate
 
-    with patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["App"]), \
+    with patch("ssh_manager_app.actions_sessions.messagebox.askyesno", return_value=True), \
+         patch("ssh_manager_app.actions_sessions.get_all_folder_names", return_value=["App"]), \
          patch("ssh_manager_app.actions_sessions.get_ssh_aliases", return_value=["prod-alias"]) as get_aliases, \
          patch("ssh_manager_app.actions_sessions.SessionEditDialog", return_value=dialog) as dialog_cls, \
          patch("ssh_manager_app.actions_sessions.save_app_sessions") as save_sessions, \

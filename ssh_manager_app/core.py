@@ -21,6 +21,7 @@ from .storage import load_ssh_config_sessions
 from .certificate_permissions import certificate_install_prelude, certificate_mode
 from .secret_scripts import write_protected_script, cleanup_script, managed_scripts
 from .operation_results import result_lines, result_statement
+from .source_status import source_load
 from .ssh_utils import connection_value, ssh_argv, shell_command, scp_target, valid_color, valid_port, read_port
 
 def parse_session_key(key: str) -> tuple[list[str], str]:
@@ -1171,6 +1172,7 @@ class RegistryReader:
 
     REGISTRY_BASE = winreg.HKEY_CURRENT_USER
 
+    @source_load("winscp")
     def load_sessions(self) -> list[Session]:
         """
         Gibt alle gültigen Sessions aus der Registry zurück.

@@ -79,6 +79,25 @@ def duplicate_app_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+def copy_external_session(app, session: Session) -> None:
+    """Copy a host-based imported connection into the app, never its source."""
+    if session.source not in ("winscp", "filezilla_config"):
+        return
+    if not messagebox.askyesno("Als eigene Verbindung übernehmen", "Es entsteht eine unabhängig bearbeitbare App-Kopie der Host-, Port- und Benutzerdaten. Spätere Änderungen der Quelle werden nicht in die Kopie übernommen. WinSCP/FileZilla und deren Passwörter bleiben unverändert; Zugangsdaten werden nicht kopiert.", parent=app):
+        return
+    dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, duplicate=True,
+                               note=app._notes.get(session.key, ""), quick_users=list(app.settings.quick_users))
+    dialog.title("Als eigene Verbindung übernehmen")
+    app.wait_window(dialog)
+    if dialog.result is None:
+        return
+    app._app_sessions.append(dialog.result)
+    if dialog.note_result:
+        app._notes[dialog.result.key] = dialog.note_result
+    save_sessions_and_notes(app._app_sessions, app._notes)
+    rebuild_sessions(app)
+
+
 def move_session(app, session: Session) -> None:
     """Verschiebt eine App- oder SSH-Alias-Session in einen anderen Ordner."""
     dialog = MoveFolderDialog(app, get_all_folder_names(app), session.folder_key)
@@ -175,6 +194,8 @@ def rename_folder(app, folder_key: str) -> None:
 
 def duplicate_ssh_alias(app, session: Session) -> None:
     """Dupliziert einen SSH-Config-Alias in einen anderen Ordner."""
+    if not messagebox.askyesno("SSH-Alias übernehmen", "Die App speichert einen eigenen Eintrag mit Ordner. Die Verbindung verwendet weiterhin diesen Alias aus ~/.ssh/config; Host, Benutzer, Schlüssel und Proxy bleiben von der SSH-Konfiguration abhängig. Das Original wird nicht geändert.", parent=app):
+        return
     dialog = SessionEditDialog(
         app,
         get_all_folder_names(app),

@@ -24,7 +24,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 10 | Tunnel-Anwendungsfälle | fertig, 0.2.55 |
 | 11 | Verbindungsdiagnose | fertig, 0.2.56 |
 | 12 | Sammelergebnisse | fertig, 0.2.57 |
-| 14 | Quellenstatus | offen |
+| 14 | Quellenstatus | fertig, 0.2.58 |
 | 15 | Lokales Undo | offen |
 | 16 | Kontextuelle Hilfe | offen |
 
@@ -117,3 +117,10 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   Eingaben erneut prüfen, Dienstparameter bleiben ohne Passwort erhalten.
   Vollständige Suite 568 bestanden, anschließend 221 relevante Tests nach
   Erweiterung auf Keys/Zertifikatstausch. Lokale Bash-Tests, keine echten Hosts.
+
+- Punkt 14: Ladeprotokoll für vier Quellen mit fehlend/leer/teilweise/Fehler,
+  Uhrzeit/Lesedauer/Anzahl und Hinweisen. Selektives Neuladen liest keine
+  andere Quelle und behält den letzten nutzbaren Stand bei Lesefehlern.
+  WinSCP/FileZilla als eigene App-Kopie inklusive App-Notiz übernehmbar;
+  Aliasübernahme erklärt die fortbestehende SSH-Config-Abhängigkeit.
+  228 Tests bestanden. Externe Quellen bleiben unverändert.
