@@ -21,7 +21,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 4 | Upload und Verteilung | fertig, 0.2.52 |
 | 7 | Gespeicherte Filter | fertig, 0.2.53 |
 | 9 | Dienstwerkzeuge | fertig, 0.2.54 |
-| 10 | Tunnel-Anwendungsfälle | offen |
+| 10 | Tunnel-Anwendungsfälle | fertig, 0.2.55 |
 | 11 | Verbindungsdiagnose | offen |
 | 12 | Sammelergebnisse | offen |
 | 14 | Quellenstatus | offen |
@@ -98,3 +98,7 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   Vorschau nennt Hosts/Befehl; ein Dienstneustart prüft anschließend den
   aktiven Zustand. Serverneustart bleibt getrennt. 232 Tests bestanden,
   keine Dienstaktion auf echten Hosts ausgeführt.
+
+- Punkt 10: direkte/interne Tunneltypen, passende Port-Vorlagen und laufende
+  Vorschau PC → SSH-Server → Ziel. Internes Ziel ist ausdrücklich Pflicht;
+  scrollbarer Dialog mit stets erreichbaren Buttons. 206 Tests bestanden.

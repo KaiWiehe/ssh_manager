@@ -1096,7 +1096,7 @@ class SshTunnelDialog(tk.Toplevel):
     def __init__(self, parent: tk.Tk, session: Session | None = None, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
         super().__init__(parent)
         self.title("Tunnel öffnen")
-        self.resizable(False, False)
+        self.resizable(True, True)
         self.result: tuple[str, int, str, int, str] | None = None
         self._session = session
         self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
@@ -1110,17 +1110,39 @@ class SshTunnelDialog(tk.Toplevel):
         self.bind("<Escape>", lambda _: self._on_cancel())
 
     def _build(self) -> None:
-        frame = ttk.Frame(self, padding=16)
-        frame.pack(fill="both", expand=True)
+        buttons = ttk.Frame(self, padding=12)
+        buttons.pack(side="bottom", fill="x")
+        container = ttk.Frame(self)
+        container.pack(fill="both", expand=True)
+        canvas = tk.Canvas(container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        frame = ttk.Frame(canvas, padding=16)
+        window = canvas.create_window(0, 0, window=frame, anchor="nw")
+        frame.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
         frame.columnconfigure(1, weight=1)
 
         # Erklärung
+        intro = ttk.Frame(frame)
+        intro.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
         ttk.Label(
-            frame,
-            text="SSH verbindet sich zum Server und leitet einen lokalen Port weiter.\nDirekt (kein Jumphost) oder zu einem internen Server dahinter.",
+            intro,
+            text="Was möchtest du erreichen?",
             style="Muted.TLabel",
             justify="left",
-        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        ).pack(anchor="w")
+        self._tunnel_kind = tk.StringVar(value="direct")
+        ttk.Radiobutton(intro, text="Dienst auf dem SSH-Server", variable=self._tunnel_kind, value="direct", command=self._update_tunnel_route).pack(anchor="w")
+        ttk.Radiobutton(intro, text="Internen Dienst über den SSH-Server", variable=self._tunnel_kind, value="internal", command=self._update_tunnel_route).pack(anchor="w")
+        self._port_preset = tk.StringVar(value="Eigene Ports")
+        preset = ttk.Combobox(intro, textvariable=self._port_preset, values=("Eigene Ports", "PostgreSQL", "MySQL", "HTTP", "HTTPS"), state="readonly")
+        preset.pack(anchor="w", pady=5)
+        preset.bind("<<ComboboxSelected>>", lambda _: self._apply_tunnel_preset())
+        self._tunnel_route = tk.StringVar()
+        ttk.Label(intro, textvariable=self._tunnel_route, wraplength=560).pack(anchor="w", fill="x", pady=4)
 
         # SSH-Server
         ttk.Label(frame, text="SSH-Server:").grid(row=1, column=0, sticky="w", pady=(0, 4))
@@ -1145,11 +1167,11 @@ class SshTunnelDialog(tk.Toplevel):
             row=5, column=0, columnspan=2, sticky="w", pady=(0, 8)
         )
 
-        ttk.Label(frame, text="Zielserver: (optional)").grid(row=6, column=0, sticky="w", pady=(0, 4))
+        self._remote_host_label = ttk.Label(frame, text="Interner Zielserver:")
+        self._remote_host_label.grid(row=6, column=0, sticky="w", pady=(0, 4))
         self._remote_host_var = tk.StringVar()
-        ttk.Entry(frame, textvariable=self._remote_host_var, width=30).grid(
-            row=6, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
-        )
+        self._remote_host_entry = ttk.Entry(frame, textvariable=self._remote_host_var, width=30)
+        self._remote_host_entry.grid(row=6, column=1, sticky="ew", padx=(8, 0), pady=(0, 4))
 
         ttk.Label(frame, text="Zielport:").grid(row=7, column=0, sticky="w", pady=(0, 4))
         self._remote_port_var = tk.StringVar()
@@ -1158,7 +1180,8 @@ class SshTunnelDialog(tk.Toplevel):
         )
         ttk.Label(
             frame,
-            text="Leer lassen = direkter Tunnel (Port des SSH-Servers selbst).\nFür Jumphost-Tunnel: z. B. db.intern / 3306",
+            text="Der Zielport gehört zum gewählten Dienst. Im internen Modus den erreichbaren Zielserver angeben.",
+            wraplength=560,
             style="Muted.TLabel",
         ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
@@ -1176,10 +1199,27 @@ class SshTunnelDialog(tk.Toplevel):
         entry.grid(row=13, column=0, columnspan=quick_count, sticky="ew", pady=(0, 12))
         entry.focus()
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=14, column=0, columnspan=quick_count)
-        ttk.Button(btn_frame, text="OK", command=self._on_ok, width=10).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Tunnel öffnen", command=self._on_ok, width=16).pack(side="right", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self._on_cancel, width=12).pack(side="right", padx=4)
+        for variable in (self._jumphost_var, self._local_port_var, self._remote_host_var, self._remote_port_var):
+            variable.trace_add("write", lambda *_: self._update_tunnel_route())
+        self._update_tunnel_route()
+
+    def _update_tunnel_route(self):
+        if "_remote_host_entry" not in self.__dict__:
+            return
+        direct = self._tunnel_kind.get() == "direct"
+        for widget in (self._remote_host_label, self._remote_host_entry):
+            widget.grid_remove() if direct else widget.grid()
+        target = "localhost" if direct else self._remote_host_var.get() or "interner Zielserver"
+        self._tunnel_route.set(f"PC localhost:{self._local_port_var.get() or '…'} → SSH {self._jumphost_var.get() or '…'} → {target}:{self._remote_port_var.get() or '…'}")
+
+    def _apply_tunnel_preset(self):
+        ports = {"PostgreSQL": (5432, 5432), "MySQL": (3306, 3306), "HTTP": (8080, 80), "HTTPS": (8443, 443)}
+        if self._port_preset.get() in ports:
+            local, remote = ports[self._port_preset.get()]
+            self._local_port_var.set(str(local))
+            self._remote_port_var.set(str(remote))
 
     def _parse_port(self, var: tk.StringVar, label: str) -> int | None:
         try:
@@ -1204,6 +1244,12 @@ class SshTunnelDialog(tk.Toplevel):
         if local_port is None:
             return
         remote_host = self._remote_host_var.get().strip() or "localhost"
+        if "_tunnel_kind" in self.__dict__:
+            if self._tunnel_kind.get() == "direct":
+                remote_host = "localhost"
+            elif not self._remote_host_var.get().strip():
+                messagebox.showwarning("Zielserver fehlt", "Für einen internen Dienst dessen Zielserver angeben.", parent=self)
+                return
         if not _HOSTNAME_RE.fullmatch(remote_host):
             messagebox.showwarning("Ungültiger Zielserver", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=self)
             return
@@ -1230,13 +1276,4 @@ class SshTunnelDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        self.update_idletasks()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        px = parent.winfo_x()
-        py = parent.winfo_y()
-        w = self.winfo_reqwidth()
-        h = self.winfo_reqheight()
-        x = px + (pw - w) // 2
-        y = py + (ph - h) // 2
-        self.geometry(f"+{x}+{y}")
+        fit_window_to_parent(self, parent, 660, 690, min_width=500, min_height=380)

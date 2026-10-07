@@ -169,3 +169,26 @@ def test_service_form_only_returns_command_and_clears_password(root):
     assert "restart -- wildfly.service" in dialog.result[0]
     assert dialog.result[1] == "dummy-password"
     assert dialog._sudo_password_var.get() == ""
+
+
+def test_tunnel_presets_and_internal_target_validation(root):
+    from ssh_manager_app.dialogs_remote import SshTunnelDialog
+    dialog = SshTunnelDialog(root)
+    dialog._jumphost_var.set("gateway.test")
+    dialog._port_preset.set("HTTPS")
+    dialog._apply_tunnel_preset()
+    assert dialog._local_port_var.get() == "8443"
+    assert dialog._remote_port_var.get() == "443"
+    assert not dialog._remote_host_entry.winfo_manager()
+    dialog._tunnel_kind.set("internal")
+    dialog._update_tunnel_route()
+    assert dialog._remote_host_entry.winfo_manager() == "grid"
+    with patch("ssh_manager_app.dialogs_remote.messagebox.showwarning") as warn:
+        dialog._on_ok()
+    warn.assert_called_once()
+    assert dialog.result is None
+    dialog._remote_host_var.set("internal.test")
+    dialog._user_var.set("ops")
+    assert "internal.test:443" in dialog._tunnel_route.get()
+    dialog._on_ok()
+    assert dialog.result == ("gateway.test", 8443, "internal.test", 443, "ops")
