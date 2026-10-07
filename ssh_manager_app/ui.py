@@ -996,6 +996,8 @@ def build_main_ui(self) -> None:
     actions_menu = tk.Menu(menubar, tearoff=False)
     actions_menu.add_command(label="Auswahl verbinden", accelerator=_acc("connect_selected"), command=lambda: connect_selected_sessions_callback(self))
     actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
+    from .diagnosis import open_diagnosis
+    actions_menu.add_command(label="Verbindung diagnostizieren…", command=lambda: open_diagnosis(self))
     actions_menu.add_command(label="Server neu starten…", command=lambda: restart_servers_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))

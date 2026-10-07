@@ -192,3 +192,16 @@ def test_tunnel_presets_and_internal_target_validation(root):
     assert "internal.test:443" in dialog._tunnel_route.get()
     dialog._on_ok()
     assert dialog.result == ("gateway.test", 8443, "internal.test", 443, "ops")
+
+
+def test_diagnosis_defaults_to_no_login_and_displays_separate_steps(root):
+    from ssh_manager_app.diagnosis import ConnectionDiagnosisDialog
+    from ssh_manager_app.models import Session, default_settings
+    root.settings = default_settings()
+    session = Session("a", "Web", [], "web.test")
+    dialog = ConnectionDiagnosisDialog(root, [session])
+    assert not dialog.authenticate.get()
+    dialog.show_results([(session, [("TCP zum Ziel", "erfolgreich", "Port offen"), ("SSH-Anmeldung", "nicht geprüft", "Explizit aktivieren")])])
+    children = dialog.output.get_children(dialog.output.get_children()[0])
+    assert dialog.output.item(children[1], "values")[1] == "nicht geprüft"
+    dialog.destroy()

@@ -22,7 +22,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 7 | Gespeicherte Filter | fertig, 0.2.53 |
 | 9 | Dienstwerkzeuge | fertig, 0.2.54 |
 | 10 | Tunnel-Anwendungsfälle | fertig, 0.2.55 |
-| 11 | Verbindungsdiagnose | offen |
+| 11 | Verbindungsdiagnose | fertig, 0.2.56 |
 | 12 | Sammelergebnisse | offen |
 | 14 | Quellenstatus | offen |
 | 15 | Lokales Undo | offen |
@@ -102,3 +102,8 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
 - Punkt 10: direkte/interne Tunneltypen, passende Port-Vorlagen und laufende
   Vorschau PC → SSH-Server → Ziel. Internes Ziel ist ausdrücklich Pflicht;
   scrollbarer Dialog mit stets erreichbaren Buttons. 206 Tests bestanden.
+
+- Punkt 11: separate Diagnose für lokale SSH-Installation, Aliasauflösung,
+  DNS und TCP. Anmeldung nur explizit per BatchMode/true, ohne Hostkey-Änderung.
+  Proxyziele erhalten keine irreführende direkte TCP-Erfolgsmeldung. Maximal
+  acht Worker, Ergebnisse ausschließlich im Tk-Hauptthread. 215 Tests bestanden.
