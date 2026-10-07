@@ -13,7 +13,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 |---|---|---|
 | 1 | Drei Remote-Einstiege | fertig, 0.2.45 |
 | 5 | Einheitliche Auswahlregeln | fertig, 0.2.46 |
-| 6 | Auswahlleiste | offen |
+| 6 | Auswahlleiste | fertig, 0.2.47 |
 | 8 | Verbindungsdetails | offen |
 | 13 | Export und Backup | offen |
 | 2 | Runbook-Bibliothek | offen |
@@ -53,3 +53,9 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   genau ein Häkchen, sonst ohne Häkchen die Fokuszeile; mehrere Häkchen ergeben
   kein Einzelziel. Enter/Ctrl+Enter bleiben unverändert. Kontextmenü benennt
   Zeile und Häkchenzahl. 276 Tests inkl. Windows-App-/Hilfeprüfungen bestanden.
+- Punkt 6: vollständige Auswahlübersicht mit verborgenen Suchzielen,
+  Entfernen einzelner Hosts und Leeren. Mehrere Suchen behalten die Auswahl;
+  doppelte virtuelle Zeilen werden gemeinsam umgeschaltet. 223 Tests inkl.
+  Windows-Tk-Auswahlablauf/Hilfe bestanden. Beim Test gefundene Endlosschleife
+  im Idle-Layout eines noch nicht sichtbaren Baums durch zeitversetzten Retry
+  behoben; echte Remote-Aktionen wurden nicht ausgeführt.

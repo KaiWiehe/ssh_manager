@@ -368,7 +368,7 @@ class SessionTree(ttk.Frame):
         # Widget not realized yet → retry once the geometry is known.
         if total <= 1:
             try:
-                self._tv.after_idle(
+                self._tv.after(50,
                     lambda: self._redistribute_column_widths(visible_data_columns)
                 )
             except Exception:
@@ -1122,11 +1122,11 @@ class SessionTree(ttk.Frame):
     def _toggle(self, item_id: str) -> None:
         """Checkbox-Zustand einer Session-Zeile umschalten."""
         new_state = not self._checked.get(item_id, False)
-        self._checked[item_id] = new_state
-        self._tv.item(
-            item_id,
-            image=self._img_checked if new_state else self._img_unchecked,
-        )
+        key = self._item_to_session[item_id].key
+        for iid, session in self._item_to_session.items():
+            if session.key == key:
+                self._checked[iid] = new_state
+                self._tv.item(iid, image=self._img_checked if new_state else self._img_unchecked)
         self._notify_count()
         self._notify_ui_state_changed()
 
@@ -1140,7 +1140,7 @@ class SessionTree(ttk.Frame):
             self._item_to_session[iid].key
             for iid, checked in self._checked.items()
             if checked and iid in self._item_to_session
-        })
+        } | set(self.__dict__.get("_hidden_selected", {})))
         self._on_selection_changed(count)
 
     def get_selected_sessions(self) -> list[Session]:
@@ -1155,7 +1155,23 @@ class SessionTree(ttk.Frame):
                 continue
             seen.add(session.key)
             result.append(session)
+        for key, session in self.__dict__.get("_hidden_selected", {}).items():
+            if key not in seen:
+                seen.add(key)
+                result.append(session)
         return result
+
+    def hidden_selected_keys(self) -> set[str]:
+        return set(self.__dict__.get("_hidden_selected", {}))
+
+    def remove_from_selection(self, key: str) -> None:
+        self.__dict__.get("_hidden_selected", {}).pop(key, None)
+        for iid, session in self._item_to_session.items():
+            if session.key == key:
+                self._checked[iid] = False
+                self._tv.item(iid, image=self._img_unchecked)
+        self._notify_count()
+        self._notify_ui_state_changed()
 
     def _copy_session_values(self, sessions: list[Session], attribute: str) -> None:
         self.clipboard_clear()
@@ -1174,6 +1190,8 @@ class SessionTree(ttk.Frame):
 
     def set_all_checked(self, state: bool) -> None:
         """Alle sichtbaren Session-Zeilen an-/abhaken."""
+        if not state:
+            self.__dict__.get("_hidden_selected", {}).clear()
         for item_id in self._checked:
             self._checked[item_id] = state
             self._tv.item(
@@ -1713,11 +1731,8 @@ class SessionTree(ttk.Frame):
         self._active_filter_query = query
 
         # Checkbox-Zustände vor dem Neuaufbau sichern (item_id ändert sich)
-        checked_keys = {
-            self._item_to_session[iid].key
-            for iid, v in self._checked.items()
-            if v
-        }
+        selected = {s.key: s for s in self.get_selected_sessions()}
+        checked_keys = set(selected)
 
         # Zustand beim ersten Suchzeichen einmalig sichern
         if q and self._pre_search_open_folders is None:
@@ -1745,6 +1760,9 @@ class SessionTree(ttk.Frame):
             open_folders = self._pre_search_open_folders
             self._pre_search_open_folders = None
 
+        available_keys = {s.key for s in self._sessions}
+        visible_keys = {s.key for s in filtered}
+        self._hidden_selected = {key: session for key, session in selected.items() if key in available_keys and key not in visible_keys}
         self.populate(filtered, open_folders=open_folders, update_open_state=not bool(q))
 
         # Checkbox-Zustände wiederherstellen

@@ -176,6 +176,13 @@ def invert_selection(app) -> None:
 
 
 def on_selection_changed(app, count: int) -> None:
+    review_button = app.__dict__.get("_selection_review_button")
+    if review_button is not None:
+        hidden = len(app._tree.hidden_selected_keys())
+        review_button.configure(text=f"Auswahl prüfen ({count}; {hidden} verborgen)")
+        dialog = app.__dict__.get("_selection_review")
+        if dialog is not None and dialog.winfo_exists():
+            dialog.refresh()
     if count > 0:
         app._connect_btn.config(text=f"Verbinden ({count} ausgewählt)", state=tk.NORMAL)
         status_var = app.__dict__.get("_selection_status_var")

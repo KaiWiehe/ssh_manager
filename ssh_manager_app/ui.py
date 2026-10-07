@@ -1195,6 +1195,10 @@ def build_main_ui(self) -> None:
     status_bar.columnconfigure(0, weight=1)
     self._selection_status_var = tk.StringVar(value="Keine Verbindung ausgewählt")
     ttk.Label(status_bar, textvariable=self._selection_status_var, style="StatusBar.TLabel").grid(row=0, column=0, sticky="w")
+    from .dialogs_selection import review_selection
+    self._selection_review_button = ttk.Button(status_bar, text="Auswahl prüfen (0)", command=lambda: review_selection(self))
+    self._selection_review_button.grid(row=1, column=0, sticky="w", pady=(5, 0))
+    ttk.Button(status_bar, text="Auswahl leeren", command=lambda: self._tree.set_all_checked(False)).grid(row=1, column=1, sticky="e", pady=(5, 0))
     ttk.Label(status_bar, text="Enter: diese Zeile  ·  Ctrl+Enter: Häkchen-Auswahl", style="StatusBar.TLabel").grid(row=0, column=1, sticky="e")
 
     self._search_history_after_id = None

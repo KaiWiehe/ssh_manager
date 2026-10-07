@@ -48,3 +48,33 @@ def test_single_action_target_does_not_fall_back_from_multiple_checks(checked, e
     from ssh_manager_app.selection import single_action_target
     tree = SimpleNamespace(get_selected_sessions=lambda: checked, get_single_context_session=lambda: "focus")
     assert single_action_target(tree) == expected
+
+
+def test_selection_survives_repeated_search_and_can_remove_hidden_host(root):
+    from ssh_manager_app.tree import SessionTree
+    from ssh_manager_app.models import Session
+    from ssh_manager_app.dialogs_selection import SelectionReviewDialog
+    sessions = [Session("a", "Alpha", [], "a.test"), Session("b", "Beta", [], "b.test")]
+    image = tk.PhotoImage(master=root, width=2, height=2)
+    counts = []
+    tree = SessionTree(root, sessions, image, image, counts.append)
+    tree.pack(fill="both", expand=True)
+    root.deiconify()
+    root.update()
+    root._tree = tree
+    tree.set_all_checked(True)
+    tree.filter("Alpha")
+    assert {s.key for s in tree.get_selected_sessions()} == {"a", "b"}
+    assert tree.hidden_selected_keys() == {"b"}
+    tree.filter("Beta")
+    assert counts[-1] == 2
+    assert tree.hidden_selected_keys() == {"a"}
+    dialog = SelectionReviewDialog(root)
+    assert len(dialog.list.get_children()) == 2
+    tree.remove_from_selection("a")
+    tree.filter("")
+    assert [s.key for s in tree.get_selected_sessions()] == ["b"]
+    tree.set_all_checked(False)
+    assert counts[-1] == 0
+    dialog.destroy()
+    tree.destroy()
