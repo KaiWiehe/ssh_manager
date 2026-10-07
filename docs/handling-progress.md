@@ -17,7 +17,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 8 | Verbindungsdetails | fertig, 0.2.48 |
 | 13 | Export und Backup | fertig, 0.2.49 |
 | 2 | Runbook-Bibliothek | fertig, 0.2.50 |
-| 3 | Runbook-Parameter | offen |
+| 3 | Runbook-Parameter | fertig, 0.2.51 |
 | 4 | Upload und Verteilung | offen |
 | 7 | Gespeicherte Filter | offen |
 | 9 | Dienstwerkzeuge | offen |
@@ -75,3 +75,9 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   205 relevante Tests und 9 separate Windows-Hilfetests bestanden. Ein erster
   kombinierter GUI-Lauf hing; isolierte Nachprüfung erfolgreich. Verwaltung
   wird sofort gespeichert, bei Speicherfehler zurückgesetzt.
+- Punkt 3: Formularparameter über Bibliothek definierbar (Text/Zahl/Port/Pfad/
+  Auswahl, Pflichtfeld, Default, Geheimfeld). Sichere Datenübergabe als
+  `RUNBOOK_NAME`-Umgebungsvariablen; keine Template-Ersetzung. Geheimwerte
+  nur zur Laufzeit, in Vorschau/Header redigiert, weder History noch Favoriten.
+  Bestehende DPAPI-Skriptpayloads schützen temporäre Inhalte. 274 relevante
+  Tests inkl. tatsächlichem lokalen Git-Bash-Quoting-Test und Tk-Formen bestanden.

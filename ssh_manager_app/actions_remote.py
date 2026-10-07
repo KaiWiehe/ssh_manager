@@ -257,7 +257,25 @@ def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = N
     if session_users is None:
         return
 
-    preview = spec if spec.get("mode") != "command" else command
+    runtime_spec = spec
+    display_spec = spec
+    if spec.get("parameters"):
+        from .runbook_parameters import RunbookParametersDialog, prepare_parameter_spec
+        try:
+            inputs = RunbookParametersDialog(app, spec["parameters"])
+            app.wait_window(inputs)
+            if inputs.result is None:
+                return
+            values = inputs.result
+            runtime_spec = prepare_parameter_spec(spec, values)
+            display_spec = prepare_parameter_spec(spec, values, redact=True)
+            runtime_spec["_display_spec"] = display_spec
+            values.clear()
+            inputs.result = None
+        except ValueError:
+            messagebox.showwarning("Ungültige Parameter", "Die Runbook-Parameter bitte in der Bibliothek prüfen.", parent=app)
+            return
+    preview = display_spec if spec.get("mode") != "command" else display_spec["command"]
     confirm = RemoteCommandConfirmDialog(app, preview, session_users, close_on_success)
     app.wait_window(confirm)
     if not confirm.result:
@@ -272,7 +290,9 @@ def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = N
             }
             if sudo_password:
                 build_kwargs["sudo_password"] = sudo_password
-            cmd = build_remote_command_wt_command([(session, user, command) for session, user in session_users], **build_kwargs)
+            if spec.get("parameters"):
+                build_kwargs["display_command"] = display_spec["command"]
+            cmd = build_remote_command_wt_command([(session, user, runtime_spec["command"]) for session, user in session_users], **build_kwargs)
         else:
             build_kwargs = {
                 "close_on_success": close_on_success,
@@ -281,7 +301,7 @@ def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = N
             }
             if sudo_password:
                 build_kwargs["sudo_password"] = sudo_password
-            cmd = build_remote_script_wt_command([(session, user, spec) for session, user in session_users], **build_kwargs)
+            cmd = build_remote_script_wt_command([(session, user, runtime_spec) for session, user in session_users], **build_kwargs)
         sudo_password = ""
         dialog.result = None
         TerminalLauncher.launch_built_command(
@@ -295,6 +315,7 @@ def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = N
         messagebox.showerror("Fehler", "Der Remote-Aufruf konnte nicht vorbereitet oder gestartet werden. Bitte Eingaben und Dateizugriff prüfen.", parent=app)
     finally:
         sudo_password = ""
+        runtime_spec = None
         dialog.result = None
 
 

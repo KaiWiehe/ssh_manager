@@ -106,6 +106,8 @@ def validate_run_spec(spec: dict) -> None:
         raise ValueError("Unbekannter Runbook-Modus.")
     if spec.get("interpreter", "bash") not in {"bash", "sh", "python3", "python", "direct"}:
         raise ValueError("Unbekannter Runbook-Interpreter.")
+    from .runbook_parameters import validate_definitions
+    validate_definitions(spec.get("parameters", []))
 
 
 def _sudo_password_prelude(sudo_password: str | None) -> list[str]:
@@ -214,6 +216,7 @@ def build_remote_command_wt_command(
     session_colors: dict[str, str] | None = None,
     terminal_settings: WindowsTerminalSettings | None = None,
     sudo_password: str | None = None,
+    display_command: str | None = None,
 ) -> TerminalCommand:
     """Erzeugt WT-Tabs, die pro Host ein lokales Bash-Skript starten."""
     settings = terminal_settings or WindowsTerminalSettings()
@@ -224,7 +227,7 @@ def build_remote_command_wt_command(
     for i, (session, user, remote_script) in enumerate(session_commands):
         ssh_cmd = _build_ssh_command(session, user)
         delimiter = _here_doc_delimiter(remote_script + str(sudo_password))
-        start_label = f"Start: {remote_script.strip() or '-'}"
+        start_label = f"Start: {(display_command if display_command is not None else remote_script).strip() or '-'}"
         script_lines = [
             "#!/usr/bin/env bash",
             f"printf '%s\\n' {_shell_single_quote('Remote-Befehl')}",
@@ -374,7 +377,7 @@ def build_remote_script_wt_command(
                 f"<<'{delimiter}'\n" + "\n".join(_sudo_password_prelude(sudo_password)) + "\n",
             )
 
-        execution_preview = _format_remote_execution_preview(spec)
+        execution_preview = _format_remote_execution_preview(spec.get("_display_spec", spec))
         script_lines = [
             "#!/usr/bin/env bash",
             f"printf '%s\n' {_shell_single_quote('SSH Manager Ausführung')}",

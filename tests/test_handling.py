@@ -121,3 +121,19 @@ def test_runbook_library_search_pin_and_delete_preserve_specs(root):
         library.delete()
     assert len(library.items) == 2
     library.destroy()
+
+
+def test_parameter_forms_edit_definitions_and_clear_ephemeral_values(root):
+    from ssh_manager_app.runbook_parameters import ParameterDefinitionsDialog, RunbookParametersDialog
+    editor = ParameterDefinitionsDialog(root, [])
+    editor.fields["name"].set("SERVICE")
+    editor.fields["label"].set("Dienst")
+    editor.fields["type"].set("choice")
+    editor.fields["choices"].set("web.service|db.service")
+    editor.store(False)
+    editor.confirm()
+    inputs = RunbookParametersDialog(root, editor.result)
+    inputs.variables["SERVICE"].set("web.service")
+    inputs.confirm()
+    assert inputs.result == {"SERVICE": "web.service"}
+    assert inputs.variables["SERVICE"].get() == ""

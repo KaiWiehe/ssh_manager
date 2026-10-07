@@ -35,7 +35,7 @@ class RunbookLibraryDialog(tk.Toplevel):
         for mode, label in (("command", "Befehl"), ("local_script", "Lokales Skript"), ("remote_script", "Serverskript")):
             new_menu.add_command(label=label, command=lambda m=mode: self.edit_content(m))
         ttk.Menubutton(actions, text="Neu…", menu=new_menu).pack(side="left")
-        for label, callback in (("Inhalt…", self.edit_content), ("Name/Notiz…", self.metadata),
+        for label, callback in (("Inhalt…", self.edit_content), ("Name/Notiz…", self.metadata), ("Parameter…", self.parameters),
                                 ("An-/abpinnen", self.pin), ("Löschen", self.delete), ("Ausführen…", self.run)):
             ttk.Button(actions, text=label, command=callback).pack(side="left", padx=(5, 0))
         ttk.Button(frame, text="Schließen", command=self.destroy).pack(anchor="e")
@@ -115,6 +115,17 @@ class RunbookLibraryDialog(tk.Toplevel):
         index = self.selected_index()
         if index is not None:
             self.items[index]["pinned"] = not self.items[index].get("pinned", False)
+            self.save()
+
+    def parameters(self):
+        index = self.selected_index()
+        if index is None:
+            return
+        from .runbook_parameters import ParameterDefinitionsDialog
+        editor = ParameterDefinitionsDialog(self, self.items[index].get("parameters", []))
+        self.wait_window(editor)
+        if editor.result is not None:
+            self.items[index]["parameters"] = editor.result
             self.save()
 
     def delete(self):

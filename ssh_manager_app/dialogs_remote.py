@@ -835,6 +835,9 @@ class RemoteCommandDialog(tk.Toplevel):
             "arguments": self._arguments_var.get().strip() if hasattr(self, "_arguments_var") else "",
             "path": path,
         }
+        for key in ("parameters", "name", "note", "pinned"):
+            if key in self.__dict__.get("_loaded_spec", {}):
+                spec[key] = self._loaded_spec[key]
         if mode == "local_script":
             spec["local_path"] = path
         if mode == "remote_script":
@@ -854,6 +857,8 @@ class RemoteCommandDialog(tk.Toplevel):
         if self.__dict__.get("_fixed_mode") and item.get("mode", "command") != self._fixed_mode:
             messagebox.showinfo("Andere Aufgabe", "Dieses Runbook gehört zu einer anderen Aufgabe. Öffne den passenden Skript- oder Befehl-Einstieg.", parent=self)
             return
+        from copy import deepcopy
+        self._loaded_spec = deepcopy(item)
         self._run_mode.set(item.get("mode", "command"))
         if self.__dict__.get("_fixed_mode"):
             self._advanced_flow.set(bool(item.get("before_command") or item.get("after_command")))
