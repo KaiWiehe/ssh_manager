@@ -15,6 +15,40 @@ def test_search_matches_full_text_and_multiple_words():
     assert search_topics("unbekanntes-hilfethema-xyz", mapping) == []
 
 
+def test_actual_app_delete_and_bulk_color_are_single_undo_steps(app, monkeypatch):
+    from ssh_manager_app.models import Session
+    from ssh_manager_app.actions_sessions import delete_session
+    from ssh_manager_app.actions_ui import build_visible_sessions
+    from ssh_manager_app.local_undo import undo_last
+    from ssh_manager_app import storage
+    import ssh_manager_app.actions_sessions as actions
+    session = Session("app:a", "Web", ["Services"], "host", "ops", source="app")
+    other = Session("app:b", "DB", ["Services"], "other", "ops", source="app")
+    app._app_sessions = [session, other]
+    app._notes = {session.key: "Important"}
+    app._favorite_sessions = {session.key: True}
+    app._recent_sessions = [session.key]
+    app._sessions = build_visible_sessions(app)
+    app._tree.refresh(app._sessions)
+    app._tree.set_session_colors([session.key, other.key], "#112233")
+    assert len(app._undo_stack) == 1
+    monkeypatch.setattr(actions.messagebox, "askyesno", lambda *args, **kwargs: True)
+    monkeypatch.setattr(actions, "save_sessions_and_notes", lambda *args: None)
+    monkeypatch.setattr(actions, "rebuild_sessions", lambda app: app._tree.refresh(build_visible_sessions(app)))
+    monkeypatch.setattr(storage, "save_local_undo_state", lambda *args: None)
+    delete_session(app, session)
+    assert len(app._undo_stack) == 2
+    assert session.key not in app._notes
+    assert session.key not in app._tree.get_session_colors()
+    undo_last(app)
+    assert app._notes[session.key] == "Important"
+    assert app._favorite_sessions[session.key]
+    assert app._tree.get_session_colors()[session.key] == "#112233"
+    assert len(app._undo_stack) == 1
+    undo_last(app)
+    assert app._tree.get_session_colors() == {}
+
+
 def test_search_and_table_use_current_shortcuts_including_disabled_actions():
     mapping = default_shortcuts()
     mapping.update(connect="F6", open_help="")

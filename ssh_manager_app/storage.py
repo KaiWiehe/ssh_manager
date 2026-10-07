@@ -195,8 +195,13 @@ def _recover_session_transaction() -> None:
         _preserve_invalid(journal)
         _blocked_paths.update({_APP_SESSIONS_FILE, _NOTES_FILE})
         raise OSError("Ungültiges Journal; Verbindungen/Notizen werden vor Überschreiben geschützt.")
+    if "ui_state" in payload and not isinstance(payload["ui_state"], dict):
+        _blocked_paths.update({_APP_SESSIONS_FILE, _NOTES_FILE, _STATE_FILE})
+        raise OSError("Ungültiges Journal für lokale Metadaten.")
     _atomic_write_json(_APP_SESSIONS_FILE, payload["sessions"])
     _atomic_write_json(_NOTES_FILE, payload["notes"])
+    if "ui_state" in payload:
+        _atomic_write_json(_STATE_FILE, payload["ui_state"])
     journal.unlink()
 
 
@@ -206,6 +211,16 @@ def save_sessions_and_notes(sessions: list[Session], notes: dict[str, str]) -> N
         raise OSError("Speichern gesperrt: Originaldaten konnten nicht gesichert werden.")
     journal = _APP_SESSIONS_FILE.with_name("session-notes-pending.json")
     _atomic_write_json(journal, {"sessions": _session_payload(sessions), "notes": {"notes": notes}})
+    _recover_session_transaction()
+
+
+def save_local_undo_state(sessions, notes, expanded, colors, toolbar):
+    _recover_session_transaction()
+    if {_APP_SESSIONS_FILE, _NOTES_FILE, _STATE_FILE} & _blocked_paths:
+        raise OSError("Lokale Daten sind gegen Überschreiben gesperrt.")
+    payload = {"sessions": _session_payload(sessions), "notes": {"notes": notes},
+               "ui_state": _ui_state_payload(expanded, colors, toolbar)}
+    _atomic_write_json(_APP_SESSIONS_FILE.with_name("session-notes-pending.json"), payload)
     _recover_session_transaction()
 
 
@@ -402,6 +417,7 @@ def load_settings_from_path(path: Path, *, require_settings: bool = False) -> Ap
 
 def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
     _recover_app_restore()
+    _recover_session_transaction()
     try:
         data = _read_json(_STATE_FILE)
         expanded_raw = data.get("expanded_folders", [])
@@ -447,8 +463,7 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
         return set(), {}, {}
 
 
-def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], toolbar_search_texts: dict[str, str] | None = None) -> None:
-    _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+def _ui_state_payload(expanded_folders, session_colors, toolbar_search_texts):
     toolbar_search_texts = dict(toolbar_search_texts or {})
     favorite_sessions = toolbar_search_texts.pop("favorite_sessions", {})
     recent_sessions = toolbar_search_texts.pop("recent_sessions", [])
@@ -464,7 +479,12 @@ def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], to
         payload["recent_sessions"] = recent_sessions
     if user_overrides:
         payload["session_user_overrides"] = user_overrides
-    _atomic_write_json(_STATE_FILE, payload)
+    return payload
+
+
+def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], toolbar_search_texts: dict[str, str] | None = None) -> None:
+    _recover_session_transaction()
+    _atomic_write_json(_STATE_FILE, _ui_state_payload(expanded_folders, session_colors, toolbar_search_texts))
 
 
 def load_notes() -> dict[str, str]:

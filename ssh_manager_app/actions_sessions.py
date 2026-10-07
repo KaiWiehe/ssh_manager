@@ -10,6 +10,7 @@ from .constants import _APPDATA_DIR
 from .dialogs_base import _USERNAME_RE, _build_quickselect_buttons
 from .dialogs_move_folder import MoveFolderDialog
 from .dialogs_session_edit import SessionEditDialog
+from .local_undo import local_undo, cleanup_session_metadata
 from .models import Session
 from .editor import open_in_vscode
 from .storage import save_app_sessions, save_notes, save_sessions_and_notes
@@ -29,6 +30,7 @@ def _confirm_folder_merge(app, target_path: list[str], source_paths: list[list[s
     )
 
 
+@local_undo("Verbindung anlegen")
 def add_session(app, folder_preset: str = "") -> None:
     """Öffnet den Dialog zum Anlegen einer neuen Session (App oder SSH-Alias)."""
     dialog = SessionEditDialog(
@@ -50,6 +52,7 @@ def add_session(app, folder_preset: str = "") -> None:
     rebuild_sessions(app)
 
 
+@local_undo("Verbindung bearbeiten")
 def edit_session(app, session: Session) -> None:
     """Öffnet den Dialog zum Bearbeiten einer App-Session."""
     dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, note=app._notes.get(session.key, ""), quick_users=list(app.settings.quick_users))
@@ -68,6 +71,7 @@ def edit_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+@local_undo("Verbindung duplizieren")
 def duplicate_app_session(app, session: Session) -> None:
     """Dupliziert eine App-Session (öffnet Dialog mit vorausgefüllten Daten, neue UUID)."""
     dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, duplicate=True, quick_users=list(app.settings.quick_users))
@@ -79,6 +83,7 @@ def duplicate_app_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+@local_undo("Verbindung übernehmen")
 def copy_external_session(app, session: Session) -> None:
     """Copy a host-based imported connection into the app, never its source."""
     if session.source not in ("winscp", "filezilla_config"):
@@ -98,6 +103,7 @@ def copy_external_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+@local_undo("Verbindung verschieben")
 def move_session(app, session: Session) -> None:
     """Verschiebt eine App- oder SSH-Alias-Session in einen anderen Ordner."""
     dialog = MoveFolderDialog(app, get_all_folder_names(app), session.folder_key)
@@ -115,6 +121,7 @@ def move_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+@local_undo("Auswahl verschieben")
 def move_sessions(app, sessions: list[Session]) -> None:
     """Verschiebt mehrere App-/SSH-Alias-Sessions in denselben Ordner."""
     if not sessions:
@@ -134,6 +141,7 @@ def move_sessions(app, sessions: list[Session]) -> None:
     rebuild_sessions(app)
 
 
+@local_undo("Verbindung löschen")
 def delete_session(app, session: Session) -> None:
     """Löscht eine App-Session nach Bestätigung."""
     if not messagebox.askyesno(
@@ -143,10 +151,15 @@ def delete_session(app, session: Session) -> None:
     ):
         return
     app._app_sessions = [existing for existing in app._app_sessions if existing.key != session.key]
-    save_app_sessions(app._app_sessions)
+    if app.__dict__.get("_local_undo_enabled"):
+        cleanup_session_metadata(app, {session.key})
+        save_sessions_and_notes(app._app_sessions, app._notes)
+    else:
+        save_app_sessions(app._app_sessions)
     rebuild_sessions(app)
 
 
+@local_undo("Ordner löschen")
 def delete_folder(app, sessions: list[Session], folder_key: str) -> None:
     """Löscht alle App-Sessions in einem Ordner nach Bestätigung."""
     if not messagebox.askyesno(
@@ -157,10 +170,15 @@ def delete_folder(app, sessions: list[Session], folder_key: str) -> None:
         return
     keys_to_delete = {session.key for session in sessions}
     app._app_sessions = [existing for existing in app._app_sessions if existing.key not in keys_to_delete]
-    save_app_sessions(app._app_sessions)
+    if app.__dict__.get("_local_undo_enabled"):
+        cleanup_session_metadata(app, keys_to_delete)
+        save_sessions_and_notes(app._app_sessions, app._notes)
+    else:
+        save_app_sessions(app._app_sessions)
     rebuild_sessions(app)
 
 
+@local_undo("Ordner umbenennen")
 def rename_folder(app, folder_key: str) -> None:
     """Benennt einen Ordner um, indem folder_path aller enthaltenen Sessions angepasst wird."""
     parts = folder_key.split("/")
@@ -192,6 +210,7 @@ def rename_folder(app, folder_key: str) -> None:
     rebuild_sessions(app)
 
 
+@local_undo("Alias übernehmen")
 def duplicate_ssh_alias(app, session: Session) -> None:
     """Dupliziert einen SSH-Config-Alias in einen anderen Ordner."""
     if not messagebox.askyesno("SSH-Alias übernehmen", "Die App speichert einen eigenen Eintrag mit Ordner. Die Verbindung verwendet weiterhin diesen Alias aus ~/.ssh/config; Host, Benutzer, Schlüssel und Proxy bleiben von der SSH-Konfiguration abhängig. Das Original wird nicht geändert.", parent=app):
@@ -237,11 +256,13 @@ def _set_session_username(app, session: Session, username: str) -> None:
             app._session_user_overrides.pop(session.key, None)
 
 
+@local_undo("Benutzer setzen")
 def set_session_username(app, session: Session, username: str) -> None:
     _set_session_username(app, session, username.strip())
     rebuild_sessions(app)
 
 
+@local_undo("Benutzer setzen")
 def set_sessions_username(app, sessions: list[Session]) -> None:
     if not sessions:
         return
@@ -302,6 +323,7 @@ def set_sessions_username(app, sessions: list[Session]) -> None:
     rebuild_sessions(app)
 
 
+@local_undo("Benutzer entfernen")
 def clear_sessions_username(app, sessions: list[Session]) -> None:
     if not sessions:
         return
@@ -316,6 +338,7 @@ def clear_sessions_username(app, sessions: list[Session]) -> None:
     rebuild_sessions(app)
 
 
+@local_undo("App-Anpassung bearbeiten")
 def edit_session_details(app, session: Session) -> None:
     """Bearbeitet festen Benutzer und Notiz für jede Session-Art."""
     dialog = tk.Toplevel(app)

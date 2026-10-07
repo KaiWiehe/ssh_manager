@@ -36,6 +36,7 @@ DEFAULT_ACTION_ORDER: list[tuple[str, str, str]] = [
     ("connect_selected", "Auswahl verbinden", "Ctrl+Enter"),
     ("edit", "Bearbeiten", "F2"),
     ("delete", "Löschen", "Delete"),
+    ("undo_local", "Lokale Änderung rückgängig", "Ctrl+Z"),
     ("select_all", "Alle auswählen", "Ctrl+A"),
     ("deselect_all", "Alle abwählen", "Ctrl+D"),
     ("invert_selection", "Auswahl umkehren", "Ctrl+I"),

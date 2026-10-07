@@ -6,8 +6,10 @@ from tkinter import ttk
 from .actions_ui import persist_ui_state
 from .dialogs_toast import ToastNotification
 from .storage import save_notes
+from .local_undo import local_undo
 
 
+@local_undo("Notiz bearbeiten")
 def edit_session_note(app, session) -> None:
     dialog = tk.Toplevel(app)
     dialog.title("Notiz bearbeiten")

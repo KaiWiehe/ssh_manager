@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 from . import PALETTE, Session, ToolbarSettings, color_tag
 from .constants import _SSH_CONFIG_DEFAULT_FOLDER
 from .core import check_host_reachable
+from .local_undo import local_undo
 from .ui_components import TooltipPopup
 
 def _create_host_probe_pool():
@@ -766,6 +767,7 @@ class SessionTree(ttk.Frame):
         if self._on_ui_state_changed:
             self._on_ui_state_changed()
 
+    @local_undo("Farbe ändern", tree=True)
     def set_session_color(self, session_key: str, hex_color: str | None) -> None:
         """Setzt oder entfernt die Textfarbe einer Session sofort im Tree."""
         if hex_color:
@@ -781,6 +783,11 @@ class SessionTree(ttk.Frame):
                 self._tv.item(item_id, tags=tags)
                 break
         self._notify_ui_state_changed()
+
+    @local_undo("Farben für Auswahl ändern", tree=True)
+    def set_session_colors(self, keys, color):
+        for key in keys:
+            self.set_session_color(key, color)
 
     def populate(
         self,
@@ -1662,16 +1669,12 @@ class SessionTree(ttk.Frame):
             for name, hex_color in PALETTE:
                 bulk_color_menu.add_command(
                     label=f"  {name}",
-                    command=lambda hc=hex_color, ss=list(selected): [
-                        self.set_session_color(s.key, hc) for s in ss
-                    ],
+                    command=lambda hc=hex_color, ss=list(selected): self.set_session_colors([s.key for s in ss], hc),
                 )
             bulk_color_menu.add_separator()
             bulk_color_menu.add_command(
                 label="✕ Farbe entfernen",
-                command=lambda ss=list(selected): [
-                    self.set_session_color(s.key, None) for s in ss
-                ],
+                command=lambda ss=list(selected): self.set_session_colors([s.key for s in ss], None),
             )
             appearance_menu.add_cascade(label=f"Farbe für Auswahl ({selected_count})…", menu=bulk_color_menu)
 

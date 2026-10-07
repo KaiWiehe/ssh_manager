@@ -25,7 +25,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 11 | Verbindungsdiagnose | fertig, 0.2.56 |
 | 12 | Sammelergebnisse | fertig, 0.2.57 |
 | 14 | Quellenstatus | fertig, 0.2.58 |
-| 15 | Lokales Undo | offen |
+| 15 | Lokales Undo | fertig, 0.2.59 |
 | 16 | Kontextuelle Hilfe | offen |
 
 ## Limit und Fortsetzung
@@ -124,3 +124,11 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   WinSCP/FileZilla als eigene App-Kopie inklusive App-Notiz übernehmbar;
   Aliasübernahme erklärt die fortbestehende SSH-Config-Abhängigkeit.
   228 Tests bestanden. Externe Quellen bleiben unverändert.
+
+- Punkt 15: Ctrl+Z/Dateimenü für lokale Änderungen, bis zu 20 Schritte in
+  der App-Sitzung. Verschieben/Umbenennen/Löschen/Farben, zusätzlich eigene
+  Notizen/Favoriten/Benutzeranpassungen. Stapelaktionen bilden einen Schritt.
+  Gelöschte eigene Sessions entfernen ihre App-Metadaten; Undo stellt sie
+  konsistent wieder her. Delta-Restore bewahrt spätere, unabhängige Nutzung.
+  Speicherung über Drei-Dateien-Journal; kein Remote-Undo. 235 relevante
+  Tests plus 35 Windows-App-/Dialog-/Undo-Tests bestanden.

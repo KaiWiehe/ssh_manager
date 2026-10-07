@@ -897,9 +897,11 @@ def install_shortcut_manager(app) -> None:
         edit_focused_session(app)
 
     from .help import open_help
+    from .local_undo import undo_last
 
     actions = [
         ShortcutAction("open_help", "Hilfe öffnen", "F1", lambda: open_help(app), skip_in_entry=False),
+        ShortcutAction("undo_local", "Lokale Änderung rückgängig", "Ctrl+Z", lambda: undo_last(app), skip_in_entry=True),
         # Let text widgets keep their normal Ctrl+P / typing behavior.
         ShortcutAction("open_command_palette", "Befehlspalette öffnen", "Ctrl+P", open_command_palette, skip_in_entry=True),
         ShortcutAction("focus_search", "Suche fokussieren", "Ctrl+F", lambda: focus_search(app), skip_in_entry=False),
@@ -970,6 +972,8 @@ def build_main_ui(self) -> None:
     file_menu.add_command(label="Neu laden", accelerator=_acc("refresh"), command=lambda: reload_sessions_callback(self))
     from .source_status import SourceStatusDialog
     file_menu.add_command(label="Quellenstatus…", command=lambda: SourceStatusDialog(self))
+    from .local_undo import undo_last
+    file_menu.add_command(label="Lokale Änderung rückgängig", accelerator=_acc("undo_local"), command=lambda: undo_last(self))
     file_menu.add_command(label="Befehlspalette\u2026", accelerator=_acc("open_command_palette"), command=lambda: open_command_palette_callback(self))
     file_menu.add_separator()
     file_menu.add_command(label="Einstellungen", accelerator=_acc("open_settings"), command=lambda: show_settings_view_callback(self))
@@ -1215,6 +1219,10 @@ def build_main_ui(self) -> None:
         toolbar_settings=self.settings.toolbar,
     )
     self._session_area.add(self._tree, weight=3)
+    self._tree._undo_owner = self
+    self._undo_stack = []
+    self._undo_depth = 0
+    self._local_undo_enabled = True
     from .details import SessionDetailsPanel, toggle_session_details
     self._details_panel = SessionDetailsPanel(self._session_area, self)
     self._tree._tv.bind("<<TreeviewSelect>>", self._details_panel.refresh, add="+")

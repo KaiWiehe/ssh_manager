@@ -7,6 +7,7 @@ from copy import deepcopy
 from .dialogs_toast import ToastNotification
 from .models import AppearanceSettings, AppSettings, SourceVisibilitySettings, ToolbarSettings, Session
 from .storage import load_filezilla_config_sessions, load_ssh_config_sessions, save_settings, save_ui_state
+from .local_undo import local_undo
 from .ui import configure_app_styles, layout_toolbar_buttons, refresh_checkbox_images
 
 
@@ -77,7 +78,7 @@ def preview_appearance(app, appearance: AppearanceSettings) -> None:
         app._settings_view.tkraise()
 
 
-def persist_ui_state(app) -> None:
+def current_ui_state(app):
     toolbar_texts = {
         "main": app._search_var.get(),
         "last_remote_command": app._initial_toolbar_search_texts.get("last_remote_command", ""),
@@ -106,11 +107,15 @@ def persist_ui_state(app) -> None:
         toolbar_texts["recent_sessions"] = list(app._recent_sessions)
     if "_session_user_overrides" in getattr(app, "__dict__", {}):
         toolbar_texts["session_user_overrides"] = dict(app._session_user_overrides)
-    save_ui_state(
+    return (
         app._tree.get_open_folders(),
         app._tree.get_session_colors(),
         toolbar_texts,
     )
+
+def persist_ui_state(app) -> None:
+    save_ui_state(*current_ui_state(app))
+
 
 
 
@@ -156,6 +161,7 @@ def reset_settings(app) -> None:
 
 
 
+@local_undo("Farben zurücksetzen")
 def reset_session_colors(app) -> None:
     for session_key in list(app._tree.get_session_colors().keys()):
         app._tree.set_session_color(session_key, None)
@@ -163,6 +169,7 @@ def reset_session_colors(app) -> None:
 
 
 
+@local_undo("Ansicht zurücksetzen")
 def reset_view_state(app) -> None:
     app._search_var.set("")
     app._tree.populate(app._sessions, open_folders=set(app._initial_open_folders))
@@ -379,6 +386,7 @@ def set_favorite_session(app, session: Session, *, include_original_tree: bool) 
     set_favorite_sessions(app, [session], include_original_tree=include_original_tree)
 
 
+@local_undo("Favoriten ändern")
 def set_favorite_sessions(app, sessions: list[Session], *, include_original_tree: bool) -> None:
     for session in sessions:
         app._favorite_sessions[session.key] = include_original_tree
@@ -387,6 +395,7 @@ def set_favorite_sessions(app, sessions: list[Session], *, include_original_tree
     persist_ui_state(app)
 
 
+@local_undo("Favorit entfernen")
 def remove_favorite_session(app, session: Session) -> None:
     app._favorite_sessions.pop(session.key, None)
     app._sessions = build_visible_sessions(app)
