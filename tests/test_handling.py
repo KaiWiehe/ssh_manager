@@ -137,3 +137,24 @@ def test_parameter_forms_edit_definitions_and_clear_ephemeral_values(root):
     inputs.confirm()
     assert inputs.result == {"SERVICE": "web.service"}
     assert inputs.variables["SERVICE"].get() == ""
+
+
+def test_simple_upload_requires_one_file_and_one_directory(root, tmp_path):
+    from ssh_manager_app.dialogs_certificates import CertificateDeployDialog
+    from ssh_manager_app.models import default_settings
+    root.settings = default_settings()
+    source = tmp_path / "file.txt"
+    source.write_text("test")
+    dialog = CertificateDeployDialog(root, 1, simple=True)
+    dialog._files = [str(source)]
+    dialog._target_dirs_text.insert("1.0", "/home/ops/uploads\n/home/ops/other")
+    with patch("ssh_manager_app.dialogs_certificates.messagebox.showwarning") as warn:
+        dialog._on_ok()
+    assert dialog.result is None
+    warn.assert_called_once()
+    dialog._target_dirs_text.delete("1.0", "end")
+    dialog._target_dirs_text.insert("1.0", "/home/ops/uploads")
+    dialog._on_ok()
+    assert dialog.result["simple_upload"] is True
+    assert not dialog.result["post_command"]
+    assert not dialog.result["sudo_password"]

@@ -422,6 +422,49 @@ def _private_upload_start(session: Session, user: str, directory: str) -> list[s
 
 
 @managed_scripts
+def build_file_upload_wt_command(session_deployments, *, session_colors=None, terminal_settings=None):
+    """One-file upload without privilege escalation, using atomic installation."""
+    from .certificate_paths import certificate_paths
+    if len(session_deployments) != 1:
+        raise ValueError("Einfacher Upload benötigt genau einen Host.")
+    session, user, spec = session_deployments[0]
+    files, directories = spec["files"], certificate_paths(spec["target_dirs"])
+    if len(files) != 1 or len(directories) != 1:
+        raise ValueError("Einfacher Upload benötigt eine Datei und einen Zielordner.")
+    local_path = str(files[0])
+    filename = connection_value(Path(local_path).name)
+    remote_dir = f"/tmp/ssh-manager-upload-{uuid.uuid4().hex}"
+    staged = remote_dir + "/file"
+    target = directories[0].rstrip("/") + "/" + filename
+    remote = ["set -eu", "umask 077", "install_tmp=''",
+              "trap " + _shell_single_quote('rm -f -- "$install_tmp"; rm -rf -- ' + _shell_single_quote(remote_dir)) + " EXIT",
+              "target=" + _shell_single_quote(target),
+              "test ! -L \"$target\" || { echo 'FEHLER: Ziel ist ein Symlink'; exit 1; }",
+              "test ! -e \"$target\" || test -f \"$target\"",
+              "install_tmp=$(mktemp -- " + _shell_single_quote(directories[0].rstrip("/") + "/.ssh-manager-XXXXXXXX") + ")",
+              "cat -- " + _shell_single_quote(staged) + ' > "$install_tmp"']
+    if spec.get("overwrite"):
+        remote.extend(['if test -e "$target"; then', '  chmod --reference="$target" -- "$install_tmp"',
+                       '  chown --reference="$target" -- "$install_tmp"', "fi", 'mv -T -- "$install_tmp" "$target"'])
+    else:
+        remote.append('ln -- "$install_tmp" "$target"')  # Atomic no-clobber.
+    ssh = _build_ssh_command(session, user)
+    port = "" if session.is_ssh_config_session or session.port == 22 else f"-P {valid_port(session.port)} "
+    target_scp = scp_target(session, user) + ":" + staged
+    delimiter = _here_doc_delimiter("\n".join(remote))
+    lines = ["#!/usr/bin/env bash", "set -e", f"printf '%s\\n' {_shell_single_quote('Datei hochladen: ' + session.display_name + ' → ' + target)}",
+             *_private_upload_start(session, user, remote_dir),
+             "trap 'upload_status=$?; cleanup_upload; if [ $upload_status -ne 0 ]; then read -r -p \"Upload fehlgeschlagen. Enter zum Schließen …\" || true; fi; exit $upload_status' EXIT",
+             f"scp {port}-- {_shell_single_quote(local_path)} {_shell_single_quote(target_scp)}",
+             f"{ssh} <<'{delimiter}'", *remote, delimiter, "echo 'Übertragung erfolgreich.'"]
+    if not spec.get("close_on_success"):
+        lines.append("read -r -p 'Enter zum Schließen …'")
+    settings = terminal_settings or WindowsTerminalSettings()
+    path = _write_temp_bash_script("file_upload_", "\n".join(lines) + "\n")
+    return TerminalCommand([_make_tab(session, user, [_find_git_bash(), path], settings, (session_colors or {}).get(session.key))])
+
+
+@managed_scripts
 def build_certificate_deploy_wt_command(
     session_deployments: list[tuple[Session, str, dict]],
     *,

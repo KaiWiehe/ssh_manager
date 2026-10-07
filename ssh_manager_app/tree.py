@@ -1297,7 +1297,7 @@ class SessionTree(ttk.Frame):
             if restart_servers:
                 tools_menu.add_command(label=f"Server neu starten… ({count})", command=lambda ss=list(folder_sessions), callback=restart_servers: callback(ss))
             if getattr(self, "_on_deploy_certificate_files", None):
-                tools_menu.add_command(label=f"Dateien übertragen… ({count})", command=lambda ss=list(folder_sessions): self._on_deploy_certificate_files(ss))
+                tools_menu.add_command(label=f"Dateien verteilen… ({count})", command=lambda ss=list(folder_sessions): self._on_deploy_certificate_files(ss))
             if getattr(self, "_on_replace_certificates", None):
                 tools_menu.add_command(label=f"Zertifikate ersetzen… ({count})", command=lambda ss=list(folder_sessions): self._on_replace_certificates(ss))
             tools_menu.add_separator()
@@ -1552,7 +1552,7 @@ class SessionTree(ttk.Frame):
                 )
         if getattr(self, "_on_deploy_certificate_files", None) and session.hostname:
             tools_menu.add_command(
-                label="Dateien übertragen…",
+                label="Dateien verteilen…",
                 command=lambda s=session: self._on_deploy_certificate_files([s]),
             )
             selected_runnable = [s for s in selected if s.hostname]

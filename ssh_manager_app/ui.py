@@ -347,6 +347,13 @@ def deploy_certificate_files_callback(app, sessions) -> None:
     deploy_certificate_files(app, sessions)
 
 
+def upload_file_callback(app):
+    from .actions_certificates import deploy_certificate_files
+    from .selection import single_action_target
+    session = single_action_target(app._tree)
+    deploy_certificate_files(app, [session] if session else [], simple=True)
+
+
 def replace_certificates_callback(app, sessions) -> None:
     from .actions_certificate_replace import replace_certificates
 
@@ -996,7 +1003,8 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(label="Serverskript ausführen…", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions(), "remote_script"))
     from .runbook_library import open_runbook_library
     actions_menu.add_command(label="Runbook-Bibliothek…", command=lambda: open_runbook_library(self))
-    actions_menu.add_command(label="Dateien übertragen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
+    actions_menu.add_command(label="Datei hochladen…", command=lambda: upload_file_callback(self))
+    actions_menu.add_command(label="Dateien verteilen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Zertifikate ersetzen…", command=lambda: replace_certificates_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_separator()
     actions_menu.add_command(label="DNS/IP auflösen…", command=lambda: open_dns_lookup_dialog_callback(self))
@@ -1108,7 +1116,7 @@ def build_main_ui(self) -> None:
         "show_reload": ("Neu laden", lambda: reload_sessions_callback(self)),
         "show_open_tunnel": ("Tunnel öffnen…", lambda: open_tunnel_callback(self)),
         "show_run_remote_command": ("Befehl ausführen…", lambda: run_remote_command_callback(self, self._tree.get_selected_sessions())),
-        "show_deploy_certificate_files": ("Dateien übertragen…", lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions())),
+        "show_deploy_certificate_files": ("Dateien verteilen…", lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions())),
         "show_replace_certificates": ("Zertifikate ersetzen…", lambda: replace_certificates_callback(self, self._tree.get_selected_sessions())),
         "show_check_hosts": ("Hosts prüfen", lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds)),
         "show_restart_servers": ("Server neu starten…", lambda: restart_servers_callback(self, self._tree.get_selected_sessions())),

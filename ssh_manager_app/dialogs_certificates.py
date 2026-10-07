@@ -237,9 +237,10 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
 class CertificateDeployDialog(tk.Toplevel):
     """Collects one certificate deployment without persisting sensitive data."""
 
-    def __init__(self, parent: tk.Tk, target_count: int, reference_sessions: list[tuple[Session, str]] | None = None, favorites: list[dict] | None = None):
+    def __init__(self, parent: tk.Tk, target_count: int, reference_sessions: list[tuple[Session, str]] | None = None, favorites: list[dict] | None = None, simple: bool = False):
         super().__init__(parent)
-        self.title("Dateien übertragen")
+        self._simple = simple
+        self.title("Datei hochladen" if simple else "Dateien verteilen")
         self.geometry("760x590")
         self.minsize(680, 520)
         self.result: dict | None = None
@@ -278,8 +279,8 @@ class CertificateDeployDialog(tk.Toplevel):
 
         build_dialog_header(
             root,
-            f"Dateien für {target_count} Host(s)",
-            "Dateien werden zuerst nach /tmp hochgeladen und danach per sudo in den Zielordner kopiert.",
+            f"{self.title()} – {target_count} Host(s)",
+            "Eine Datei in einen vorhandenen, beschreibbaren Zielordner hochladen. Ohne sudo oder Folgebefehl." if self._simple else "Dateien werden zuerst nach /tmp hochgeladen und danach per sudo in die Zielordner kopiert.",
         )
 
         files_frame = ttk.LabelFrame(root, text="Lokale Dateien", padding=10)
@@ -335,6 +336,13 @@ class CertificateDeployDialog(tk.Toplevel):
             ttk.Label(favorite_bar, text="Keine Befehl-Favoriten vorhanden.", style="Muted.TLabel").grid(row=0, column=2, sticky="w", padx=(8, 0))
         self._post_command = scrolledtext.ScrolledText(after, wrap="word", height=4)
         self._post_command.grid(row=1, column=0, sticky="ew")
+        if self._simple:
+            security.grid_remove()
+            after.grid_remove()
+            self._target_dirs_text.configure(height=1)
+            for child in destination.winfo_children():
+                if int(child.grid_info().get("row", -1)) == 3:
+                    child.grid_remove()
 
         options = ttk.Frame(root)
         options.grid(row=6, column=0, sticky="w", pady=(10, 0))
@@ -358,6 +366,12 @@ class CertificateDeployDialog(tk.Toplevel):
         return "break"
 
     def _choose_files(self) -> None:
+        if self._simple:
+            path = filedialog.askopenfilename(parent=self, title="Eine Datei auswählen")
+            if path:
+                self._files = [path]
+                self._refresh_files()
+            return
         paths = filedialog.askopenfilenames(parent=self, title="Dateien auswählen")
         for path in paths:
             if path and path not in self._files:
@@ -447,9 +461,14 @@ class CertificateDeployDialog(tk.Toplevel):
             messagebox.showwarning("Ungültiger Zielordner", "Bitte ausschließlich absolute Linux-Pfade angeben, z. B. /etc/ssl/private.", parent=self)
             return
         target_dirs = list(dict.fromkeys(path.rstrip("/") or "/" for path in target_dirs))
+        if self.__dict__.get("_simple") and (len(self._files) != 1 or len(target_dirs) != 1):
+            messagebox.showwarning("Einfacher Upload", "Genau eine Datei und einen Zielordner auswählen. Für mehrere Ziele ‚Dateien verteilen‘ verwenden.", parent=self)
+            return
         if not confirm_broad_certificate_paths(self, target_dirs):
             return
-        if self._permissions is None or set(self._permissions["file_modes"]) != set(self._files):
+        if self.__dict__.get("_simple"):
+            self._permissions = {"simple_upload": True}
+        elif self._permissions is None or set(self._permissions["file_modes"]) != set(self._files):
             self._choose_permissions()
             if self._permissions is None or set(self._permissions["file_modes"]) != set(self._files):
                 return
