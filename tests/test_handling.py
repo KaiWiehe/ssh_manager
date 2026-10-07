@@ -158,3 +158,14 @@ def test_simple_upload_requires_one_file_and_one_directory(root, tmp_path):
     assert dialog.result["simple_upload"] is True
     assert not dialog.result["post_command"]
     assert not dialog.result["sudo_password"]
+
+
+def test_service_form_only_returns_command_and_clears_password(root):
+    from ssh_manager_app.services import ServiceActionDialog
+    dialog = ServiceActionDialog(root, "restart", 2)
+    dialog.unit.set("wildfly")
+    dialog._sudo_password_var.set("dummy-password")
+    dialog.confirm()
+    assert "restart -- wildfly.service" in dialog.result[0]
+    assert dialog.result[1] == "dummy-password"
+    assert dialog._sudo_password_var.get() == ""

@@ -1003,6 +1003,9 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(label="Serverskript ausführen…", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions(), "remote_script"))
     from .runbook_library import open_runbook_library
     actions_menu.add_command(label="Runbook-Bibliothek…", command=lambda: open_runbook_library(self))
+    from .services import run_service_action, ACTION_LABELS
+    for action, label in ACTION_LABELS.items():
+        actions_menu.add_command(label=label + "…", command=lambda a=action: run_service_action(self, self._tree.get_selected_sessions(), a))
     actions_menu.add_command(label="Datei hochladen…", command=lambda: upload_file_callback(self))
     actions_menu.add_command(label="Dateien verteilen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Zertifikate ersetzen…", command=lambda: replace_certificates_callback(self, self._tree.get_selected_sessions()))

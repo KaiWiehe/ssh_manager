@@ -20,7 +20,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 3 | Runbook-Parameter | fertig, 0.2.51 |
 | 4 | Upload und Verteilung | fertig, 0.2.52 |
 | 7 | Gespeicherte Filter | fertig, 0.2.53 |
-| 9 | Dienstwerkzeuge | offen |
+| 9 | Dienstwerkzeuge | fertig, 0.2.54 |
 | 10 | Tunnel-Anwendungsfälle | offen |
 | 11 | Verbindungsdiagnose | offen |
 | 12 | Sammelergebnisse | offen |
@@ -93,3 +93,8 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   Temporäre Filteransichten verändern den Benutzer-Ordnerzustand nicht;
   Quellen-Rebuild aktualisiert auch verborgene Auswahlobjekte.
   250 relevante Tests sowie 10 separate Windows-App-/Hilfetests bestanden.
+- Punkt 9: getrennte Status-/Neustart-/Logaktionen für systemd-Dienste,
+  validierte Dienstauswahl und begrenzte Logzeilen, sudo explizit.
+  Vorschau nennt Hosts/Befehl; ein Dienstneustart prüft anschließend den
+  aktiven Zustand. Serverneustart bleibt getrennt. 232 Tests bestanden,
+  keine Dienstaktion auf echten Hosts ausgeführt.
