@@ -1141,8 +1141,10 @@ def build_main_ui(self) -> None:
 
     refresh_checkbox_images(self)
 
+    self._session_area = ttk.PanedWindow(self._main_frame, orient="horizontal")
+    self._session_area.grid(row=3, column=0, sticky="nsew", padx=18, pady=(8, 0))
     self._tree = SessionTree(
-        self._main_frame,
+        self._session_area,
         sessions=self._sessions,
         img_unchecked=self._img_unchecked,
         img_checked=self._img_checked,
@@ -1188,7 +1190,11 @@ def build_main_ui(self) -> None:
         on_hide_column=lambda column_key: hide_column_from_header_callback(self, column_key),
         toolbar_settings=self.settings.toolbar,
     )
-    self._tree.grid(row=3, column=0, sticky="nsew", padx=18, pady=(8, 0))
+    self._session_area.add(self._tree, weight=3)
+    from .details import SessionDetailsPanel, toggle_session_details
+    self._details_panel = SessionDetailsPanel(self._session_area, self)
+    self._tree._tv.bind("<<TreeviewSelect>>", self._details_panel.refresh, add="+")
+    self._tree._tv.bind("<FocusIn>", self._details_panel.refresh, add="+")
 
     status_bar = ttk.Frame(self._main_frame, style="StatusBar.TFrame", padding=(18, 6))
     status_bar.grid(row=4, column=0, sticky="ew", pady=(8, 0))
@@ -1199,6 +1205,7 @@ def build_main_ui(self) -> None:
     self._selection_review_button = ttk.Button(status_bar, text="Auswahl prüfen (0)", command=lambda: review_selection(self))
     self._selection_review_button.grid(row=1, column=0, sticky="w", pady=(5, 0))
     ttk.Button(status_bar, text="Auswahl leeren", command=lambda: self._tree.set_all_checked(False)).grid(row=1, column=1, sticky="e", pady=(5, 0))
+    ttk.Button(status_bar, text="Details ein-/ausblenden", command=lambda: toggle_session_details(self)).grid(row=1, column=2, sticky="e", padx=(8, 0))
     ttk.Label(status_bar, text="Enter: diese Zeile  ·  Ctrl+Enter: Häkchen-Auswahl", style="StatusBar.TLabel").grid(row=0, column=1, sticky="e")
 
     self._search_history_after_id = None

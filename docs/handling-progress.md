@@ -14,7 +14,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 1 | Drei Remote-Einstiege | fertig, 0.2.45 |
 | 5 | Einheitliche Auswahlregeln | fertig, 0.2.46 |
 | 6 | Auswahlleiste | fertig, 0.2.47 |
-| 8 | Verbindungsdetails | offen |
+| 8 | Verbindungsdetails | fertig, 0.2.48 |
 | 13 | Export und Backup | offen |
 | 2 | Runbook-Bibliothek | offen |
 | 3 | Runbook-Parameter | offen |
@@ -59,3 +59,7 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   Windows-Tk-Auswahlablauf/Hilfe bestanden. Beim Test gefundene Endlosschleife
   im Idle-Layout eines noch nicht sichtbaren Baums durch zeitversetzten Retry
   behoben; echte Remote-Aktionen wurden nicht ausgeführt.
+- Punkt 8: zuschaltbares Detailpanel folgt der Fokuszeile, zeigt Quelle,
+  Benutzerherkunft, Alias, Host/Port/Ordner und app-interne Notizen.
+  Editierbare Verbindungen und reine App-Anpassungen sind klar getrennt.
+  209 Tests (handling, help, logic) inkl. echtem Windows-Panel bestanden.

@@ -173,3 +173,22 @@ def test_search_empty_state_and_palette_no_results_are_visible(app):
     assert not palette._ranked
     assert "Keine Treffer" in palette._listbox.get(0)
     palette._close()
+
+
+def test_details_panel_follows_focus_and_can_be_hidden(app):
+    from ssh_manager_app.models import Session
+    from ssh_manager_app.details import toggle_session_details
+    session = Session("detail", "Details Test", [], "test.invalid", "ops", source="app")
+    app._notes[session.key] = "Nur app-intern"
+    app._tree.refresh([session])
+    iid = next(iter(app._tree._item_to_session))
+    app._tree._tv.focus(iid)
+    app._tree._tv.selection_set(iid)
+    toggle_session_details(app)
+    app.update()
+    assert app._details_panel.title.get() == "Details Test"
+    assert "test.invalid" in app._details_panel.info.get()
+    assert "Nur app-intern" in app._details_panel.note.get("1.0", "end")
+    assert str(app._details_panel) in tuple(map(str, app._session_area.panes()))
+    toggle_session_details(app)
+    assert str(app._details_panel) not in tuple(map(str, app._session_area.panes()))

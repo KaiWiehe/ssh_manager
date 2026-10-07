@@ -78,3 +78,16 @@ def test_selection_survives_repeated_search_and_can_remove_hidden_host(root):
     assert counts[-1] == 0
     dialog.destroy()
     tree.destroy()
+
+
+def test_session_details_explain_override_and_alias_without_writes():
+    from ssh_manager_app.details import session_detail_text
+    from ssh_manager_app.models import Session
+    imported = Session("w", "Web", [], "web.test", "ops", source="winscp")
+    text = session_detail_text(imported, {"w": "ops"}, "default")
+    assert "App-Override" in text
+    assert "Host und Port werden aus der Quelle gelesen" in text
+    alias = Session("a", "alias", [], "host", source="ssh_alias")
+    text = session_detail_text(alias, {}, "default")
+    assert "SSH-Alias: alias" in text
+    assert "kein Benutzerdialog" in text
