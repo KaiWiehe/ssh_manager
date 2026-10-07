@@ -998,6 +998,8 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
     from .diagnosis import open_diagnosis
     actions_menu.add_command(label="Verbindung diagnostizieren…", command=lambda: open_diagnosis(self))
+    from .operation_results import show_last_results
+    actions_menu.add_command(label="Letzte Sammelergebnisse…", command=lambda: show_last_results(self))
     actions_menu.add_command(label="Server neu starten…", command=lambda: restart_servers_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))

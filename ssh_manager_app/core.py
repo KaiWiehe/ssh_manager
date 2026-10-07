@@ -20,6 +20,7 @@ from .constants import _SSH_CONFIG_FILE, _STATE_FILE
 from .storage import load_ssh_config_sessions
 from .certificate_permissions import certificate_install_prelude, certificate_mode
 from .secret_scripts import write_protected_script, cleanup_script, managed_scripts
+from .operation_results import result_lines, result_statement
 from .ssh_utils import connection_value, ssh_argv, shell_command, scp_target, valid_color, valid_port, read_port
 
 def parse_session_key(key: str) -> tuple[list[str], str]:
@@ -252,7 +253,7 @@ def build_remote_command_wt_command(
                 script_lines.append(f'if [ $status -eq 0 ]; then rm -f "$0"; exec {ssh_cmd}; fi')
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
-        script_path = _write_temp_bash_script("remote_cmd_", "\n".join(script_lines) + "\n")
+        script_path = _write_temp_bash_script("remote_cmd_", "\n".join(result_lines(script_lines, session)) + "\n")
         parts.append(_make_tab(session, user, [git_bash, script_path], settings, colors.get(session.key)))
     return TerminalCommand(parts)
 
@@ -366,7 +367,7 @@ def build_remote_script_wt_command(
             title = f"Lokales Skript: {local_path}"
             cleanup_ssh = shell_command(ssh_argv(session, user, ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"]))
             cleanup = cleanup_ssh + " " + _shell_single_quote(f"rm -rf -- {_shell_single_quote(remote_dir)}")
-            remote_body = f"{mkdir}\nif [ $? -ne 0 ]; then exit 1; fi\n{upload}\nif [ $? -ne 0 ]; then {cleanup}; exit 1; fi\n{ssh_cmd} -t <<'{delimiter}'\n{remote_script}\n{delimiter}\n"
+            remote_body = f"{mkdir}\nif [ $? -ne 0 ]; then {result_statement(session, '1')}; exit 1; fi\n{upload}\nif [ $? -ne 0 ]; then {result_statement(session, '1')}; {cleanup}; exit 1; fi\n{ssh_cmd} -t <<'{delimiter}'\n{remote_script}\n{delimiter}\n"
         else:
             title = f"Remote-Befehl: {command.strip() or '-'}"
             remote_body = f"{ssh_cmd} {'-t ' if not close_on_success else ''}<<'{delimiter}'\n{command}\n{delimiter}"
@@ -399,7 +400,7 @@ def build_remote_script_wt_command(
                 script_lines.append(f'if [ $status -eq 0 ]; then rm -f "$0"; exec {ssh_cmd}; fi')
         script_lines.append("if [ $status -ne 0 ]; then read; fi")
         script_lines.append("exit $status")
-        script_path = _write_temp_bash_script("remote_script_", "\n".join(script_lines) + "\n")
+        script_path = _write_temp_bash_script("remote_script_", "\n".join(result_lines(script_lines, session)) + "\n")
         parts.append(_make_tab(session, user, [git_bash, script_path], settings, colors.get(session.key)))
     return TerminalCommand(parts)
 
@@ -410,7 +411,7 @@ def _private_upload_start(session: Session, user: str, directory: str) -> list[s
     cleanup = shell_command(ssh_argv(session, user, ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"])) + " " + _shell_single_quote(f"rm -rf -- {_shell_single_quote(directory)}")
     return [
         f"{ssh} {mkdir}",
-        "if [ $? -ne 0 ]; then echo 'FEHLER: Privates Upload-Verzeichnis konnte nicht erstellt werden.'; exit 1; fi",
+        f"if [ $? -ne 0 ]; then echo 'FEHLER: Privates Upload-Verzeichnis konnte nicht erstellt werden.'; {result_statement(session, '1')}; exit 1; fi",
         "cleanup_upload() {",
         "  status=$?",
         f"  {cleanup} >/dev/null 2>&1 || true",
@@ -454,13 +455,13 @@ def build_file_upload_wt_command(session_deployments, *, session_colors=None, te
     delimiter = _here_doc_delimiter("\n".join(remote))
     lines = ["#!/usr/bin/env bash", "set -e", f"printf '%s\\n' {_shell_single_quote('Datei hochladen: ' + session.display_name + ' → ' + target)}",
              *_private_upload_start(session, user, remote_dir),
-             "trap 'upload_status=$?; cleanup_upload; if [ $upload_status -ne 0 ]; then read -r -p \"Upload fehlgeschlagen. Enter zum Schließen …\" || true; fi; exit $upload_status' EXIT",
+             "trap " + _shell_single_quote("upload_status=$?; " + result_statement(session, "$upload_status") + '; cleanup_upload; if [ $upload_status -ne 0 ]; then read -r -p "Upload fehlgeschlagen. Enter zum Schließen …" || true; fi; exit $upload_status') + " EXIT",
              f"scp {port}-- {_shell_single_quote(local_path)} {_shell_single_quote(target_scp)}",
-             f"{ssh} <<'{delimiter}'", *remote, delimiter, "echo 'Übertragung erfolgreich.'"]
+             f"{ssh} <<'{delimiter}'", *remote, delimiter, "status=$?", "echo 'Übertragung erfolgreich.'"]
     if not spec.get("close_on_success"):
-        lines.append("read -r -p 'Enter zum Schließen …'")
+        lines.append("read -r -p 'Enter zum Schließen …' || true")
     settings = terminal_settings or WindowsTerminalSettings()
-    path = _write_temp_bash_script("file_upload_", "\n".join(lines) + "\n")
+    path = _write_temp_bash_script("file_upload_", "\n".join(result_lines(lines, session)) + "\n")
     return TerminalCommand([_make_tab(session, user, [_find_git_bash(), path], settings, (session_colors or {}).get(session.key))])
 
 
@@ -515,6 +516,7 @@ def build_certificate_deploy_wt_command(
             script_lines.append(f"scp {scp_port}-- {_shell_single_quote(local_path)} {_shell_single_quote(upload_target + ":" + remote_tmp)}")
             script_lines.append("if [ $? -ne 0 ]; then")
             script_lines.append("  echo 'FEHLER: Upload fehlgeschlagen. Der Nach-Befehl wird nicht ausgeführt.'")
+            script_lines.append("  " + result_statement(session, "1"))
             script_lines.append("  exit 1")
             script_lines.append("fi")
 
@@ -607,7 +609,7 @@ def build_certificate_deploy_wt_command(
             "read",
             "exit $status",
         ])
-        script_path = _write_temp_bash_script("certificate_deploy_", "\n".join(script_lines) + "\n")
+        script_path = _write_temp_bash_script("certificate_deploy_", "\n".join(result_lines(script_lines, session)) + "\n")
         parts.append(_make_tab(session, user, [git_bash, script_path], settings, colors.get(session.key)))
     return TerminalCommand(parts)
 
@@ -648,7 +650,7 @@ def build_certificate_replace_wt_command(
         for name, local_path in files_by_name.items():
             script_lines.extend([
                 f"scp {scp_port}-- {_shell_single_quote(local_path)} {_shell_single_quote(upload_target + ":" + temp_paths[name])}",
-                "if [ $? -ne 0 ]; then echo 'FEHLER: Upload fehlgeschlagen.'; exit 1; fi",
+                f"if [ $? -ne 0 ]; then echo 'FEHLER: Upload fehlgeschlagen.'; {result_statement(session, '1')}; exit 1; fi",
             ])
         remote_lines = [
             "set -u",
@@ -683,7 +685,7 @@ def build_certificate_replace_wt_command(
         else:
             script_lines.append(f"if [ $status -eq 0 ]; then rm -f \"$0\"; exec {ssh_cmd}; fi")
         script_lines.extend(["echo \"Ersetzen fehlgeschlagen (Exit-Code: $status).\"", "read", "exit $status"])
-        script_path = _write_temp_bash_script("certificate_replace_", "\n".join(script_lines) + "\n")
+        script_path = _write_temp_bash_script("certificate_replace_", "\n".join(result_lines(script_lines, session)) + "\n")
         parts.append(_make_tab(session, user, [git_bash, script_path], settings, colors.get(session.key)))
     return TerminalCommand(parts)
 
@@ -766,7 +768,7 @@ def _build_key_command(sessions: list[Session], key_filename: str, user: str, se
             port = f" -p {valid_port(session.port)}" if session.port != 22 else ""
             inner = 'ssh-copy-id -i ' + key_path + port + ' -- ' + _shell_single_quote(argv[-1])
         content = '#!/usr/bin/env bash\ntrap \'rm -f "$0"\' EXIT\n' + inner + '\nstatus=$?\nif [ $status -eq 0 ]; then echo OK; else echo FEHLER; fi\nread\nexit $status\n'
-        path = _write_temp_bash_script("ssh_key_", content)
+        path = _write_temp_bash_script("ssh_key_", "\n".join(result_lines(content.splitlines(), session)) + "\n")
         tabs.append(_make_tab(session, user, [git_bash, path], settings))
     return TerminalCommand(tabs)
 

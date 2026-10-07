@@ -61,19 +61,27 @@ def deploy_certificate_files(app, sessions: list[Session], *, simple: bool = Fal
     if not messagebox.askyesno("Dateiübertragung bestätigen", confirmation, icon="warning", parent=app):
         return
 
+    from .operation_results import create_job, track_results
+    job = None
     try:
-        builder = build_file_upload_wt_command if simple else build_certificate_deploy_wt_command
-        command = builder(
-            [(session, user, {**deployment, "file_owner": owners[session.key]} if owners else deployment) for session, user in session_users],
-            session_colors=app._tree.get_session_colors(),
-            terminal_settings=app.settings.windows_terminal,
-        )
+        job = create_job(app, runnable, "Dateiübertragung", lambda failed: deploy_certificate_files(app, failed, simple=simple))
+        with track_results(job):
+            builder = build_file_upload_wt_command if simple else build_certificate_deploy_wt_command
+            command = builder(
+                [(session, user, {**deployment, "file_owner": owners[session.key]} if owners else deployment) for session, user in session_users],
+                session_colors=app._tree.get_session_colors(),
+                terminal_settings=app.settings.windows_terminal,
+            )
         deployment.pop("sudo_password", None)
         TerminalLauncher.launch_built_command(
             command,
             [session.display_name for session, _user in session_users],
             app.settings.windows_terminal,
         )
+        if job:
+            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
+        if job:
+            job.uncertain_launch()
         deployment.pop("sudo_password", None)
         messagebox.showerror("Übertragung fehlgeschlagen", f"Terminal konnte nicht gestartet werden:\n{exc}", parent=app)

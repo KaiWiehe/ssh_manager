@@ -28,7 +28,7 @@ def service_command(action, unit, lines=100, sudo=False):
 
 
 class ServiceActionDialog(tk.Toplevel):
-    def __init__(self, parent, action, target_count):
+    def __init__(self, parent, action, target_count, initial=None):
         super().__init__(parent)
         self.action = action
         self.title(ACTION_LABELS[action])
@@ -39,14 +39,15 @@ class ServiceActionDialog(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
         ttk.Label(frame, text=f"{ACTION_LABELS[action]} für {target_count} angehakte Host(s).", wraplength=520).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
-        self.unit = tk.StringVar(value="nginx.service")
+        initial = initial or {}
+        self.unit = tk.StringVar(value=initial.get("unit", "nginx.service"))
         ttk.Label(frame, text="Dienst").grid(row=1, column=0, sticky="w", padx=(0, 10))
         ttk.Combobox(frame, textvariable=self.unit, values=("nginx.service", "wildfly.service", "postgresql.service", "ssh.service")).grid(row=1, column=1, sticky="ew")
-        self.lines = tk.StringVar(value="100")
+        self.lines = tk.StringVar(value=initial.get("lines", "100"))
         if action == "logs":
             ttk.Label(frame, text="Letzte Logzeilen").grid(row=2, column=0, sticky="w", pady=10)
             ttk.Spinbox(frame, from_=1, to=1000, textvariable=self.lines).grid(row=2, column=1, sticky="ew", pady=10)
-        self.sudo = tk.BooleanVar(value=action == "restart")
+        self.sudo = tk.BooleanVar(value=initial.get("sudo", action == "restart"))
         ttk.Checkbutton(frame, text="Mit sudo ausführen", variable=self.sudo).grid(row=3, column=0, columnspan=2, sticky="w", pady=8)
         self._sudo_password_var = tk.StringVar()
         ttk.Label(frame, text="sudo-Passwort (optional)").grid(row=4, column=0, sticky="w", padx=(0, 8))
@@ -75,19 +76,22 @@ class ServiceActionDialog(tk.Toplevel):
         self.destroy()
 
 
-def run_service_action(app, sessions, action):
+def run_service_action(app, sessions, action, initial=None):
     from .actions_remote import resolve_users_for_sessions
     from .dialogs_remote import RemoteCommandConfirmDialog
     from .core import build_remote_command_wt_command, TerminalLauncher
     if not sessions:
         messagebox.showwarning("Keine Auswahl", "Bitte mindestens einen Host anhaken.", parent=app)
         return
-    dialog = ServiceActionDialog(app, action, len(sessions))
+    dialog = ServiceActionDialog(app, action, len(sessions), **({"initial": initial} if initial else {}))
     app.wait_window(dialog)
     if dialog.result is None:
         return
+    retry_values = {"unit": dialog.unit.get(), "lines": dialog.lines.get(), "sudo": dialog.sudo.get()}
     command, password = dialog.result
     dialog.result = None
+    from .operation_results import create_job, track_results
+    job = None
     try:
         session_users = resolve_users_for_sessions(app, sessions, "all")
         if session_users is None:
@@ -96,11 +100,17 @@ def run_service_action(app, sessions, action):
         app.wait_window(confirm)
         if not confirm.result:
             return
-        built = build_remote_command_wt_command([(session, user, command) for session, user in session_users], close_on_success=False,
-                  sudo_password=password or None, session_colors=app._tree.get_session_colors(), terminal_settings=app.settings.windows_terminal)
+        job = create_job(app, [session for session, _ in session_users], "Dienstaktion", lambda failed: run_service_action(app, failed, action, retry_values))
+        with track_results(job):
+            built = build_remote_command_wt_command([(session, user, command) for session, user in session_users], close_on_success=False,
+                      sudo_password=password or None, session_colors=app._tree.get_session_colors(), terminal_settings=app.settings.windows_terminal)
         password = ""
         TerminalLauncher.launch_built_command(built, [session.display_name for session, _ in session_users], app.settings.windows_terminal)
+        if job:
+            job.launched()
     except (OSError, ValueError, RuntimeError):
+        if job:
+            job.uncertain_launch()
         messagebox.showerror("Dienstaktion fehlgeschlagen", "Dienstaktion konnte nicht vorbereitet oder gestartet werden.", parent=app)
     finally:
         password = ""

@@ -113,14 +113,22 @@ def deploy_ssh_key(app, sessions: list[Session]) -> None:
     if dialog.result is None:
         return
     key_filename, user = dialog.result
+    from .operation_results import create_job, track_results
+    job = None
     try:
-        cmd = build_ssh_copy_id_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
+        job = create_job(app, sessions, "SSH-Key verteilen", lambda failed: deploy_ssh_key(app, failed))
+        with track_results(job):
+            cmd = build_ssh_copy_id_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
         TerminalLauncher.launch_built_command(
             cmd,
             [session.display_name for session in sessions],
             app.settings.windows_terminal,
         )
+        if job:
+            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
+        if job:
+            job.uncertain_launch()
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
@@ -131,14 +139,22 @@ def remove_ssh_key(app, sessions: list[Session]) -> None:
     if dialog.result is None:
         return
     key_filename, user = dialog.result
+    from .operation_results import create_job, track_results
+    job = None
     try:
-        cmd = build_ssh_remove_key_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
+        job = create_job(app, sessions, "SSH-Key entfernen", lambda failed: remove_ssh_key(app, failed))
+        with track_results(job):
+            cmd = build_ssh_remove_key_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
         TerminalLauncher.launch_built_command(
             cmd,
             [session.display_name for session in sessions],
             app.settings.windows_terminal,
         )
+        if job:
+            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
+        if job:
+            job.uncertain_launch()
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
@@ -281,27 +297,31 @@ def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = N
     if not confirm.result:
         return
 
+    from .operation_results import create_job, track_results
+    job = None
     try:
-        if spec.get("mode") == "command":
-            build_kwargs = {
-                "close_on_success": close_on_success,
-                "session_colors": app._tree.get_session_colors(),
-                "terminal_settings": app.settings.windows_terminal,
-            }
-            if sudo_password:
-                build_kwargs["sudo_password"] = sudo_password
-            if spec.get("parameters"):
-                build_kwargs["display_command"] = display_spec["command"]
-            cmd = build_remote_command_wt_command([(session, user, runtime_spec["command"]) for session, user in session_users], **build_kwargs)
-        else:
-            build_kwargs = {
-                "close_on_success": close_on_success,
-                "session_colors": app._tree.get_session_colors(),
-                "terminal_settings": app.settings.windows_terminal,
-            }
-            if sudo_password:
-                build_kwargs["sudo_password"] = sudo_password
-            cmd = build_remote_script_wt_command([(session, user, runtime_spec) for session, user in session_users], **build_kwargs)
+        job = create_job(app, [session for session, _ in session_users], "Remote-Ausführung", lambda failed: run_remote_command(app, failed, run_mode=spec.get("mode", "command"), initial_spec=dict(spec)))
+        with track_results(job):
+            if spec.get("mode") == "command":
+                build_kwargs = {
+                    "close_on_success": close_on_success,
+                    "session_colors": app._tree.get_session_colors(),
+                    "terminal_settings": app.settings.windows_terminal,
+                }
+                if sudo_password:
+                    build_kwargs["sudo_password"] = sudo_password
+                if spec.get("parameters"):
+                    build_kwargs["display_command"] = display_spec["command"]
+                cmd = build_remote_command_wt_command([(session, user, runtime_spec["command"]) for session, user in session_users], **build_kwargs)
+            else:
+                build_kwargs = {
+                    "close_on_success": close_on_success,
+                    "session_colors": app._tree.get_session_colors(),
+                    "terminal_settings": app.settings.windows_terminal,
+                }
+                if sudo_password:
+                    build_kwargs["sudo_password"] = sudo_password
+                cmd = build_remote_script_wt_command([(session, user, runtime_spec) for session, user in session_users], **build_kwargs)
         sudo_password = ""
         dialog.result = None
         TerminalLauncher.launch_built_command(
@@ -309,7 +329,11 @@ def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = N
             [session.display_name for session, _user in session_users],
             app.settings.windows_terminal,
         )
+        if job:
+            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
+        if job:
+            job.uncertain_launch()
         from .errors import record_failure
         record_failure(exc)
         messagebox.showerror("Fehler", "Der Remote-Aufruf konnte nicht vorbereitet oder gestartet werden. Bitte Eingaben und Dateizugriff prüfen.", parent=app)

@@ -23,7 +23,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 9 | Dienstwerkzeuge | fertig, 0.2.54 |
 | 10 | Tunnel-Anwendungsfälle | fertig, 0.2.55 |
 | 11 | Verbindungsdiagnose | fertig, 0.2.56 |
-| 12 | Sammelergebnisse | offen |
+| 12 | Sammelergebnisse | fertig, 0.2.57 |
 | 14 | Quellenstatus | offen |
 | 15 | Lokales Undo | offen |
 | 16 | Kontextuelle Hilfe | offen |
@@ -107,3 +107,13 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   DNS und TCP. Anmeldung nur explizit per BatchMode/true, ohne Hostkey-Änderung.
   Proxyziele erhalten keine irreführende direkte TCP-Erfolgsmeldung. Maximal
   acht Worker, Ergebnisse ausschließlich im Tk-Hauptthread. 215 Tests bestanden.
+
+- Punkt 12: pro Host Terminalstart/läuft/Erfolg/Fehler/unbekannt mit atomaren
+  lokalen Exit-Rückmeldungen, ohne Befehle/Outputs/Secrets in Ergebnisdateien.
+  Remote-Befehle/Skripte, Dienste, Upload/Verteilung, Zertifikatstausch und
+  Key-Aktionen angebunden. Rückmeldung vor interaktivem Anschluss; frühe
+  Uploadfehler erfasst. Bei Teilstartfehlern unbekannt statt erfundener Fehler.
+  Retry nur bestätigte Fehler, erneutes Vorbereiten und Vorschau; Datei-/Key-
+  Eingaben erneut prüfen, Dienstparameter bleiben ohne Passwort erhalten.
+  Vollständige Suite 568 bestanden, anschließend 221 relevante Tests nach
+  Erweiterung auf Keys/Zertifikatstausch. Lokale Bash-Tests, keine echten Hosts.

@@ -205,3 +205,21 @@ def test_diagnosis_defaults_to_no_login_and_displays_separate_steps(root):
     children = dialog.output.get_children(dialog.output.get_children()[0])
     assert dialog.output.item(children[1], "values")[1] == "nicht geprüft"
     dialog.destroy()
+
+
+def test_results_retry_only_confirmed_failed_targets(root, tmp_path):
+    from ssh_manager_app.operation_results import OperationJob, OperationResultsDialog
+    from ssh_manager_app.models import Session
+    from unittest.mock import Mock
+    good, bad = Session("good", "good", [], "host"), Session("bad", "bad", [], "host")
+    retry = Mock()
+    job = OperationJob([good, bad], "Test", retry, directory=tmp_path)
+    job.launched()
+    job.paths["good"].write_text("exit\t0\n")
+    job.paths["bad"].write_text("exit\t1\n")
+    dialog = OperationResultsDialog(root, job)
+    with patch("ssh_manager_app.operation_results.messagebox.askyesno", return_value=True):
+        dialog.retry()
+    retry.assert_called_once_with([bad])
+    assert dialog.table.item("good", "values")[1] == "erfolgreich"
+    dialog.destroy()

@@ -253,8 +253,12 @@ def _show_replace_preview(app, progress, scanned, spec, source_summary) -> None:
     if not deployments:
         messagebox.showinfo("Zertifikate ersetzen", "Es wurden keine Zertifikatsdateien zum Ersetzen ausgewählt.", parent=app)
         return
+    from .operation_results import create_job, track_results
+    job = None
     try:
-        command = build_certificate_replace_wt_command(deployments, session_colors=app._tree.get_session_colors(), terminal_settings=app.settings.windows_terminal)
+        job = create_job(app, [session for session, _, _ in deployments], "Zertifikate ersetzen", lambda failed: replace_certificates(app, failed))
+        with track_results(job):
+            command = build_certificate_replace_wt_command(deployments, session_colors=app._tree.get_session_colors(), terminal_settings=app.settings.windows_terminal)
         spec["sudo_password"] = ""
         for _session, _user, run_spec in deployments:
             run_spec["sudo_password"] = ""
@@ -263,5 +267,9 @@ def _show_replace_preview(app, progress, scanned, spec, source_summary) -> None:
             [session.display_name for session, _user, _spec in deployments],
             app.settings.windows_terminal,
         )
+        if job:
+            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
+        if job:
+            job.uncertain_launch()
         messagebox.showerror("Zertifikate ersetzen", f"Terminal konnte nicht gestartet werden:\n{exc}", parent=app)
