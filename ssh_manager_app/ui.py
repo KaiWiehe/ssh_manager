@@ -1195,7 +1195,7 @@ def build_main_ui(self) -> None:
     status_bar.columnconfigure(0, weight=1)
     self._selection_status_var = tk.StringVar(value="Keine Verbindung ausgewählt")
     ttk.Label(status_bar, textvariable=self._selection_status_var, style="StatusBar.TLabel").grid(row=0, column=0, sticky="w")
-    ttk.Label(status_bar, text="Enter: verbinden  ·  Ctrl+P: Befehlspalette", style="StatusBar.TLabel").grid(row=0, column=1, sticky="e")
+    ttk.Label(status_bar, text="Enter: diese Zeile  ·  Ctrl+Enter: Häkchen-Auswahl", style="StatusBar.TLabel").grid(row=0, column=1, sticky="e")
 
     self._search_history_after_id = None
     self._search_var.trace_add("write", lambda *_: on_search_changed_callback(self))

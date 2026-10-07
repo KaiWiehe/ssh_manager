@@ -45,8 +45,8 @@ Leertaste: Häkchen der Zeile umschalten; bei Ordnern alle enthaltenen Sessions 
 Shift+F10 / Menütaste: Kontextmenü der fokussierten Zeile öffnen.
 
 Bearbeiten und Löschen
-F2 (Standard) öffnet Bearbeiten: Eine einzelne angehakte Session hat Vorrang, sonst wird die Kontextzeile verwendet. Importierte Verbindungen bieten nur die unterstützten App-internen Anpassungen.
-Entf (Standard) löscht nach Bestätigung: Eine einzelne angehakte Session hat Vorrang, sonst wird die Kontextzeile verwendet. Das gilt für eigene Verbindungen und Alias-Kopien, nicht für die externen Originalquellen.
+F2 und Bearbeiten in der Palette verwenden genau eine angehakte Session; ohne Häkchen die fokussierte Zeile. Bei mehreren Häkchen wird kein Einzelziel gewählt. Importierte Verbindungen bieten nur die unterstützten App-internen Anpassungen.
+Entf und Löschen in der Palette verwenden dieselbe Zielregel und löschen erst nach Bestätigung. Das gilt für eigene Verbindungen und Alias-Kopien, nicht für die externen Originalquellen. Das Kontextmenü bezeichnet ausdrücklich „Diese Verbindung“ und handelt auf der dort angeklickten Zeile.
 
 Eigene Kürzel
 Unter Einstellungen → Tastenkürzel ein Feld anklicken und die gewünschte Kombination drücken. Escape bricht die Erfassung ab, Backspace entfernt das Kürzel, Reset stellt den Standard wieder her. Nicht jede feste Baumtaste ist dort konfigurierbar.
@@ -83,7 +83,7 @@ Bedienung
 Hoch/Runter wechselt den Treffer, Enter führt ihn aus, Escape schließt die Palette. Ein Session-Treffer öffnet genau diese Verbindung. Ein Aktions-Treffer führt die benannte App-Aktion aus.
 
 Auswahlabhängige Aktionen
-„Verbinden mit Auswahl“ verwendet die angehakten Sessions. „Bearbeiten“ und „Löschen“ in der Palette benötigen genau eine angehakte Session; Löschen ist nur für eigene Sessions und Alias-Kopien erlaubt. Ohne passende Auswahl passiert nichts. Diese Auswahlregeln unterscheiden sich von Enter/F2/Entf im Baum.
+„Verbinden mit Auswahl“ verwendet die angehakten Sessions. „Bearbeiten“ und „Löschen“ verwenden wie F2/Entf genau eine angehakte Session, ohne Häkchen die fokussierte Zeile. Bei mehreren Häkchen wird kein Einzelziel gewählt. Löschen ist nur für eigene Sessions und Alias-Kopien erlaubt.
 
 Weitere Aktionen
 Neue Verbindung, Einstellungen, Suche fokussieren, neu laden, DNS/IP auflösen, Auswahl ändern, Ordner aus-/einklappen, Zuletzt verwendet umschalten, Einstellungen importieren/exportieren und Hilfe öffnen sind über die Palette erreichbar. Weitere Serverwerkzeuge findest du im Menü Aktionen und in den Kontextmenüs.

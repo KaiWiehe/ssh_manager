@@ -399,9 +399,9 @@ def connect_selected_sessions(app) -> None:
 
 def delete_focused_editable_session(app) -> None:
     from .actions_sessions import delete_session
+    from .selection import single_action_target
 
-    selected = app._tree.get_selected_sessions()
-    target = selected[0] if len(selected) == 1 else app._tree.get_single_context_session()
+    target = single_action_target(app._tree)
     if target is None or target.source not in ("app", "ssh_alias"):
         return
     delete_session(app, target)
@@ -429,9 +429,9 @@ def toggle_recent_folder(app) -> None:
 def edit_focused_session(app) -> None:
     """Edit the currently focused or single-selected editable session."""
     from .actions_sessions import edit_session, edit_session_details
+    from .selection import single_action_target
 
-    selected = app._tree.get_selected_sessions()
-    target = selected[0] if len(selected) == 1 else app._tree.get_single_context_session()
+    target = single_action_target(app._tree)
     if target is None:
         return
     if target.source in ("app", "ssh_alias"):

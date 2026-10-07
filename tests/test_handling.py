@@ -1,4 +1,5 @@
 import tkinter as tk
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -40,3 +41,10 @@ def test_saved_script_cannot_silently_switch_command_task(root):
     assert dialog._run_mode.get() == "command"
     info.assert_called_once()
     dialog._on_cancel()
+
+
+@pytest.mark.parametrize("checked, expected", [([], "focus"), (["one"], "one"), (["one", "two"], None)])
+def test_single_action_target_does_not_fall_back_from_multiple_checks(checked, expected):
+    from ssh_manager_app.selection import single_action_target
+    tree = SimpleNamespace(get_selected_sessions=lambda: checked, get_single_context_session=lambda: "focus")
+    assert single_action_target(tree) == expected

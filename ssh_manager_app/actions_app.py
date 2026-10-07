@@ -175,21 +175,12 @@ def open_command_palette(app) -> None:
             connect_sessions(app, sel)
 
     def _edit_selection() -> None:
-        sel = app._tree.get_selected_sessions()
-        target = sel[0] if len(sel) == 1 else None
-        if target is None:
-            return
-        if target.source in ("app", "ssh_alias"):
-            edit_session(app, target)
-        else:
-            edit_session_details(app, target)
+        from .actions_ui import edit_focused_session
+        edit_focused_session(app)
 
     def _delete_selection() -> None:
-        sel = app._tree.get_selected_sessions()
-        target = sel[0] if len(sel) == 1 else None
-        if target is None or target.source not in ("app", "ssh_alias"):
-            return
-        delete_session(app, target)
+        from .actions_ui import delete_focused_editable_session
+        delete_focused_editable_session(app)
 
     def _accel(action_id: str) -> str:
         mgr = getattr(app, "_shortcut_manager", None)

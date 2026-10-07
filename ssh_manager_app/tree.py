@@ -1355,6 +1355,9 @@ class SessionTree(ttk.Frame):
         appearance_menu = tk.Menu(menu, tearoff=False)
 
         # Öffnen / Verbinden – immer ganz oben.
+        menu.add_command(label=f"Diese Verbindung: {session.display_name}", state="disabled")
+        menu.add_command(label=f"Häkchen-Auswahl: {selected_count} Verbindung(en)", state="disabled")
+        menu.add_separator()
         if self._on_quick_connect:
             menu.add_command(
                 label="Verbindung öffnen",
