@@ -1219,10 +1219,19 @@ def build_main_ui(self) -> None:
     self._selection_review_button.grid(row=1, column=0, sticky="w", pady=(5, 0))
     ttk.Button(status_bar, text="Auswahl leeren", command=lambda: self._tree.set_all_checked(False)).grid(row=1, column=1, sticky="e", pady=(5, 0))
     ttk.Button(status_bar, text="Details ein-/ausblenden", command=lambda: toggle_session_details(self)).grid(row=1, column=2, sticky="e", padx=(8, 0))
+    from .session_filters import SessionFiltersDialog, apply_session_filters
+    self._filter_summary = tk.StringVar(value="Keine Zusatzfilter")
+    ttk.Label(status_bar, textvariable=self._filter_summary, style="StatusBar.TLabel", wraplength=500).grid(row=2, column=0, sticky="w", pady=(5, 0))
+    ttk.Button(status_bar, text="Filter / Ansichten…", command=lambda: SessionFiltersDialog(self)).grid(row=2, column=1, sticky="e", pady=(5, 0))
+    ttk.Button(status_bar, text="Filter löschen", command=lambda: apply_session_filters(self, {}, "")).grid(row=2, column=2, sticky="e", padx=(8, 0))
     ttk.Label(status_bar, text="Enter: diese Zeile  ·  Ctrl+Enter: Häkchen-Auswahl", style="StatusBar.TLabel").grid(row=0, column=1, sticky="e")
 
     self._search_history_after_id = None
     self._search_var.trace_add("write", lambda *_: on_search_changed_callback(self))
 
     self._settings_view = SettingsView(self, self)
+    try:
+        apply_session_filters(self, self._initial_toolbar_search_texts.get("session_filters", {}), self._search_var.get(), persist=False)
+    except ValueError:
+        apply_session_filters(self, {}, self._search_var.get(), persist=False)
 

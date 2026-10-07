@@ -266,7 +266,7 @@ class SessionTree(ttk.Frame):
         if sessions:
             self._empty_state.grid_remove()
         else:
-            searching = bool(self._active_filter_query.strip())
+            searching = bool(self._active_filter_query.strip() or self.__dict__.get("_structured_filters"))
             self._empty_title.set("Keine Suchtreffer" if searching else "Keine Verbindungen vorhanden")
             self._empty_hint.set("Ändere oder leere die Suche, um deine Verbindungen wieder anzuzeigen." if searching else "Lege deine erste SSH-Verbindung an oder importiere später bestehende Quellen.")
             if searching:
@@ -727,7 +727,7 @@ class SessionTree(ttk.Frame):
         # During search the tree uses a temporary "all matching folders open"
         # view. Do not let those transient open/close events replace the real
         # user folder state that gets restored when the search is cleared.
-        if getattr(self, "_active_filter_query", "").strip():
+        if getattr(self, "_active_filter_query", "").strip() or self.__dict__.get("_structured_filters"):
             return
         item_id = ""
         widget = getattr(event, "widget", None)
@@ -963,7 +963,7 @@ class SessionTree(ttk.Frame):
             self._tv.item(item_id, open=state)
         finally:
             self._suppress_open_state_events -= 1
-        if not self._active_filter_query.strip():
+        if not (self._active_filter_query.strip() or self.__dict__.get("_structured_filters")):
             folder_key = self._item_to_folder_key.get(item_id, "")
             self._set_cached_folder_open(folder_key, state)
             self._notify_ui_state_changed()
@@ -1728,6 +1728,8 @@ class SessionTree(ttk.Frame):
         beim Leeren wird der Zustand von vor der Suche wiederhergestellt.
         """
         q = query.strip().lower()
+        filters = self.__dict__.get("_structured_filters", {})
+        active = bool(q or filters)
         self._active_filter_query = query
 
         # Checkbox-Zustände vor dem Neuaufbau sichern (item_id ändert sich)
@@ -1735,13 +1737,14 @@ class SessionTree(ttk.Frame):
         checked_keys = set(selected)
 
         # Zustand beim ersten Suchzeichen einmalig sichern
-        if q and self._pre_search_open_folders is None:
+        if active and self._pre_search_open_folders is None:
             self._pre_search_open_folders = self.get_open_folders()
 
-        if q:
+        if active:
+            from .session_filters import matches_filters
             filtered = [
                 s for s in self._sessions
-                if (
+                if matches_filters(s, filters) and (
                     q in s.display_name.lower()
                     or q in s.hostname.lower()
                     or q in "/".join(s.folder_path).lower()
@@ -1760,10 +1763,10 @@ class SessionTree(ttk.Frame):
             open_folders = self._pre_search_open_folders
             self._pre_search_open_folders = None
 
-        available_keys = {s.key for s in self._sessions}
+        available = {s.key: s for s in self._sessions}
         visible_keys = {s.key for s in filtered}
-        self._hidden_selected = {key: session for key, session in selected.items() if key in available_keys and key not in visible_keys}
-        self.populate(filtered, open_folders=open_folders, update_open_state=not bool(q))
+        self._hidden_selected = {key: available[key] for key in selected if key in available and key not in visible_keys}
+        self.populate(filtered, open_folders=open_folders, update_open_state=not active)
 
         # Checkbox-Zustände wiederherstellen
         for item_id, session in self._item_to_session.items():
@@ -1816,7 +1819,7 @@ class SessionTree(ttk.Frame):
             s.key for iid, s in self._item_to_session.items() if self._checked.get(iid)
         }
         self._sessions = sessions
-        if self._active_filter_query.strip():
+        if self._active_filter_query.strip() or self.__dict__.get("_structured_filters"):
             self.filter(self._active_filter_query)
             return
         self.populate(sessions, open_folders=open_folders)

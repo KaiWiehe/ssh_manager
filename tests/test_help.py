@@ -192,3 +192,31 @@ def test_details_panel_follows_focus_and_can_be_hidden(app):
     assert str(app._details_panel) in tuple(map(str, app._session_area.panes()))
     toggle_session_details(app)
     assert str(app._details_panel) not in tuple(map(str, app._session_area.panes()))
+
+
+def test_named_filters_combine_criteria_without_overwriting_folder_state(app, monkeypatch):
+    from ssh_manager_app.models import Session
+    from ssh_manager_app.session_filters import SessionFiltersDialog, apply_session_filters
+    monkeypatch.setattr("ssh_manager_app.actions_ui.persist_ui_state", lambda _: None)
+    sessions = [Session("a", "Web", ["Prod"], "a.test", "ops", 2222, "app"),
+                Session("b", "DB", ["Lab"], "b.test", "ops", 22, "app")]
+    app._tree.refresh(sessions)
+    app._tree._open_folders = {"Lab"}
+    editor = SessionFiltersDialog(app)
+    editor.name.set("Prod Ops")
+    editor.fields["source"].set("Eigene Verbindungen")
+    editor.fields["folder"].set("prod")
+    editor.fields["username"].set("ops")
+    editor.fields["port"].set("2222")
+    editor.save()
+    editor.fields["folder"].set("changed")
+    editor.load()
+    assert editor.fields["folder"].get() == "prod"
+    editor.apply()
+    assert {s.key for s in app._tree._item_to_session.values()} == {"a"}
+    assert app._tree.get_open_folders() == {"Lab"}
+    app._tree.refresh(sessions)
+    assert {s.key for s in app._tree._item_to_session.values()} == {"a"}
+    apply_session_filters(app, {}, "")
+    assert len(app._tree._item_to_session) == 2
+    assert app._tree.get_open_folders() == {"Lab"}

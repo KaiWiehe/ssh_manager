@@ -19,7 +19,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 2 | Runbook-Bibliothek | fertig, 0.2.50 |
 | 3 | Runbook-Parameter | fertig, 0.2.51 |
 | 4 | Upload und Verteilung | fertig, 0.2.52 |
-| 7 | Gespeicherte Filter | offen |
+| 7 | Gespeicherte Filter | fertig, 0.2.53 |
 | 9 | Dienstwerkzeuge | offen |
 | 10 | Tunnel-Anwendungsfälle | offen |
 | 11 | Verbindungsdiagnose | offen |
@@ -87,3 +87,9 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   No-Clobber-Link, bei Überschreiben vorhandene Rechte/Besitzer beibehalten.
   277 Tests inkl. lokal ausgeführtem Bash-Installer für beide Modi bestanden;
   keine SSH-Verbindung/Remote-Änderung ausgelöst.
+- Punkt 7: kombinierte Quelle/Ordner/Benutzer/Port-Filter und benannte
+  Ansichten, sichtbare Kriterien und Reset. UI-State enthält Ansichten und
+  aktive Kriterien. Quellenfilter wirken innerhalb aktivierter Quellen.
+  Temporäre Filteransichten verändern den Benutzer-Ordnerzustand nicht;
+  Quellen-Rebuild aktualisiert auch verborgene Auswahlobjekte.
+  250 relevante Tests sowie 10 separate Windows-App-/Hilfetests bestanden.
