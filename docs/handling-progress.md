@@ -16,7 +16,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 6 | Auswahlleiste | fertig, 0.2.47 |
 | 8 | Verbindungsdetails | fertig, 0.2.48 |
 | 13 | Export und Backup | fertig, 0.2.49 |
-| 2 | Runbook-Bibliothek | offen |
+| 2 | Runbook-Bibliothek | fertig, 0.2.50 |
 | 3 | Runbook-Parameter | offen |
 | 4 | Upload und Verteilung | offen |
 | 7 | Gespeicherte Filter | offen |
@@ -69,3 +69,9 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   Sicherung und wiederaufnehmbarem Journal; danach App-Neustart erforderlich.
   231 relevante Tests und vollständige Suite: 531 bestanden, 20 bestehende
   Pillow-Deprecation-Warnungen. Fehler-/Recovery-Tests schreiben nur in Testpfade.
+- Punkt 2: separate Bibliothek mit Suche, Inhalts-/Metadateneditor,
+  Pin/Delete und Ausführung auf expliziter Häkchen-Auswahl. Neue Ausführungs-
+  dialoge zeigen nur Übernahme gespeicherter Einträge, keine Verwaltungsbuttons.
+  205 relevante Tests und 9 separate Windows-Hilfetests bestanden. Ein erster
+  kombinierter GUI-Lauf hing; isolierte Nachprüfung erfolgreich. Verwaltung
+  wird sofort gespeichert, bei Speicherfehler zurückgesetzt.

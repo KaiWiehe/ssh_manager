@@ -994,6 +994,8 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Lokales Skript ausführen…", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions(), "local_script"))
     actions_menu.add_command(label="Serverskript ausführen…", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions(), "remote_script"))
+    from .runbook_library import open_runbook_library
+    actions_menu.add_command(label="Runbook-Bibliothek…", command=lambda: open_runbook_library(self))
     actions_menu.add_command(label="Dateien übertragen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Zertifikate ersetzen…", command=lambda: replace_certificates_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_separator()

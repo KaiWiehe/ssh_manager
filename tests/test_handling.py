@@ -91,3 +91,33 @@ def test_session_details_explain_override_and_alias_without_writes():
     text = session_detail_text(alias, {}, "default")
     assert "SSH-Alias: alias" in text
     assert "kein Benutzerdialog" in text
+
+
+def test_runbook_editor_returns_spec_without_user_or_remote_execution(root):
+    dialog = RemoteCommandDialog(root, 0, run_mode="command", editing=True)
+    dialog._user_var.set("")
+    dialog._command_text.insert("1.0", "uptime")
+    dialog._on_ok()
+    assert dialog.result[1]["command"] == "uptime"
+
+
+def test_runbook_library_search_pin_and_delete_preserve_specs(root):
+    from ssh_manager_app.runbook_library import RunbookLibraryDialog
+    root._initial_toolbar_search_texts = {"remote_command_favorites": [
+        {"name": "Uptime", "mode": "command", "command": "uptime", "note": "Status"},
+        {"name": "Script", "mode": "remote_script", "path": "/opt/run.sh"},
+    ]}
+    library = RunbookLibraryDialog(root)
+    library.list.selection_set("1")
+    with patch("ssh_manager_app.actions_ui.persist_ui_state") as persist:
+        library.pin()
+        assert root._initial_toolbar_search_texts["remote_command_favorites"][1]["pinned"] is True
+        assert root._initial_toolbar_search_texts["remote_command_favorites"][1]["path"] == "/opt/run.sh"
+        persist.assert_called_once_with(root)
+    library.query.set("Status")
+    assert library.list.get_children() == ("0",)
+    library.list.selection_set("0")
+    with patch("ssh_manager_app.runbook_library.messagebox.askyesno", return_value=False):
+        library.delete()
+    assert len(library.items) == 2
+    library.destroy()

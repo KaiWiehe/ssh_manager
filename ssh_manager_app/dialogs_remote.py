@@ -529,11 +529,12 @@ class RemoteFavoriteEditDialog(tk.Toplevel):
 class RemoteCommandDialog(tk.Toplevel):
     """Dialog für Remote-Befehl, Skript-Runbooks, Verlauf und Favoriten."""
 
-    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, history: list[dict] | None = None, favorites: list[dict] | None = None, run_mode: str | None = None):
+    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, history: list[dict] | None = None, favorites: list[dict] | None = None, run_mode: str | None = None, editing: bool = False):
         if run_mode not in (None, "command", "local_script", "remote_script"):
             raise ValueError("Unbekannte Remote-Aufgabe")
         super().__init__(parent)
         self._fixed_mode = run_mode
+        self._editing = editing
         self.title({"command": "Befehl ausführen", "local_script": "Lokales Skript ausführen", "remote_script": "Serverskript ausführen"}.get(run_mode, "Befehl/Skript ausführen"))
         self.geometry("980x760")
         self.minsize(860, 660)
@@ -581,6 +582,8 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Label(mode_frame, text="Benutzername:").grid(row=1, column=0, sticky="w", pady=(8, 0), padx=(0, 8))
         ttk.Entry(mode_frame, textvariable=self._user_var).grid(row=1, column=1, sticky="ew", pady=(8, 0))
         _build_quickselect_buttons(mode_frame, self._quick_users, self._user_var).grid(row=2, column=1, sticky="ew", pady=(6, 0))
+        if self._editing:
+            mode_frame.grid_remove()
 
         source = ttk.LabelFrame(left, text="Skript / Modus", padding=10)
         source.grid(row=1, column=0, sticky="ew", pady=(0, 10))
@@ -684,6 +687,10 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Button(fav_buttons, text="Bearbeiten", command=self._edit_selected_favorite).grid(row=1, column=0, sticky="ew", padx=(0, 3), pady=(0, 4))
         ttk.Button(fav_buttons, text="Anpinnen", command=self._toggle_pin_selected_favorite).grid(row=1, column=1, sticky="ew", padx=(3, 0), pady=(0, 4))
         ttk.Button(fav_buttons, text="Löschen", command=self._delete_selected_favorite, style="Danger.TButton").grid(row=2, column=0, columnspan=2, sticky="ew")
+        if self._fixed_mode or self._editing:
+            for button in fav_buttons.winfo_children():
+                if button.cget("text") != "Übernehmen":
+                    button.grid_remove()
 
         history_box.columnconfigure(0, weight=1); history_box.rowconfigure(0, weight=1)
         self._history_list = tk.Listbox(history_box, height=9)
@@ -700,7 +707,9 @@ class RemoteCommandDialog(tk.Toplevel):
         option_checks = ttk.Frame(options)
         option_checks.grid(row=0, column=0, sticky="w")
         ttk.Checkbutton(option_checks, text="Tab bei Erfolg schließen", variable=self._close_on_success).pack(side="left")
-        ttk.Checkbutton(option_checks, text="Als Favorit speichern", variable=self._save_favorite).pack(side="left", padx=(18, 0))
+        save_favorite_button = ttk.Checkbutton(option_checks, text="Als Favorit speichern", variable=self._save_favorite)
+        if not self._fixed_mode and not self._editing:
+            save_favorite_button.pack(side="left", padx=(18, 0))
         credentials = ttk.Frame(options)
         credentials.grid(row=1, column=0, sticky="w", pady=(8, 0))
         self._sudo_password_var = tk.StringVar()
@@ -714,10 +723,13 @@ class RemoteCommandDialog(tk.Toplevel):
             variable=self._show_sudo_password,
             command=lambda: self._sudo_password_entry.configure(show="" if self._show_sudo_password.get() else "•"),
         ).pack(side="left", padx=(4, 0))
+        if self._editing:
+            option_checks.grid_remove()
+            credentials.grid_remove()
         actions = ttk.Frame(options)
         actions.grid(row=0, column=1, rowspan=2, sticky="se")
         ttk.Button(actions, text="Abbrechen", command=self._on_cancel, width=10).pack(side="left")
-        ttk.Button(actions, text="Ausführen", command=self._on_ok, width=12, style="Accent.TButton").pack(side="left", padx=(6, 0))
+        ttk.Button(actions, text="Übernehmen" if self._editing else "Ausführen", command=self._on_ok, width=12, style="Accent.TButton").pack(side="left", padx=(6, 0))
 
         self._refresh_lists()
         self._update_help()
@@ -917,7 +929,7 @@ class RemoteCommandDialog(tk.Toplevel):
             return
         user_value = self._user_var.get()
         user_value = user_value.strip() if isinstance(user_value, str) else ""
-        if self._user_mode.get() == "all":
+        if self._user_mode.get() == "all" and not self.__dict__.get("_editing", False):
             if not user_value:
                 messagebox.showwarning("Kein Benutzername", "Bitte einen Benutzernamen eingeben oder per Quickselect wählen.", parent=self); return
             if not _USERNAME_RE.fullmatch(user_value):
