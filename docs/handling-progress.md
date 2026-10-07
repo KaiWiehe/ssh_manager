@@ -1,0 +1,51 @@
+# Handling-Verbesserungen – Auftrag vom 07.10.2026
+
+Kai hat alle 16 Punkte aus der Vault-Notiz „SSH-Manager Feature Ideas“, Abschnitt
+07.10.2026, autorisiert. Je Punkt eigener Commit, ein Patch-Versionssprung,
+Syntaxprüfung, relevante Tests und Push auf main. Keine echten Remote-Aktionen
+zum Testen; bestehende untracked Testordner nicht anfassen.
+
+Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
+
+## Status
+
+| Punkt | Aufgabe | Stand |
+|---|---|---|
+| 1 | Drei Remote-Einstiege | fertig, 0.2.45 |
+| 5 | Einheitliche Auswahlregeln | offen |
+| 6 | Auswahlleiste | offen |
+| 8 | Verbindungsdetails | offen |
+| 13 | Export und Backup | offen |
+| 2 | Runbook-Bibliothek | offen |
+| 3 | Runbook-Parameter | offen |
+| 4 | Upload und Verteilung | offen |
+| 7 | Gespeicherte Filter | offen |
+| 9 | Dienstwerkzeuge | offen |
+| 10 | Tunnel-Anwendungsfälle | offen |
+| 11 | Verbindungsdiagnose | offen |
+| 12 | Sammelergebnisse | offen |
+| 14 | Quellenstatus | offen |
+| 15 | Lokales Undo | offen |
+| 16 | Kontextuelle Hilfe | offen |
+
+## Limit und Fortsetzung
+
+Automation: `ssh-manager-handling-auftrag-fortsetzen`, stündlich in diesem Chat.
+Unter 25 % verbleibendem Fünf-Stunden- oder Wochenbudget nach sicherem
+Zwischenstand pausieren; betroffene Fenster und Resetzeiten hier festhalten.
+Erst nach vollständiger Auffüllung der betroffenen Fenster automatisch fortsetzen.
+Keine Resetgutschrift verwenden. Aktuell keine Limitpause.
+
+Die Automation nach vollständigem Abschluss beenden, den Chat offen lassen.
+Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
+
+## Prüfungen und Entscheidungen
+
+- Ausgangsversion 0.2.44; Branch main. Bestehende untracked pytest-Ordner vorhanden.
+- Python: `.venv/Scripts/python.exe`; Tests mit `-p no:cacheprovider` und
+  eigenem, repo-lokalem `--basetemp`. Fallow entfällt ohne package.json.
+- Punkt 1: drei eigene Aufgaben über Aktionen-Menü, Skripte zusätzlich im
+  Session-Kontextmenü. Unpassende gespeicherte Einträge wechseln den Modus nicht
+  stillschweigend. Favoriten anderer Modi bleiben erhalten. Vor-/Nach-Befehle
+  unter „Erweiterter Ablauf“. 211 Tests bestanden (handling, logic, tree),
+  Syntax und Versionskonsistenz erfolgreich. Windows-Tk-Dialoge geprüft.

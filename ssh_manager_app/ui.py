@@ -329,10 +329,10 @@ def open_tunnel_callback(app, session=None) -> None:
     open_tunnel(app, session=session)
 
 
-def run_remote_command_callback(app, sessions) -> None:
+def run_remote_command_callback(app, sessions, run_mode="command") -> None:
     from .actions_remote import run_remote_command
 
-    run_remote_command(app, sessions)
+    run_remote_command(app, sessions, run_mode=run_mode)
 
 
 def restart_servers_callback(app, sessions) -> None:
@@ -989,6 +989,8 @@ def build_main_ui(self) -> None:
     actions_menu.add_command(label="Server neu starten…", command=lambda: restart_servers_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))
+    actions_menu.add_command(label="Lokales Skript ausführen…", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions(), "local_script"))
+    actions_menu.add_command(label="Serverskript ausführen…", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions(), "remote_script"))
     actions_menu.add_command(label="Dateien übertragen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_command(label="Zertifikate ersetzen…", command=lambda: replace_certificates_callback(self, self._tree.get_selected_sessions()))
     actions_menu.add_separator()
@@ -1172,6 +1174,7 @@ def build_main_ui(self) -> None:
         on_open_tunnel=lambda session=None: open_tunnel_callback(self, session),
         on_open_in_winscp=lambda sessions: open_in_winscp_callback(self, sessions),
         on_run_remote_command=lambda sessions: run_remote_command_callback(self, sessions),
+        on_run_script=lambda sessions, mode: run_remote_command_callback(self, sessions, mode),
         on_restart_servers=lambda sessions: restart_servers_callback(self, sessions),
         on_deploy_certificate_files=lambda sessions: deploy_certificate_files_callback(self, sessions),
         on_replace_certificates=lambda sessions: replace_certificates_callback(self, sessions),

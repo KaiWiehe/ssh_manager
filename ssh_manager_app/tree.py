@@ -74,6 +74,7 @@ class SessionTree(ttk.Frame):
         on_open_tunnel=None,                # Callable[[list[Session]], None] | None
         on_open_in_winscp=None,             # Callable[[list[Session]], None] | None
         on_run_remote_command=None,         # Callable[[list[Session]], None] | None
+        on_run_script=None,                 # Callable[[list[Session], str], None] | None
         on_restart_servers=None,            # Callable[[list[Session]], None] | None
         on_deploy_certificate_files=None,   # Callable[[list[Session]], None] | None
         on_replace_certificates=None,       # Callable[[list[Session]], None] | None
@@ -117,6 +118,7 @@ class SessionTree(ttk.Frame):
         self._on_open_tunnel = on_open_tunnel
         self._on_open_in_winscp = on_open_in_winscp
         self._on_run_remote_command = on_run_remote_command
+        self._on_run_script = on_run_script
         self._on_restart_servers = on_restart_servers
         self._on_deploy_certificate_files = on_deploy_certificate_files
         self._on_replace_certificates = on_replace_certificates
@@ -1511,6 +1513,10 @@ class SessionTree(ttk.Frame):
                     label=f"Befehl auf Auswahl ausführen… ({len(selected_runnable)})",
                     command=lambda ss=selected_runnable: self._on_run_remote_command(ss),
                 )
+        run_script = self.__dict__.get("_on_run_script")
+        if run_script:
+            for mode, label in (("local_script", "Lokales Skript ausführen…"), ("remote_script", "Serverskript ausführen…")):
+                tools_menu.add_command(label=label, command=lambda m=mode, s=session: run_script([s], m))
         restart_servers = getattr(self, "_on_restart_servers", None)
         if restart_servers and session.hostname:
             tools_menu.add_command(

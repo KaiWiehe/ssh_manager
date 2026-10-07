@@ -197,7 +197,7 @@ def resolve_users_for_sessions(app, sessions: list[Session], mode: str) -> list[
     return resolved
 
 
-def run_remote_command(app, sessions: list[Session]) -> None:
+def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = None) -> None:
     """Führt einen Remote-Befehl auf einem oder mehreren Hosts aus."""
     runnable = [session for session in sessions if session.hostname]
     if not runnable:
@@ -212,6 +212,10 @@ def run_remote_command(app, sessions: list[Session]) -> None:
     }
     remote_history = list(app._initial_toolbar_search_texts.get("remote_command_history", []))
     remote_favorites = list(app._initial_toolbar_search_texts.get("remote_command_favorites", []))
+    if run_mode is not None:
+        dialog_kwargs["run_mode"] = run_mode
+        remote_history = [item for item in remote_history if item.get("mode", "command") == run_mode]
+        remote_favorites = [item for item in remote_favorites if item.get("mode", "command") == run_mode]
     if remote_history:
         dialog_kwargs["history"] = remote_history
     if remote_favorites:
@@ -230,7 +234,8 @@ def run_remote_command(app, sessions: list[Session]) -> None:
         sudo_password = password_result[0] if password_result else ""
         command = spec.get("command", "")
     if hasattr(dialog, "_favorites"):
-        app._initial_toolbar_search_texts["remote_command_favorites"] = list(dialog._favorites)[:25]
+        other_favorites = [item for item in app._initial_toolbar_search_texts.get("remote_command_favorites", []) if run_mode is not None and item.get("mode", "command") != run_mode]
+        app._initial_toolbar_search_texts["remote_command_favorites"] = (list(dialog._favorites) + other_favorites)[:25]
     app._initial_toolbar_search_texts["last_remote_command"] = command
     history = list(app._initial_toolbar_search_texts.get("remote_command_history", []))
     label = spec.get("name") or spec.get("path") or (command.splitlines()[0] if command else "Ausführung")

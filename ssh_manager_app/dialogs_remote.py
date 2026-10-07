@@ -529,9 +529,12 @@ class RemoteFavoriteEditDialog(tk.Toplevel):
 class RemoteCommandDialog(tk.Toplevel):
     """Dialog für Remote-Befehl, Skript-Runbooks, Verlauf und Favoriten."""
 
-    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, history: list[dict] | None = None, favorites: list[dict] | None = None):
+    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, history: list[dict] | None = None, favorites: list[dict] | None = None, run_mode: str | None = None):
+        if run_mode not in (None, "command", "local_script", "remote_script"):
+            raise ValueError("Unbekannte Remote-Aufgabe")
         super().__init__(parent)
-        self.title("Befehl/Skript ausführen")
+        self._fixed_mode = run_mode
+        self.title({"command": "Befehl ausführen", "local_script": "Lokales Skript ausführen", "remote_script": "Serverskript ausführen"}.get(run_mode, "Befehl/Skript ausführen"))
         self.geometry("980x760")
         self.minsize(860, 660)
         self.result: tuple[str, dict, bool, bool] | None = None
@@ -553,8 +556,8 @@ class RemoteCommandDialog(tk.Toplevel):
         root.rowconfigure(1, weight=1)
         build_dialog_header(
             root,
-            f"Remote-Ausführung für {target_count} Host(s)",
-            "Befehl oder Skript konfigurieren und optional aus Favoriten oder Verlauf übernehmen.",
+            f"{self.title()} für {target_count} Host(s)",
+            "Eingaben für diese Aufgabe konfigurieren. Gespeicherte Einträge können übernommen werden.",
         )
 
         body = ttk.PanedWindow(root, orient="horizontal")
@@ -583,12 +586,15 @@ class RemoteCommandDialog(tk.Toplevel):
         source.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         source.columnconfigure(0, weight=1)
 
-        self._run_mode = tk.StringVar(value="command")
+        self._run_mode = tk.StringVar(value=self._fixed_mode or "command")
         mode_row = ttk.Frame(source)
         mode_row.grid(row=0, column=0, sticky="ew")
         ttk.Radiobutton(mode_row, text="Nur Remote-Befehl", variable=self._run_mode, value="command", command=self._update_help).pack(side="left", padx=(0, 18))
         ttk.Radiobutton(mode_row, text="Lokales Skript hochladen", variable=self._run_mode, value="local_script", command=self._update_help).pack(side="left", padx=(0, 18))
         ttk.Radiobutton(mode_row, text="Skript liegt auf Server", variable=self._run_mode, value="remote_script", command=self._update_help).pack(side="left")
+        if self._fixed_mode:
+            mode_row.grid_remove()
+            source.configure(text=self.title())
 
         self._settings_container = ttk.Frame(source)
         self._settings_container.grid(row=1, column=0, sticky="ew", pady=(10, 0))
@@ -657,6 +663,9 @@ class RemoteCommandDialog(tk.Toplevel):
         self._after_label.grid(row=4, column=0, sticky="w")
         self._after_text = scrolledtext.ScrolledText(flow, wrap="word", height=3)
         self._after_text.grid(row=5, column=0, sticky="nsew", pady=(2, 0))
+        self._advanced_flow = tk.BooleanVar(value=False)
+        self._advanced_flow_button = ttk.Checkbutton(flow, text="Erweiterter Ablauf: Vor-/Nach-Befehl", variable=self._advanced_flow, command=self._update_help)
+        self._advanced_flow_button.grid(row=6, column=0, sticky="w", pady=(8, 0))
 
         library = ttk.Notebook(right)
         library.grid(row=0, column=0, sticky="nsew")
@@ -712,7 +721,12 @@ class RemoteCommandDialog(tk.Toplevel):
 
         self._refresh_lists()
         self._update_help()
-        self._command_text.focus()
+        if self._fixed_mode == "remote_script":
+            self._path_entry.focus_set()
+        elif self._fixed_mode == "local_script":
+            self._file_button.focus_set()
+        else:
+            self._command_text.focus()
 
     def _refresh_lists(self) -> None:
         if hasattr(self, "_favorites_list"):
@@ -781,6 +795,16 @@ class RemoteCommandDialog(tk.Toplevel):
             self._set_text_state(self._after_text, True)
             self._set_text_state(self._command_text, False)
             self._command_label.configure(text="Remote-Befehl — bei Skript-Ausführung deaktiviert")
+        # Separate task entries show only relevant fields. The legacy dialog
+        # remains available for older integrations and saved specifications.
+        if self.__dict__.get("_fixed_mode"):
+            script = mode != "command"
+            show_advanced = script and self._advanced_flow.get()
+            for widget in (self._before_label, self._before_text, self._after_label, self._after_text):
+                widget.grid() if show_advanced else widget.grid_remove()
+            for widget in (self._command_label, self._command_text):
+                widget.grid_remove() if script else widget.grid()
+            self._advanced_flow_button.grid() if script else self._advanced_flow_button.grid_remove()
 
     def _current_spec(self, *, include_metadata: bool = False) -> dict:
         mode = self._run_mode.get() if hasattr(self, "_run_mode") else "command"
@@ -815,7 +839,12 @@ class RemoteCommandDialog(tk.Toplevel):
         except (ValueError, TypeError):
             messagebox.showwarning("Ungültiges Runbook", "Modus oder Interpreter wird nicht unterstützt. Der gespeicherte Eintrag bleibt unverändert.", parent=self)
             return
+        if self.__dict__.get("_fixed_mode") and item.get("mode", "command") != self._fixed_mode:
+            messagebox.showinfo("Andere Aufgabe", "Dieses Runbook gehört zu einer anderen Aufgabe. Öffne den passenden Skript- oder Befehl-Einstieg.", parent=self)
+            return
         self._run_mode.set(item.get("mode", "command"))
+        if self.__dict__.get("_fixed_mode"):
+            self._advanced_flow.set(bool(item.get("before_command") or item.get("after_command")))
         self._interpreter.set(item.get("interpreter", "bash"))
         self._arguments_var.set(item.get("arguments", ""))
         local_path = item.get("local_path", "")
