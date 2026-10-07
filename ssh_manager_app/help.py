@@ -225,6 +225,62 @@ def shortcut_table(mapping: dict[str, str]) -> str:
     )
 
 
+TOPIC_ADDITIONS = {
+    "start": "Auswahl prüfen\nDie Auswahlleiste nennt auch ausgeblendete Suchziele. ‚Auswahl prüfen‘ zeigt alle angehakten Hosts und erlaubt gezieltes Entfernen. Suche und Filter leeren keine bestehenden Häkchen. ‚Auswahl leeren‘ entfernt auch verborgene Häkchen.",
+    "sources": "Quellenstatus und Übernahme\nDatei → Quellenstatus zeigt den letzten Leseversuch, Dauer, Anzahl und Hinweise. Fehlende Quelle, vorhandene leere Quelle und Lesefehler sind verschiedene Zustände. Nur die gewählte Quelle neu laden liest die anderen Quellen nicht erneut. Bei Fehlern bleibt deren letzter nutzbarer Stand sichtbar. WinSCP-/FileZilla-Übernahme erzeugt eine eigene App-Kopie der Verbindungsdaten und App-Notiz; Zugangsdaten werden nicht kopiert. Aliasübernahme bleibt von ~/.ssh/config abhängig.",
+    "organize": "Details und Rückgängig\nDas zuschaltbare Detailpanel folgt der Fokuszeile und nennt Quelle sowie Benutzerherkunft. Ctrl+Z (Standard) oder Datei → Lokale Änderung rückgängig stellt lokale Verbindungen, Notizen, Farben und zugehörige App-Metadaten wieder her. Mehrere Änderungen einer Sammelaktion zählen als ein Schritt. Bis zu 20 Schritte bleiben während der App-Sitzung verfügbar; nach Neustart ist der Verlauf leer. Remote-Aktionen und externe Quelldateien werden nicht rückgängig gemacht.",
+    "remote": "Drei Aufgaben\nAktionen → Remote-Befehl ausführen, Lokales Skript ausführen und Serverskript ausführen öffnen getrennte Aufgaben. Ein gespeicherter Eintrag wechselt die Aufgabe nicht still. Vor-/Nach-Befehle erscheinen erst unter ‚Erweiterter Ablauf‘. Gespeicherte Runbooks werden in Aktionen → Runbook-Bibliothek verwaltet. Eingabeparameter werden vor der Ausführung abgefragt; Geheimwerte bleiben außerhalb des Verlaufs.",
+    "server": "Einfacher Upload und Dienstwerkzeuge\n‚Datei hochladen‘ verwendet genau einen Host, eine Datei und einen beschreibbaren Zielordner, ohne sudo, Rechteeditor oder Folgebefehl. Neue Dateien sind nur für den Benutzer zugänglich; bei Überschreiben bleiben bestehende Besitzer/Rechte erhalten. ‚Dateien verteilen‘ ist der Mehrzielablauf mit expliziten Rechten/sudo. Dienststatus, Dienstneustart und Dienstlogs sind separate Aktionen; ein Dienstneustart startet keinen Server neu.",
+    "data": "Verbindungsliste oder App-Backup\nCSV/XLSX exportiert die aktuelle Ansicht, die vollständige Häkchen-Auswahl oder alle geladenen Verbindungen. Ein Listenexport ist kein Backup. Datei → App sichern enthält Einstellungen, eigene Sessions/Alias-Einträge, App-Notizen und UI-State. WinSCP, FileZilla, SSH Config und SSH-Schlüssel sind nicht enthalten. Wiederherstellen zeigt eine Vorschau und legt vorher ein Sicherheitsbackup an. Danach muss die App neu gestartet werden.",
+}
+TOPICS = tuple(HelpTopic(topic.id, topic.title, topic.body + ("\n\n" + TOPIC_ADDITIONS[topic.id] if topic.id in TOPIC_ADDITIONS else "")) for topic in TOPICS) + (
+    HelpTopic("runbooks", "Runbook-Bibliothek", """Verwalten und ausführen
+Aktionen → Runbook-Bibliothek öffnet gespeicherte Befehle und Skripte. Suchen, Inhalt bearbeiten, Name/Notiz pflegen, Parameter definieren, anpinnen oder löschen sind lokale Verwaltungsaktionen. ‚Neu‘ bestimmt genau eine Aufgabe. Bis zu 25 Einträge sind möglich.
+
+Ausführen
+Zuerst einen Eintrag auswählen und im Hauptfenster Zielhosts anhaken. ‚Ausführen‘ übernimmt das Runbook in den passenden Aufgabendialog. Eingaben, Benutzer und aktuelle Hostliste prüfen; die endgültige Vorschau muss bestätigt werden. Verwalten startet keine Remote-Aktion."""),
+    HelpTopic("parameters", "Runbook-Eingabeformulare", """Parameter definieren
+In der Bibliothek ‚Parameter‘ öffnen. Jeder Parameter hat einen Namen, eine Beschriftung, einen Typ, optional einen Standard und ein Pflichtfeld. Namen bestehen aus Großbuchstaben, Ziffern und Unterstrichen. Text, ganze Zahl, Port, absoluter Pfad und Auswahlliste werden geprüft.
+
+Im Runbook verwenden
+Parameter stehen als Umgebungsvariablen RUNBOOK_NAME zur Verfügung. Beispiel: Name SERVICE wird im Befehl als "$RUNBOOK_SERVICE" gelesen. Werte werden als Daten sicher gequotet, nicht durch Text-Ersetzung in Befehle eingesetzt.
+
+Geheimwerte
+Geheimfelder haben keinen gespeicherten Standard. Werte werden erst für diesen Lauf eingegeben, in der Vorschau verborgen und nicht in Favoriten/History gespeichert. Lokal erzeugte Skriptinhalte sind benutzergebunden geschützt. Remote-Befehle müssen selbst vermeiden, Geheimwerte auszugeben."""),
+    HelpTopic("filters", "Gespeicherte Filter und Ansichten", """Ansicht eingrenzen
+‚Filter / Ansichten‘ kombiniert Quelle, Ordner, Benutzer und Port mit der Hauptsuche. Ordner und Benutzer werden als Teiltext gesucht; Port und Quelle als genaue Werte. Es erscheinen nur bereits aktivierte Quellen.
+
+Ansicht speichern
+Einen Namen eingeben und die Kriterien speichern. Laden übernimmt deren Suchtext/Kriterien, Anwenden setzt den Filter im Baum. Eine benannte Ansicht kann gelöscht werden. Aktive Kriterien werden oberhalb des Baums angezeigt; Zurücksetzen entfernt sie. Häkchen für ausgeblendete Ziele bleiben bestehen. Temporär geöffnete Trefferordner verändern den gemerkten normalen Ordnerzustand nicht."""),
+    HelpTopic("tunnels", "Tunnel nach Anwendungsfall", """Dienst auf dem SSH-Server
+Direkter Zugriff leitet localhost:LOKALPORT auf deinem PC zum Zielport auf localhost des SSH-Servers. Kein interner Zielserver ist nötig.
+
+Interner Dienst über SSH-Server
+Der SSH-Server erreicht den eingegebenen internen Zielserver. Dieser ist ausdrücklich erforderlich. Die Vorschau zeigt PC → SSH-Server → Ziel.
+
+Ports und Laufzeit
+Vorlagen für PostgreSQL, MySQL, HTTP und HTTPS setzen passende Ports; danach sind sie editierbar. Der lokale Port muss frei sein. Das Terminal hält den Tunnel offen; beende dessen SSH-Prozess zum Schließen. Es gibt hier keine Reverse-Tunnel oder SOCKS-Proxys."""),
+    HelpTopic("diagnosis", "Verbindungsdiagnose", """Getrennte Schritte
+Lokaler SSH-Client, Aliasauflösung, DNS und TCP werden unabhängig beurteilt. Ein offener Port bestätigt keine Anmeldung. Bei konfiguriertem Proxy wird ein direkter TCP-Test zum Ziel ausgelassen, weil er den Proxy umgehen würde.
+
+Optionale Anmeldung
+Die zusätzliche SSH-Anmeldung muss ausdrücklich aktiviert werden. Sie verwendet vorhandene Schlüssel ohne Passwortabfrage, führt nur true aus und verändert keine bekannten Hostschlüssel. Unbekannte Hostschlüssel führen zu Fehlern. Feste Benutzer und SSH-Aliase haben Vorrang vor dem Fallback-Benutzer. Maximal acht Ziele werden parallel geprüft."""),
+    HelpTopic("services", "Dienststatus, Neustart und Logs", """Eine Aufgabe pro Aktion
+Dienststatus zeigt den systemd-Status; ein inaktiver Dienst ist eine erfolgreich abgefragte Information. Dienstneustart startet ausschließlich die gewählte Unit und prüft danach ihren aktiven Zustand. Dienstlogs zeigt eine begrenzte Zahl der letzten journalctl-Zeilen, ohne dauerhaften Live-Stream.
+
+Ziele und Rechte
+Hosts im Hauptfenster anhaken, Dienstnamen und sudo-Bedarf wählen, Vorschau prüfen. sudo ist für Neustarts vorbelegt und explizit änderbar. Ein optionales Passwort gilt nur für diesen Lauf. Die Werkzeuge setzen systemd/journalctl auf dem Zielhost voraus."""),
+    HelpTopic("results", "Ergebnisse von Sammelaktionen", """Belegter Abschluss
+‚Terminal gestartet‘ bestätigt nur den Start. ‚Läuft‘ stammt aus dem gestarteten Skript. Erfolg/Fehler basiert auf dem Exit-Code des Remote-Aufrufs bzw. Upload-Ablaufs. Der Nachweis erscheint vor einem anschließenden interaktiven Terminal. Ohne Rückmeldung bleibt der Status unbekannt; das Schließen der Übersicht stoppt keine Aufgabe.
+
+Erneut vorbereiten
+Nur bestätigte fehlgeschlagene Hosts werden übernommen, nach zusätzlicher Bestätigung und erneuter Vorschau. Erfolgreiche oder unbekannte Hosts sind ausgeschlossen. Auch ein fehlgeschlagener Ablauf kann Teilschritte verändert haben. Dateien, Schlüssel und Rechte erneut wählen/prufen; Geheimwerte erneut eingeben. ‚Letzte Sammelergebnisse‘ öffnet die jüngste unterstützte Aktion dieser App-Sitzung.
+
+Geltungsbereich
+Remote-Befehle/Skripte, Dienstaktionen, Upload/Verteilung, Zertifikatstausch und SSH-Key-Aktionen liefern Rückmeldungen. Serverneustarts haben ihre eigene bestehende Überwachung. Interaktive Verbindungen und Tunnel werden nicht als abgeschlossene Remote-Aufträge bewertet."""),
+)
+
+
 def topic_body(topic: HelpTopic, mapping: dict[str, str]) -> str:
     return topic.body.replace("{shortcuts}", shortcut_table(mapping))
 
@@ -237,7 +293,7 @@ def search_topics(query: str, mapping: dict[str, str]) -> list[HelpTopic]:
     )]
 
 
-def open_help(app) -> None:
+def open_help(app, topic_id=None):
     window = getattr(app, "_help_window", None)
     if window is None or not window.winfo_exists():
         window = HelpWindow(app)
@@ -246,6 +302,9 @@ def open_help(app) -> None:
     window.lift()
     window.refresh()
     window.search_entry.focus_set()
+    if topic_id is not None:
+        window.show_topic(topic_id)
+    return window
 
 
 class HelpWindow(tk.Toplevel):
@@ -306,8 +365,20 @@ class HelpWindow(tk.Toplevel):
 
     def close(self, _event=None):
         self.app._help_window = None
+        previous = self.__dict__.get("_return_grab")
         self.destroy()
+        if previous is not None and previous.winfo_exists():
+            previous.grab_set()
+            previous.lift()
         return "break"
+
+    def show_topic(self, topic_id):
+        if topic_id not in {topic.id for topic in TOPICS}:
+            raise ValueError("Unbekanntes Hilfethema.")
+        self.selected_id = topic_id
+        self.query.set("")
+        self._filter()
+        self.text.yview_moveto(0)
 
     def _on_focus(self, event):
         if event.widget is self:

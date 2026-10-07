@@ -5,12 +5,13 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .dialogs_remote import RemoteCommandDialog, RemoteFavoriteEditDialog
-from .ui_components import fit_window_to_parent
+from .ui_components import install_context_help, fit_window_to_parent
 
 
 class RunbookLibraryDialog(tk.Toplevel):
     def __init__(self, app):
         super().__init__(app)
+        install_context_help(self, "runbooks")
         self.app = app
         self.title("Runbook-Bibliothek")
         self.transient(app)
@@ -31,13 +32,21 @@ class RunbookLibraryDialog(tk.Toplevel):
         self.list.pack(fill="both", expand=True)
         actions = ttk.Frame(frame)
         actions.pack(fill="x", pady=10)
+        for column in range(4):
+            actions.columnconfigure(column, weight=1)
         new_menu = tk.Menu(actions, tearoff=False)
         for mode, label in (("command", "Befehl"), ("local_script", "Lokales Skript"), ("remote_script", "Serverskript")):
             new_menu.add_command(label=label, command=lambda m=mode: self.edit_content(m))
-        ttk.Menubutton(actions, text="Neu…", menu=new_menu).pack(side="left")
-        for label, callback in (("Inhalt…", self.edit_content), ("Name/Notiz…", self.metadata), ("Parameter…", self.parameters),
-                                ("An-/abpinnen", self.pin), ("Löschen", self.delete), ("Ausführen…", self.run)):
-            ttk.Button(actions, text=label, command=callback).pack(side="left", padx=(5, 0))
+        ttk.Menubutton(actions, text="Neu…", menu=new_menu).grid(row=0, column=0, sticky="ew", padx=3, pady=3)
+        self.action_buttons = {}
+        for index, (label, callback) in enumerate((("Inhalt…", self.edit_content), ("Name/Notiz…", self.metadata), ("Parameter…", self.parameters),
+                                ("An-/abpinnen", self.pin), ("Löschen", self.delete), ("Ausführen…", self.run)), 1):
+            button = ttk.Button(actions, text=label, command=callback)
+            button.grid(row=index // 4, column=index % 4, sticky="ew", padx=3, pady=3)
+            self.action_buttons[label] = button
+        self.disabled_reason = tk.StringVar()
+        ttk.Label(frame, textvariable=self.disabled_reason, wraplength=660).pack(anchor="w", pady=(0, 8))
+        self.list.bind("<<TreeviewSelect>>", lambda _: self.update_controls())
         ttk.Button(frame, text="Schließen", command=self.destroy).pack(anchor="e")
         self.refresh()
         fit_window_to_parent(self, app, 780, 480, min_width=620, min_height=340)
@@ -54,9 +63,19 @@ class RunbookLibraryDialog(tk.Toplevel):
             if query and query not in f"{name} {item.get('note', '')} {item.get('mode', 'command')}".casefold():
                 continue
             self.list.insert("", "end", iid=str(index), text=("★ " if item.get("pinned") else "") + name,
-                             values=(item.get("mode", "command"), item.get("note", "")))
+                             values=({"command": "Befehl", "local_script": "Lokales Skript", "remote_script": "Serverskript"}.get(item.get("mode", "command"), "Befehl"), item.get("note", "")))
         if keep and self.list.exists(keep):
             self.list.selection_set(keep)
+        self.update_controls()
+
+    def update_controls(self):
+        selected = self.selected_index() is not None
+        tree = self.app.__dict__.get("_tree")
+        hosts = bool(tree and tree.get_selected_sessions())
+        for label, button in self.action_buttons.items():
+            enabled = selected and (hosts if label == "Ausführen…" else True)
+            button.configure(state="normal" if enabled else "disabled")
+        self.disabled_reason.set("Zuerst ein Runbook auswählen; dessen Inhalt und Metadaten werden dann bearbeitbar." if not selected else "Ausführen gesperrt: mindestens einen Host im Hauptfenster anhaken." if not hosts else "Ausführen öffnet die Aufgabe mit erneuter Host- und Befehlsvorschau.")
 
     def selected_index(self):
         selection = self.list.selection()

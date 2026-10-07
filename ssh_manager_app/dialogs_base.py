@@ -5,7 +5,7 @@ from tkinter import messagebox, ttk
 from typing import Optional
 
 from .constants import DEFAULT_USER, QUICK_USERS
-from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent, set_validation_state
+from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent, set_validation_state
 
 _USERNAME_RE = __import__("re").compile(r"^(?!-)[A-Za-z0-9._-]+$")
 _HOSTNAME_RE = __import__("re").compile(r"^(?!-)[A-Za-z0-9._:-]+$")
@@ -45,6 +45,7 @@ class UserDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, title: str = "Benutzername auswählen", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, allow_remember: bool = False, remember_label: str = "Benutzer für diese Verbindung merken"):
         super().__init__(parent)
+        install_context_help(self, "sources")
         self.title(title)
         self.resizable(False, False)
         self.result = None

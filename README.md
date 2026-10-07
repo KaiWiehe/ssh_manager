@@ -89,7 +89,7 @@ Standardmäßig werden alle ausgewählten Hosts gleichzeitig gestartet. Mit **Gl
 
 ## Zertifikatsrechte, Pfade und CSV-Export
 
-Beim Datei-Upload wählt **Dateibesitzer und Rechte…** einen Dienstbenutzer für alle Hosts oder je Host, mit konfigurierten Quick-Users und freier Eingabe. Der Dateibesitzer ist unabhängig vom SSH-Anmeldebenutzer; seine primäre Gruppe wird verwendet. Neue Dateien bekommen standardmäßig **0600**. Je Datei sind auch Gruppenrechte oder öffentliche Leserechte wählbar; **0644 nur für öffentliche Zertifikate** verwenden. Vorhandene Besitzer/Rechte bleiben erhalten, außer die Änderung wird ausdrücklich aktiviert. Die Installation bereitet Metadaten vor und ersetzt die Zieldatei atomar; bestehende Symlinks bleiben erhalten.
+Bei **Dateien verteilen** wählt **Dateibesitzer und Rechte…** einen Dienstbenutzer für alle Hosts oder je Host, mit konfigurierten Quick-Users und freier Eingabe. Der Dateibesitzer ist unabhängig vom SSH-Anmeldebenutzer; seine primäre Gruppe wird verwendet. Neue Dateien bekommen standardmäßig **0600**. Je Datei sind auch Gruppenrechte oder öffentliche Leserechte wählbar; **0644 nur für öffentliche Zertifikate** verwenden. Vorhandene Besitzer/Rechte bleiben erhalten, außer die Änderung wird ausdrücklich aktiviert. Die Installation bereitet Metadaten vor und ersetzt die Zieldatei atomar; bestehende Symlinks bleiben erhalten.
 
 Zertifikat-Such- und Zielpfade werden normalisiert; Steuerzeichen und `..`-Segmente sind unzulässig. Breite Pfade wie `/etc` bleiben nach einer Warnung erlaubt. Die reine Zertifikatssuche arbeitet mit höchstens acht parallelen Hosts. Übertragungs- und Neustartformulare sind bei kleinen Fenstern scrollbar, die Aktionsbuttons bleiben sichtbar.
 
@@ -104,6 +104,10 @@ Beim Umbenennen oder Verschieben in einen vorhandenen Ordner muss das Zusammenf�
 **F1**, **Hilfe → Hilfe öffnen** oder **„Hilfe öffnen“ in der Befehlspalette**
 öffnet ein separates, nichtmodales Hilfefenster. Links stehen die Themen, rechts
 die Erklärungen; die Suche berücksichtigt Titel und vollständige Hilfetexte.
+**Was passiert hier?** in einem Aufgabendialog öffnet direkt dessen Hilfethema.
+Bei modalen Dialogen wird nach dem Schließen der Hilfe die Bedienung an den
+Dialog zurückgegeben. Gesperrte Aktionen nennen ihre Voraussetzungen.
+
 Die Hilfe erklärt alle Aktionen, Quellen, Einstellungen und die Tastaturbedienung
 und zeigt aktuelle sowie voreingestellte App-Kürzel. F1 kann unter
 **Einstellungen → Tastenkürzel** geändert werden. **Escape** schließt die Hilfe.
@@ -127,7 +131,13 @@ angehakte Session bevorzugt, ansonsten die Kontextzeile.
 
 ## Remote-Befehle und Skripte
 
-Über **Remote-Befehl ausführen** kann eine Auswahl von Hosts mit einer Befehlskette gestartet werden. Für die komplette Befehlskette wird ein Benutzer verwendet.
+**Runbook-Bibliothek…** trennt Anlegen, Inhalt, Name/Notiz, Parameter, Anpinnen
+und Löschen von der Ausführung. Parameterformulare prüfen Text, Zahlen, Ports,
+absolute Pfade und Auswahllisten. Das Runbook liest sie über
+`"$RUNBOOK_NAME"`; Geheimwerte werden erst für den Lauf eingegeben und weder
+in Favoriten noch im Verlauf gespeichert.
+
+Das Aktionen-Menü bietet **Remote-Befehl ausführen**, **Lokales Skript ausführen** und **Serverskript ausführen** als getrennte Aufgaben. Die Häkchen-Auswahl bestimmt die Zielhosts. Für die komplette Befehlskette wird ein Benutzer verwendet; Vor-/Nach-Befehle erscheinen unter **Erweiterter Ablauf**.
 
 Modi:
 
@@ -138,6 +148,39 @@ Modi:
 Für Skript-Modi kann optional ein **Vor-Befehl** und **Nach-Befehl** angegeben werden, z. B. `cd /opt/app`, Service-Stop/Start oder Statusausgaben. Im Bestätigungsdialog und oben im Terminal wird die genaue Reihenfolge angezeigt. Während der Ausführung trennt die App den Output mit klaren Headern, z. B. `Output vom Vor-Befehl`, `Output vom Skript`, `Output vom Nach-Befehl`.
 
 Favoriten speichern komplette Runbooks inkl. Modus, Pfaden, Interpreter, Argumenten, Vor-/Nach-Befehl, Name und Notiz. Favoriten können angelegt, bearbeitet, gelöscht und oben angepinnt werden. Zuletzt verwendete Ausführungen bleiben für schnelles Wiederholen verfügbar.
+
+## Weitere Werkzeuge und Handling
+
+- **Auswahl prüfen** zeigt alle angehakten Ziele, auch ausgeblendete Suchtreffer.
+  Ohne Häkchen verwendet F2/Entf die Fokuszeile; bei mehreren Häkchen muss ein
+  eindeutiges Einzelziel gewählt werden.
+- **Details ein-/ausblenden** erklärt Quelle und Benutzerherkunft der Fokuszeile.
+- **Filter / Ansichten** kombiniert Quelle, Ordner, Benutzer und Port mit der
+  Hauptsuche; benannte Ansichten und aktive Kriterien werden gespeichert.
+- **Datei hochladen…** überträgt eine Datei auf einen Host ohne sudo in einen
+  beschreibbaren Ordner. **Dateien verteilen…** bietet mehrere Ziele und
+  ausdrücklich gewählte Rechte/Folgebefehle.
+- **Dienststatus**, **Dienstneustart** und **Dienstlogs** sind getrennte
+  systemd-Aufgaben; ein Dienstneustart startet keinen Server neu.
+- **Tunnel öffnen** unterscheidet direkten und internen Zugriff, bietet
+  Port-Vorlagen und zeigt den Verbindungsweg.
+- **Verbindung diagnostizieren…** trennt DNS, TCP und optional ausdrücklich
+  gestartete SSH-Anmeldung. Ein offener Port ist kein erfolgreicher Login.
+- **Letzte Sammelergebnisse…** zeigt Rückmeldungen je Host. Terminalstart gilt
+  nicht als Remote-Erfolg; nur bestätigte Fehler lassen sich mit erneuter
+  Vorschau wieder vorbereiten. Fehlgeschlagene Abläufe können Teilschritte
+  bereits verändert haben.
+- **Datei → Quellenstatus…** unterscheidet fehlende, leere und fehlerhafte
+  Quellen und lädt gezielt neu. WinSCP/FileZilla können als eigene App-Kopie
+  übernommen werden; Alias-Einträge bleiben von der SSH-Konfiguration abhängig.
+- **Ctrl+Z / Lokale Änderung rückgängig** stellt bis zu 20 lokale Änderungen
+  dieser App-Sitzung einschließlich zugehöriger App-Metadaten wieder her.
+  Remote-Aktionen und externe Quelldateien sind nicht rückgängig machbar.
+- **Verbindungsliste exportieren** bietet Ansicht/Auswahl/alle geladenen
+  Verbindungen. **App sichern / App-Backup wiederherstellen** sichert die vier
+  App-Datendateien, einschließlich Notizen und UI-State, mit Restore-Vorschau
+  und vorherigem Sicherheitsbackup. Externe Quellen und SSH-Schlüssel sind
+  separat zu sichern; nach Restore ist ein App-Neustart nötig.
 
 ## Einstellungen
 

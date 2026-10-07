@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from .ui_components import center_on_parent
+from .ui_components import install_context_help, center_on_parent
 
 
 class SelectionReviewDialog(tk.Toplevel):
@@ -11,6 +11,7 @@ class SelectionReviewDialog(tk.Toplevel):
 
     def __init__(self, app):
         super().__init__(app)
+        install_context_help(self, "start")
         self.title("Häkchen-Auswahl prüfen")
         self.transient(app)
         self.geometry("620x360")

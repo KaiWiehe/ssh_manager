@@ -6,7 +6,7 @@ import shlex
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from .ui_components import fit_window_to_parent
+from .ui_components import install_context_help, fit_window_to_parent
 
 PARAMETER_TYPES = ("text", "integer", "port", "path", "choice")
 
@@ -81,6 +81,7 @@ class RunbookParametersDialog(tk.Toplevel):
     def __init__(self, parent, parameters):
         validate_definitions(parameters)
         super().__init__(parent)
+        install_context_help(self, "parameters")
         self.title("Runbook-Eingaben")
         self.transient(parent)
         self.grab_set()
@@ -144,6 +145,7 @@ class RunbookParametersDialog(tk.Toplevel):
 class ParameterDefinitionsDialog(tk.Toplevel):
     def __init__(self, parent, parameters):
         super().__init__(parent)
+        install_context_help(self, "parameters")
         self.title("Runbook-Parameter definieren")
         self.transient(parent)
         self.grab_set()

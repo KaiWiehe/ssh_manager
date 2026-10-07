@@ -23,6 +23,7 @@ class SshConfigInspectDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, alias: str):
         super().__init__(parent)
+        install_context_help(self, "sources")
         self.title(f"SSH-Konfiguration: {alias}")
         self.resizable(True, True)
         self.geometry("600x450")
@@ -195,6 +196,8 @@ class SettingsView(ttk.Frame):
         header.grid(row=0, column=0, sticky="ew", pady=(0, 16))
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text="Einstellungen", style="SettingsTitle.TLabel").grid(row=0, column=0, sticky="w")
+        from .help import open_help
+        ttk.Button(header, text="Was passiert hier?", command=lambda: open_help(self._app, "settings")).grid(row=0, column=1, sticky="e")
         ttk.Label(header, text="Direkt im Hauptfenster, optimiert für Fullscreen.", style="SettingsSubtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
 
         scroll_wrap = ttk.Frame(content_wrap, style="SettingsContent.TFrame")

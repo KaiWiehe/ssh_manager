@@ -9,7 +9,7 @@ from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons
 from .dialogs_toast import ToastNotification
 from .secret_scripts import clear_password_fields
 from .models import Session
-from .ui_components import build_dialog_header, fit_window_to_parent
+from .ui_components import install_context_help, build_dialog_header, fit_window_to_parent
 
 
 def _resolve_jump_host_default_user(parent: tk.Tk) -> str:
@@ -23,6 +23,7 @@ class JumpHostDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, target_session: Session, sessions: list[Session], open_folders_getter: Callable[[], set[str]] | None = None):
         super().__init__(parent)
+        install_context_help(self, "network", layout="grid")
         self.title("Über Jumphost öffnen")
         self.resizable(True, True)
         self.minsize(760, 520)
@@ -234,6 +235,7 @@ class SshCopyIdDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, target_count: int = 1, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
         super().__init__(parent)
+        install_context_help(self, "sshkeys")
         self.title("SSH Key übertragen")
         self.resizable(False, False)
         self.result: tuple[str, str] | None = None
@@ -345,6 +347,7 @@ class SshRemoveKeyDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, target_count: int = 1, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
         super().__init__(parent)
+        install_context_help(self, "sshkeys")
         self.title("SSH Key entfernen")
         self.resizable(False, False)
         self.result: tuple[str, str] | None = None
@@ -443,6 +446,7 @@ class RemoteFavoriteEditDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, item: dict, title: str = "Favorit bearbeiten"):
         super().__init__(parent)
+        install_context_help(self, "runbooks")
         self.title(title)
         self.geometry("560x420")
         self.minsize(500, 360)
@@ -533,6 +537,7 @@ class RemoteCommandDialog(tk.Toplevel):
         if run_mode not in (None, "command", "local_script", "remote_script"):
             raise ValueError("Unbekannte Remote-Aufgabe")
         super().__init__(parent)
+        install_context_help(self, "remote")
         self._fixed_mode = run_mode
         self._editing = editing
         self.title({"command": "Befehl ausführen", "local_script": "Lokales Skript ausführen", "remote_script": "Serverskript ausführen"}.get(run_mode, "Befehl/Skript ausführen"))
@@ -976,6 +981,7 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, command: str | dict, session_users: list[tuple[Session, str]], close_on_success: bool):
         super().__init__(parent)
+        install_context_help(self, "remote")
         self.title("Remote-Befehl bestätigen")
         self.geometry("760x520")
         self.minsize(680, 420)
@@ -1095,6 +1101,7 @@ class SshTunnelDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, session: Session | None = None, quick_users: list[str] | None = None, default_user: str = DEFAULT_USER):
         super().__init__(parent)
+        install_context_help(self, "tunnels")
         self.title("Tunnel öffnen")
         self.resizable(True, True)
         self.result: tuple[str, int, str, int, str] | None = None

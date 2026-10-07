@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .dns_lookup import DnsLookupResult, normalize_dns_server
-from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent, fit_window_to_parent, set_validation_state
+from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent, fit_window_to_parent, set_validation_state
 
 
 MODE_LABELS = {
@@ -38,6 +38,7 @@ class DnsLookupDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk):
         super().__init__(parent)
+        install_context_help(self, "network")
         self.title("DNS/IP auflösen")
         self.resizable(False, False)
         self.result: tuple[str, str, str | None] | None = None
@@ -136,6 +137,7 @@ class DnsServerDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, target_count: int):
         super().__init__(parent)
+        install_context_help(self, "network")
         self.title("DNS-Server auswählen")
         self.resizable(False, False)
         self.result: str | None = None
@@ -258,6 +260,7 @@ class DnsLookupResultsDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, results: list[DnsLookupResult]):
         super().__init__(parent)
+        install_context_help(self, "network")
         self.title("DNS/IP Ergebnisse")
         self.resizable(True, True)
         self._results = list(results)

@@ -268,6 +268,8 @@ def set_sessions_username(app, sessions: list[Session]) -> None:
         return
     dialog = tk.Toplevel(app)
     dialog.title("Benutzer setzen")
+    from .ui_components import install_context_help
+    install_context_help(dialog, "sources")
     dialog.resizable(False, False)
     dialog.transient(app)
     dialog.grab_set()
@@ -343,6 +345,8 @@ def edit_session_details(app, session: Session) -> None:
     """Bearbeitet festen Benutzer und Notiz für jede Session-Art."""
     dialog = tk.Toplevel(app)
     dialog.title("Verbindung bearbeiten")
+    from .ui_components import install_context_help
+    install_context_help(dialog, "sources")
     dialog.resizable(False, False)
     dialog.transient(app)
     dialog.grab_set()

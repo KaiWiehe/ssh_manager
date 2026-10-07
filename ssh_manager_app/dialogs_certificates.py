@@ -12,7 +12,7 @@ from .certificate_paths import certificate_paths, confirm_broad_certificate_path
 from .dialogs_certificate_permissions import CertificatePermissionsDialog
 from .secret_scripts import clear_password_fields
 from .models import Session
-from .ui_components import build_dialog_header, fit_window_to_parent
+from .ui_components import install_context_help, build_dialog_header, fit_window_to_parent
 
 
 def _shell_single_quote(text: str) -> str:
@@ -77,6 +77,7 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Toplevel, session_users: list[tuple[Session, str]], initial_path: str, sudo_password: str):
         super().__init__(parent)
+        install_context_help(self, "server")
         self.title("Ordner auf Server durchsuchen")
         self.geometry("680x470")
         self.minsize(580, 390)
@@ -239,6 +240,7 @@ class CertificateDeployDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, target_count: int, reference_sessions: list[tuple[Session, str]] | None = None, favorites: list[dict] | None = None, simple: bool = False):
         super().__init__(parent)
+        install_context_help(self, "server")
         self._simple = simple
         self.title("Datei hochladen" if simple else "Dateien verteilen")
         self.geometry("760x590")

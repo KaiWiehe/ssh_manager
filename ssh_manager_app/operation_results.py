@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import uuid
 
-from .ui_components import fit_window_to_parent
+from .ui_components import install_context_help, fit_window_to_parent
 
 _paths = ContextVar("operation_result_paths", default={})
 LABELS = {"prepared": "vorbereitet", "started": "Terminal gestartet", "running": "läuft", "success": "erfolgreich", "failed": "fehlgeschlagen", "unknown": "Status unbekannt"}
@@ -97,6 +97,7 @@ class OperationJob:
 class OperationResultsDialog(tk.Toplevel):
     def __init__(self, parent, job):
         super().__init__(parent)
+        install_context_help(self, "results")
         self.job, self.timer = job, None
         self.title("Sammelergebnisse – " + job.title)
         self.transient(parent)
@@ -126,6 +127,7 @@ class OperationResultsDialog(tk.Toplevel):
             self.table.item(key, values=(values[0], LABELS[state], detail))
         self.summary.set(" · ".join(f"{LABELS[state]}: {count}" for state, count in counts.items()))
         self.retry_button.configure(state="normal" if counts.get("failed") and self.job.retry else "disabled")
+        self.retry_button.configure(text="Fehlgeschlagene Ziele erneut vorbereiten…" if counts.get("failed") and self.job.retry else "Keine bestätigten Fehler zum erneuten Starten")
         self.timer = self.after(500, self.refresh)
 
     def on_destroy(self, event):

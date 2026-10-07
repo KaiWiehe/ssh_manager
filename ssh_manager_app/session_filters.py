@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .ssh_utils import read_port
-from .ui_components import fit_window_to_parent
+from .ui_components import install_context_help, fit_window_to_parent
 
 SOURCES = ("", "winscp", "ssh_config", "filezilla_config", "app", "ssh_alias")
 SOURCE_LABELS = {"": "Alle aktivierten Quellen", "winscp": "WinSCP", "ssh_config": "SSH Config",
@@ -48,6 +48,7 @@ def apply_session_filters(app, filters, query, *, persist=True):
 class SessionFiltersDialog(tk.Toplevel):
     def __init__(self, app):
         super().__init__(app)
+        install_context_help(self, "filters")
         self.app = app
         self.title("Filter und gespeicherte Ansichten")
         self.transient(app)

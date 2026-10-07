@@ -12,6 +12,32 @@ SPACE_LG = 16
 SPACE_XL = 24
 
 
+def install_context_help(dialog, topic, *, layout="pack"):
+    """Expose task help and temporarily transfer a modal grab to the help."""
+    def show(_event=None):
+        from .help import open_help
+        app = dialog._root()
+        previous = dialog.grab_current()
+        window = open_help(app, topic)
+        if previous is not None and previous is not window:
+            window._return_grab = previous
+            window.transient(previous)
+            window.grab_set()
+        window.lift()
+        window.focus_force()
+        return "break"
+    bar = ttk.Frame(dialog, padding=(12, 4))
+    if layout == "grid":
+        bar.grid(row=1, column=0, sticky="ew")
+    else:
+        bar.pack(side="bottom", fill="x")
+    button = ttk.Button(bar, text="Was passiert hier?", command=show)
+    button.pack(side="left")
+    dialog._context_help_button = button
+    dialog.bind("<F1>", show, add="+")
+    return button
+
+
 def build_dialog_header(
     parent: ttk.Frame,
     title: str,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent
+from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent
 
 
 EXPORT_COLUMNS = (
@@ -21,6 +21,7 @@ class ExportColumnsDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, export_label: str, scope_counts: dict[str, int] | None = None):
         super().__init__(parent)
+        install_context_help(self, "data")
         self.title(f"{export_label} exportieren")
         self.resizable(False, False)
         self.result: list[str] | None = None

@@ -187,6 +187,9 @@ def invert_selection(app) -> None:
 
 
 def on_selection_changed(app, count: int) -> None:
+    library = app.__dict__.get("_runbook_library")
+    if library is not None and library.winfo_exists():
+        library.update_controls()
     review_button = app.__dict__.get("_selection_review_button")
     if review_button is not None:
         hidden = len(app._tree.hidden_selected_keys())
@@ -198,7 +201,7 @@ def on_selection_changed(app, count: int) -> None:
         app._connect_btn.config(text=f"Verbinden ({count} ausgewählt)", state=tk.NORMAL)
         status_var = app.__dict__.get("_selection_status_var")
         if status_var is not None:
-            status_var.set(f"{count} Verbindung{'en' if count != 1 else ''} ausgewählt")
+            status_var.set(f"{count} Verbindung{'en' if count != 1 else ''} ausgewählt" + (" · F2/Entf: genau ein Häkchen erforderlich" if count > 1 else ""))
     else:
         app._connect_btn.config(text="Verbinden", state=tk.DISABLED)
         status_var = app.__dict__.get("_selection_status_var")

@@ -26,7 +26,7 @@ Reihenfolge: **1, 5, 6, 8, 13, 2, 3, 4, 7, 9, 10, 11, 12, 14, 15, 16**.
 | 12 | Sammelergebnisse | fertig, 0.2.57 |
 | 14 | Quellenstatus | fertig, 0.2.58 |
 | 15 | Lokales Undo | fertig, 0.2.59 |
-| 16 | Kontextuelle Hilfe | offen |
+| 16 | Kontextuelle Hilfe | fertig, 0.2.60 |
 
 ## Limit und Fortsetzung
 
@@ -132,3 +132,19 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
   konsistent wieder her. Delta-Restore bewahrt spätere, unabhängige Nutzung.
   Speicherung über Drei-Dateien-Journal; kein Remote-Undo. 235 relevante
   Tests plus 35 Windows-App-/Dialog-/Undo-Tests bestanden.
+
+- Punkt 16: ‚Was passiert hier?‘ und F1 öffnen gezielt das passende Thema;
+  modale Hilfe gibt den Grab danach an den ursprünglichen Dialog zurück.
+  Neue Offline-Hilfethemen erklären Bibliothek, Parameter, Filter, Tunnel,
+  Diagnose, Dienste und Sammelergebnisse; bestehende Themen ergänzt.
+  Gesperrte Menü-/Bibliotheksaktionen nennen ihren Grund; Bibliotheksbuttons
+  in zwei Reihen. README aktualisiert. Vollständige Suite: 583 bestanden,
+  20 bestehende Pillow-Deprecation-Warnungen. Windows-Tk-Bedienung geprüft.
+  Screenshot-Abnahme derzeit nicht möglich: Windows-Desktop ist gesperrt.
+  Python-Start und Syntax geprüft; portable EXE nicht neu gebaut.
+
+## Abschluss
+
+Alle 16 autorisierten Punkte umgesetzt, jeweils eigener Commit und Versionssprung.
+Syntax, Versionskonsistenz und vollständige Tests erfolgreich; main gepusht.
+Die temporäre Fortsetzungsautomation wird nach dem finalen Push deaktiviert.

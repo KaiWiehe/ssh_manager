@@ -337,3 +337,16 @@ Weiterhin als Konstanten relevant:
 ### Empfohlene weitere Richtung
 
 Wenn weiter refactort wird, zuerst die Testbasis ausbauen und erst danach weitere App-Action-Methoden aus `SSHManagerApp` auslagern. Nicht sofort wieder `__init__` oder den kompletten UI-Startpfad groß umbauen.
+
+
+### Handling-Module (ab 0.2.60)
+
+- `selection.py`, `dialogs_selection.py`: Einzelzielregel und vollständige Häkchen-Auswahl einschließlich verborgener Treffer.
+- `details.py`, `session_filters.py`: Verbindungsdetails und gespeicherte strukturierte Ansichten.
+- `runbook_library.py`, `runbook_parameters.py`: getrennte Verwaltung und typisierte Laufzeit-Eingaben. Geheimwerte nie in Favoriten/History ablegen.
+- `actions_backup.py`: App-Backup/Restore mit Vorschau; Recovery liegt in storage. Externe Quellen/Keys sind nicht enthalten.
+- `services.py`, `diagnosis.py`: fokussierte systemd-Werkzeuge und getrennte DNS/TCP/SSH-Diagnose, maximal acht Diagnoseworker.
+- `operation_results.py`: belegte Statusrückmeldung lokaler Terminalskripte. `track_results` nur während des Builds; `result_lines` erfasst den letzten eigenständigen lokalen Status, nicht remote Here-Doc-Inhalte. Terminalstart niemals als Remote-Erfolg bewerten. Retry nur bekannte Fehler mit neuer Vorschau.
+- `source_status.py`: protokollierte Quellenloader und gezielter Refresh; fehlend/leer/Fehler unterscheiden.
+- `local_undo.py`: bis zu 20 lokale Delta-Schritte dieser App-Sitzung. Remote-Ausführungen nicht dekorieren. Batchänderungen bilden einen Schritt; Undo schreibt Sessions/Notizen/UI-State über das bestehende Recovery-Journal.
+- `action_availability.py`, `ui_components.install_context_help`: sichtbare Voraussetzungen und Hilfe direkt am Dialog. Bei Grid-Dialogen `layout="grid"` verwenden; modalen Grab nach Schließen der Hilfe wiederherstellen.

@@ -9,7 +9,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .ssh_utils import ssh_argv, read_port
-from .ui_components import fit_window_to_parent
+from .ui_components import install_context_help, fit_window_to_parent
 from .workers import run_worker
 
 
@@ -77,6 +77,7 @@ def diagnose_many(sessions, user, authenticate):
 class ConnectionDiagnosisDialog(tk.Toplevel):
     def __init__(self, parent, sessions):
         super().__init__(parent)
+        install_context_help(self, "diagnosis")
         self.title("Verbindung diagnostizieren")
         self.sessions = list(sessions)
         self.transient(parent)

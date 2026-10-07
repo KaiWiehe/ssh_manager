@@ -8,7 +8,7 @@ from typing import Optional
 from . import Session
 from .constants import QUICK_USERS, _APP_PREFIX, _SSH_ALIAS_PREFIX
 from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons
-from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent, set_validation_state
+from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent, set_validation_state
 
 
 class SessionEditDialog(tk.Toplevel):
@@ -32,6 +32,7 @@ class SessionEditDialog(tk.Toplevel):
         quick_users: list[str] | None = None,
     ):
         super().__init__(parent)
+        install_context_help(self, "sources")
         self._existing_session = session
         self._duplicate = duplicate
         self._existing_folders = existing_folders

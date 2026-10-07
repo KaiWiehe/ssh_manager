@@ -312,6 +312,7 @@ def test_ssh_copy_id_dialog_init_uses_default_quick_users():
     parent = MagicMock()
 
     with patch("ssh_manager_app.dialogs_remote.tk.Toplevel.__init__", return_value=None), \
+         patch("ssh_manager_app.dialogs_remote.install_context_help"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.title"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.resizable"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.transient"), \
@@ -334,6 +335,7 @@ def test_ssh_remove_key_dialog_init_copies_explicit_quick_users():
     source_quick_users = ["ops", "deploy"]
 
     with patch("ssh_manager_app.dialogs_remote.tk.Toplevel.__init__", return_value=None), \
+         patch("ssh_manager_app.dialogs_remote.install_context_help"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.title"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.resizable"), \
          patch("ssh_manager_app.dialogs_remote.tk.Toplevel.transient"), \

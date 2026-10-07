@@ -6,7 +6,7 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from .secret_scripts import clear_password_fields
 from .models import Session
-from .ui_components import build_dialog_header, fit_window_to_parent
+from .ui_components import install_context_help, build_dialog_header, fit_window_to_parent
 
 
 class ServerRestartDialog(tk.Toplevel):
@@ -14,6 +14,7 @@ class ServerRestartDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, session_users: list[tuple[Session, str]]):
         super().__init__(parent)
+        install_context_help(self, "server")
         self.title("Server neu starten")
         self.geometry("720x570")
         self.minsize(640, 500)

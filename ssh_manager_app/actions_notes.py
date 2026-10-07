@@ -13,6 +13,8 @@ from .local_undo import local_undo
 def edit_session_note(app, session) -> None:
     dialog = tk.Toplevel(app)
     dialog.title("Notiz bearbeiten")
+    from .ui_components import install_context_help
+    install_context_help(dialog, "organize")
     dialog.resizable(False, False)
     dialog.transient(app)
     dialog.grab_set()

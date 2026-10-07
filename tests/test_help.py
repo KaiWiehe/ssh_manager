@@ -49,6 +49,52 @@ def test_actual_app_delete_and_bulk_color_are_single_undo_steps(app, monkeypatch
     assert app._tree.get_session_colors() == {}
 
 
+def test_task_help_opens_exact_topic_and_restores_modal_grab(app):
+    from ssh_manager_app.dialogs_remote import SshTunnelDialog
+    open_help(app)
+    window = app._help_window
+    window.query.set("nichts-zu-finden")
+    dialog = SshTunnelDialog(app)
+    app.update()
+    dialog._context_help_button.invoke()
+    app.update()
+    assert app._help_window is window
+    assert window.query.get() == ""
+    assert window.selected_id == "tunnels"
+    assert "Interner Dienst" in window.text.get("1.0", "end")
+    assert app.grab_current() is window
+    window.close()
+    app.update()
+    assert app.grab_current() is dialog
+    dialog.destroy()
+
+
+def test_library_disabled_actions_explain_missing_entry_and_hosts(app):
+    from ssh_manager_app.runbook_library import RunbookLibraryDialog
+    from ssh_manager_app.models import Session
+    app._initial_toolbar_search_texts["remote_command_favorites"] = [{"name": "Test", "mode": "command", "command": "true"}]
+    library = RunbookLibraryDialog(app)
+    app._runbook_library = library
+    assert "auswählen" in library.disabled_reason.get()
+    assert str(library.action_buttons["Inhalt…"]["state"]) == "disabled"
+    library.list.selection_set("0")
+    app.update()
+    assert str(library.action_buttons["Inhalt…"]["state"]) == "normal"
+    assert "Host" in library.disabled_reason.get()
+    app._tree.refresh([Session("host", "Host", [], "host.test")])
+    app._tree.set_all_checked(True)
+    app.update()
+    assert str(library.action_buttons["Ausführen…"]["state"]) == "normal"
+    library.destroy()
+
+
+def test_action_menu_explains_unavailable_selection_actions(app):
+    from ssh_manager_app.action_availability import action_disabled_reason
+    assert "anhaken" in action_disabled_reason(app, "Remote-Befehl ausführen")
+    assert "einen Host" in action_disabled_reason(app, "Datei hochladen…")
+    assert action_disabled_reason(app, "Runbook-Bibliothek…") == ""
+
+
 def test_search_and_table_use_current_shortcuts_including_disabled_actions():
     mapping = default_shortcuts()
     mapping.update(connect="F6", open_help="")

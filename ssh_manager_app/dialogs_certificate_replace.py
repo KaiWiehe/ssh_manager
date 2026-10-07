@@ -16,6 +16,7 @@ class CertificateReplaceDialog(tk.Toplevel):
 
     def __init__(self, parent, target_count: int, whitelist: list[str], favorites: list[dict], on_whitelist_changed, reference_sessions=None):
         super().__init__(parent)
+        install_context_help(self, "server")
         self.title("Zertifikate ersetzen")
         self.geometry("780x620")
         self.result = None
@@ -123,6 +124,7 @@ class CertificateReplaceDialog(tk.Toplevel):
 class CertificateReplacePreviewDialog(tk.Toplevel):
     def __init__(self, parent, report: str, matches: list[tuple[int, str, str, str, str, str]], source_summary: list[tuple[str, str]]):
         super().__init__(parent); self.title("Zertifikate ersetzen – Vorschau"); self.geometry("850x600"); self.result = False
+        install_context_help(self, "server")
         frame = ttk.Frame(self, padding=14); frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="Prüfe die Treffer. Erst mit ‚Ersetzen‘ werden Dateien geändert.", font=("Segoe UI", 10, "bold")).pack(anchor="w")
         summary = ttk.LabelFrame(frame, text="Neue Zertifikate – frühestes Ablaufdatum", padding=6); summary.pack(fill="x", pady=(7, 0))

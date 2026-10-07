@@ -1433,7 +1433,7 @@ class SessionTree(ttk.Frame):
                 label="Bearbeiten…",
                 command=lambda s=session: self._on_edit_session(s),
             )
-        if session.source in ("winscp", "filezilla_config") and self._on_copy_external_session:
+        if session.source in ("winscp", "filezilla_config") and self.__dict__.get("_on_copy_external_session"):
             manage_menu.add_command(label="Als eigene Verbindung übernehmen…", command=lambda s=session: self._on_copy_external_session(s))
         if session.is_app_session:
             if self._on_duplicate_app_session:
@@ -1703,6 +1703,8 @@ class SessionTree(ttk.Frame):
                 label="Löschen",
                 command=lambda s=session: self._on_delete_session(s),
             )
+        elif self._on_delete_session:
+            menu.add_command(label="Löschen gesperrt – nur eigene Verbindungen/Alias-Kopien", state="disabled")
 
         menu.tk_popup(
             event.x_root if event is not None else int(x_root or 0),

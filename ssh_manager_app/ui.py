@@ -1039,6 +1039,8 @@ def build_main_ui(self) -> None:
         label="Angezeigte Verbindungen als Excel exportieren…",
         command=lambda: export_visible_sessions_callback(self, "xlsx"),
     )
+    from .action_availability import configure_action_availability
+    configure_action_availability(self, actions_menu)
     menubar.add_cascade(label="Aktionen", menu=actions_menu)
 
     settings_menu = tk.Menu(menubar, tearoff=False)
@@ -1232,7 +1234,7 @@ def build_main_ui(self) -> None:
     status_bar.grid(row=4, column=0, sticky="ew", pady=(8, 0))
     status_bar.columnconfigure(0, weight=1)
     self._selection_status_var = tk.StringVar(value="Keine Verbindung ausgewählt")
-    ttk.Label(status_bar, textvariable=self._selection_status_var, style="StatusBar.TLabel").grid(row=0, column=0, sticky="w")
+    ttk.Label(status_bar, textvariable=self._selection_status_var, style="StatusBar.TLabel", wraplength=460).grid(row=0, column=0, sticky="w")
     from .dialogs_selection import review_selection
     self._selection_review_button = ttk.Button(status_bar, text="Auswahl prüfen (0)", command=lambda: review_selection(self))
     self._selection_review_button.grid(row=1, column=0, sticky="w", pady=(5, 0))

@@ -5,7 +5,7 @@ import shlex
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from .ui_components import fit_window_to_parent
+from .ui_components import install_context_help, fit_window_to_parent
 from .secret_scripts import clear_password_fields
 
 ACTION_LABELS = {"status": "Dienststatus anzeigen", "restart": "Dienst neu starten", "logs": "Dienstlogs anzeigen"}
@@ -30,6 +30,7 @@ def service_command(action, unit, lines=100, sudo=False):
 class ServiceActionDialog(tk.Toplevel):
     def __init__(self, parent, action, target_count, initial=None):
         super().__init__(parent)
+        install_context_help(self, "services")
         self.action = action
         self.title(ACTION_LABELS[action])
         self.transient(parent)

@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Optional
 
-from .ui_components import build_dialog_actions, build_dialog_header, center_on_parent
+from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent
 
 
 class MoveFolderDialog(tk.Toplevel):
@@ -15,6 +15,7 @@ class MoveFolderDialog(tk.Toplevel):
 
     def __init__(self, parent: tk.Tk, existing_folders: list[str], current_folder: str):
         super().__init__(parent)
+        install_context_help(self, "folders")
         self.title("In Ordner verschieben")
         self.resizable(False, False)
         self.result: Optional[str] = None

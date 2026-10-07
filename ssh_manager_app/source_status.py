@@ -9,7 +9,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from .ui_components import fit_window_to_parent
+from .ui_components import install_context_help, fit_window_to_parent
 
 SOURCE_LABELS = {"winscp": "WinSCP", "ssh_config": "SSH Config", "filezilla_config": "FileZilla", "app": "Eigene App-Verbindungen"}
 SOURCE_ATTRIBUTES = {"winscp": "_winscp_sessions", "ssh_config": "_ssh_config_sessions", "filezilla_config": "_filezilla_sessions", "app": "_app_sessions"}
@@ -84,6 +84,7 @@ def reload_source(app, source):
 class SourceStatusDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
+        install_context_help(self, "sources")
         self.title("Quellenstatus")
         self.app = parent
         self.transient(parent)

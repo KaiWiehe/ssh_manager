@@ -347,6 +347,7 @@ def test_dns_results_dialog_is_non_modal():
     result = DnsLookupResult("example.com", "forward", ["10.0.0.1"], "Python socket", "ok")
 
     with patch("ssh_manager_app.dialogs_dns.tk.Toplevel.__init__", return_value=None), \
+         patch("ssh_manager_app.dialogs_dns.install_context_help"), \
          patch.object(DnsLookupResultsDialog, "title"), \
          patch.object(DnsLookupResultsDialog, "resizable"), \
          patch.object(DnsLookupResultsDialog, "geometry"), \
