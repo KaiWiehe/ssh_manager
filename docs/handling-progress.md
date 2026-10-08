@@ -231,3 +231,22 @@ Vollständige Suite: **645 Tests bestanden**, 20 bestehende Pillow-Warnungen.
 Syntax geprüft; echte Windows-Tk-Menütests prüfen Zielumfang, wiederholtes Öffnen,
 gesperrte Aktionen und Callback-Lebensdauer. Keine echten Remote-Aufrufe.
 Python-only, daher kein Fallow; portable EXE nicht neu gebaut.
+
+## Fehler beim Öffnen der Menüleiste – 08.10.2026, 0.2.69
+
+Benutzermeldung nach 0.2.68: Klick auf Aktionen, Ansicht, Auswahl usw. zeigt
+„Unerwarteter Fehler“. error.log belegt TclError in action_menus.refresh bei
+Menu.delete/deletecommand. Ursache: geklonte Einträge teilten den Tcl-Callback
+des Originalmenüs. Tk löscht beim Entfernen eines Eintrags dessen Callback,
+auch wenn dieser einem anderen Menü gehört. Beim Neuaufbau entstand damit
+eine doppelte Löschung bzw. ein ungültiges Originalkommando.
+
+Geklonte Einträge registrieren nun eigene Callbacks, die das Originalkommando
+aufrufen. Beim Neuaufbau werden Klone vor ihrem ursprünglichen Menü entfernt.
+Regressionen zuerst reproduziert, danach erfolgreich geprüft: wiederholter
+Neuaufbau aller Menü-Cascades, Entfernen geklonter Einträge ohne Beschädigung
+des Originals sowie Originalaufrufe nach erneutem Öffnen der App-Werkzeuge.
+
+Abschluss: **648 Tests bestanden**, 20 bestehende Pillow-Warnungen. Syntax,
+Versionskonsistenz und Diff geprüft. Keine echten Remote-Aufrufe; Python-only,
+Fallow nicht anwendbar. Portable EXE nicht neu gebaut. App-Neustart erforderlich.

@@ -112,7 +112,8 @@ def test_cloned_callbacks_survive_reopening_app_tools(app):
     for _ in range(3):
         refresh(tools)
         invoke(child(tools, "Test"), "Test")
-    assert calls == ["called"] * 3
+        invoke(source, "Test")
+    assert calls == ["called"] * 6
 
 
 def test_folder_multi_target_preserves_scope_and_disables_single_host_tools(app):
@@ -135,3 +136,41 @@ def test_folder_multi_target_preserves_scope_and_disables_single_host_tools(app)
     with patch("ssh_manager_app.diagnosis.ConnectionDiagnosisDialog") as diagnose:
         invoke(local, "Verbindungen im Ordner diagnostizieren… (2)")
     assert {value.key for value in diagnose.call_args.args[1]} == {"a", "b"}
+
+
+def test_repeated_connection_menu_refresh_keeps_owned_callbacks_valid(app):
+    setup_hosts(app)
+    menu = tk.Menu(app, tearoff=False)
+    populate_actions_menu(app, menu)
+    local = child(menu, "Verbindung / Ordner verwalten")
+    for _ in range(4):
+        refresh(local)
+        assert local.index("end") is not None
+
+
+def test_deleting_cloned_entries_does_not_delete_original_commands(app):
+    calls = []
+    source = tk.Menu(app, tearoff=False)
+    source.add_command(label="Test", command=lambda: calls.append("source"))
+    clone = tk.Menu(app, tearoff=False)
+    copy_menu(source, clone)
+    invoke(clone, "Test")
+    clone.delete(0, "end")
+    invoke(source, "Test")
+    assert calls == ["source", "source"]
+
+
+def test_top_menu_preparation_repeatedly_rebuilds_all_cascades_without_errors(app):
+    setup_hosts(app)
+    menubar = app.nametowidget(app.cget("menu"))
+
+    def prepare(menu):
+        refresh(menu)
+        for index, _ in entries(menu):
+            if menu.type(index) == "cascade":
+                prepare(menu.nametowidget(menu.entrycget(index, "menu")))
+
+    # Windows prepares cascades while opening the menu bar. Exercise those
+    # same Tcl postcommands without entering its blocking native popup loop.
+    for _ in range(3):
+        prepare(menubar)

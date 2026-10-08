@@ -82,7 +82,7 @@ def check_context_hosts(app, sessions):
 
 
 def copy_menu(source, destination):
-    """Copy persistent callbacks without destroying the menu that owns them."""
+    """Give cloned entries their own callbacks; Tcl commands belong to one menu."""
     destination._source_menu = source
     end = source.index("end")
     if end is None:
@@ -92,7 +92,13 @@ def copy_menu(source, destination):
         if kind == "separator":
             destination.add_separator()
         elif kind == "command":
-            destination.add_command(**{key: source.entrycget(index, key) for key in ("label", "command", "state", "accelerator")})
+            options = {key: source.entrycget(index, key) for key in ("label", "state", "accelerator")}
+            command = source.entrycget(index, "command")
+            if command:
+                # Menu.delete deletes its entries' Tcl commands, even when they
+                # were registered by another menu. Never share that ownership.
+                options["command"] = lambda cmd=command: source.tk.call("eval", cmd)
+            destination.add_command(**options)
         elif kind == "cascade":
             child = tk.Menu(destination, tearoff=False)
             copy_menu(source.nametowidget(source.entrycget(index, "menu")), child)
@@ -121,9 +127,9 @@ def add_connection_menu(app, menu, sessions):
         for child in list(local.winfo_children()):
             child.destroy()
         old = local.__dict__.pop("_owned_source", None)
+        local.delete(0, "end")
         if old is not None:
             old.destroy()
-        local.delete(0, "end")
         tree = getattr(app, "_tree", None)
         if tree is None:
             return
