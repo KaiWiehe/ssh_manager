@@ -1,8 +1,9 @@
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 import socket
+import pytest
 
-from ssh_manager_app.diagnosis import diagnose_session, diagnose_many
+from ssh_manager_app.diagnosis import diagnose_session, diagnose_many, parse_ports
 from ssh_manager_app.models import Session
 
 
@@ -48,3 +49,35 @@ def test_parallel_checks_cap_worker_count_and_keep_effective_user():
         assert diagnose_many([target()], "fallback", False)[0][0].key == "id"
     executor.assert_called_once_with(max_workers=8)
     diagnose.assert_called_once_with(target(), "ops", authenticate=False)
+
+
+@pytest.mark.parametrize("value", ["0", "65536", "80-1", "1-65535", "abc", "80; rm", "-22"])
+def test_invalid_or_unbounded_scan_is_rejected(value):
+    with pytest.raises(ValueError):
+        parse_ports(value)
+
+
+def test_ports_accept_list_and_small_ranges_without_duplicates():
+    assert parse_ports("80,443; 8000-8002 80") == (80, 443, 8000, 8001, 8002)
+    assert parse_ports("") == ()
+
+
+def test_extra_ports_reach_actual_requested_ipv6_port_and_skip_duplicate_ssh():
+    session = target()
+    session.hostname = "::1"
+    address = (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::1", 22, 0, 0))
+    with patch("socket.getaddrinfo", return_value=[address]), patch("socket.socket") as tcp:
+        checks = diagnose_session(session, ports=(22, 443))
+    connects = tcp.return_value.__enter__.return_value.connect.call_args_list
+    assert [call.args[0] for call in connects] == [("::1", 22, 0, 0), ("::1", 443, 0, 0)]
+    assert checks[1][1] == "nicht nötig"
+    assert next(check for check in checks if check[0] == "TCP-Port 443")[1] == "erfolgreich"
+
+
+def test_explicit_extra_ports_are_direct_even_with_ssh_proxy():
+    config = SimpleNamespace(returncode=0, stdout="hostname internal.test\nport 2222\nproxyjump gateway\n")
+    address = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 2222))
+    with patch("ssh_manager_app.diagnosis.shutil.which", return_value="ssh"), patch("subprocess.run", return_value=config), patch("socket.getaddrinfo", return_value=[address]), patch("socket.socket") as tcp:
+        checks = diagnose_session(target("ssh_config"), ports=(443,))
+    tcp.return_value.__enter__.return_value.connect.assert_called_once_with(("127.0.0.1", 443))
+    assert "ohne SSH-Proxy" in next(check for check in checks if check[0] == "TCP-Port 443")[2]

@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import shutil
+import ipaddress
+import re
+import time
 import socket
 import subprocess
 import tkinter as tk
@@ -13,7 +16,44 @@ from .ui_components import install_context_help, fit_window_to_parent
 from .workers import run_worker
 
 
-def diagnose_session(session, user="", *, authenticate=False):
+def parse_ports(value):
+    """Parse a bounded, explicit TCP port list; never silently scan all ports."""
+    ports = set()
+    for token in re.split(r"[,;\s]+", value.strip()):
+        if not token:
+            continue
+        if not re.fullmatch(r"\d{1,5}(?:-\d{1,5})?", token):
+            raise ValueError("Ports als Zahlen oder Bereiche eingeben, z. B. 80,443,8000-8010.")
+        bounds = list(map(int, token.split("-")))
+        first, last = bounds[0], bounds[-1]
+        if not 1 <= first <= last <= 65535:
+            raise ValueError("Ports müssen zwischen 1 und 65535 liegen; Bereiche aufsteigend angeben.")
+        if last - first >= 64:
+            raise ValueError("Maximal 64 zusätzliche TCP-Ports pro Diagnose wählen.")
+        ports.update(range(first, last + 1))
+        if len(ports) > 64:
+            raise ValueError("Maximal 64 zusätzliche TCP-Ports pro Diagnose wählen.")
+    return tuple(sorted(ports))
+
+
+def _probe_addresses(addresses, port):
+    deadline = time.monotonic() + 3
+    for family, kind, protocol, _, address in addresses[:8]:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        target = (address[0], port, *address[2:])
+        try:
+            with socket.socket(family, kind, protocol) as probe:
+                probe.settimeout(remaining)
+                probe.connect(target)
+            return True
+        except OSError:
+            continue
+    return False
+
+
+def diagnose_session(session, user="", *, authenticate=False, ports=()):
     results = []
     ssh = shutil.which("ssh")
     results.append(("Lokaler SSH-Client", "bereit" if ssh else "fehlt", ssh or "SSH im PATH installieren; DNS/TCP bleiben unabhängig prüfbar."))
@@ -35,26 +75,31 @@ def diagnose_session(session, user="", *, authenticate=False):
             return results + [("SSH-Konfiguration", "fehlgeschlagen", "Aliasauflösung fehlgeschlagen oder Zeitlimit überschritten.")]
     try:
         addresses = socket.getaddrinfo(host, read_port(port), type=socket.SOCK_STREAM)
-        results.append(("Namensauflösung", "erfolgreich", ", ".join(dict.fromkeys(item[4][0] for item in addresses))))
+        try:
+            ipaddress.ip_address(host)
+            detail = f"{host} ist bereits eine IP-Adresse; keine DNS-Auflösung nötig."
+            status = "nicht nötig"
+        except ValueError:
+            detail = f"DNS-Name {host} → " + ", ".join(dict.fromkeys(item[4][0] for item in addresses))
+            status = "erfolgreich"
+        results.append(("Namensauflösung", status, detail))
     except (OSError, ValueError):
         results.append(("Namensauflösung", "fehlgeschlagen", "Hostname konnte lokal nicht aufgelöst werden."))
         addresses = []
     if proxy:
         results.append(("TCP zum Ziel", "nicht geprüft", "Direkter TCP-Test würde den SSH-Proxy umgehen. Die optionale Anmeldung prüft den tatsächlichen Weg."))
     elif addresses:
-        connected = False
-        for family, kind, protocol, _, address in addresses[:8]:
-            try:
-                with socket.socket(family, kind, protocol) as probe:
-                    probe.settimeout(3)
-                    probe.connect(address)
-                connected = True
-                break
-            except OSError:
-                continue
+        connected = _probe_addresses(addresses, read_port(port))
         results.append(("TCP zum Ziel", "erfolgreich" if connected else "fehlgeschlagen", f"{host}:{port} – " + ("Port offen; Anmeldung noch nicht belegt." if connected else "Timeout, Ablehnung oder Netzwerkfehler.")))
     else:
         results.append(("TCP zum Ziel", "nicht geprüft", "Kein aufgelöstes Ziel."))
+    for extra_port in ports:
+        if extra_port == read_port(port) and not proxy:
+            continue
+        connected = bool(addresses) and _probe_addresses(addresses, extra_port)
+        results.append((f"TCP-Port {extra_port}", ("erfolgreich" if connected else "fehlgeschlagen") if addresses else "nicht geprüft",
+                        f"Direkt von diesem Rechner zu {host}:{extra_port} (ohne SSH-Proxy): " +
+                        ("Port erreichbar; Dienst/Anmeldung nicht geprüft." if connected else "Kein Ziel aufgelöst." if not addresses else "Timeout, Ablehnung oder Netzwerkfehler; kein Beleg für einen geschlossenen Port.")))
     if not authenticate or not ssh:
         results.append(("SSH-Anmeldung", "nicht geprüft", "Explizit aktivieren; keine Passwortabfrage, kein Ändern von Hostschlüsseln."))
         return results
@@ -69,9 +114,9 @@ def diagnose_session(session, user="", *, authenticate=False):
     return results
 
 
-def diagnose_many(sessions, user, authenticate):
+def diagnose_many(sessions, user, authenticate, ports=()):
     with ThreadPoolExecutor(max_workers=8) as pool:
-        return list(pool.map(lambda session: (session, diagnose_session(session, session.username or user, authenticate=authenticate)), sessions))
+        return list(pool.map(lambda session: (session, diagnose_session(session, session.username or user, authenticate=authenticate, **({"ports": ports} if ports else {}))), sessions))
 
 
 class ConnectionDiagnosisDialog(tk.Toplevel):
@@ -91,6 +136,12 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         ttk.Label(userrow, text="Fallback-Benutzer (feste Benutzer/Aliase haben Vorrang)").pack(side="left")
         self.user = tk.StringVar(value=parent.settings.default_user)
         ttk.Entry(userrow, textvariable=self.user, width=20).pack(side="left", padx=8)
+        portrow = ttk.Frame(frame)
+        portrow.pack(fill="x", pady=(10, 0))
+        ttk.Label(portrow, text="Zusätzliche TCP-Ports").pack(side="left")
+        self.ports = tk.StringVar()
+        ttk.Entry(portrow, textvariable=self.ports, width=35).pack(side="left", padx=8)
+        ttk.Label(frame, text="z. B. 80,443,8000-8010 · maximal 64 · SSH-Port immer dabei. Direkte Prüfung von diesem Rechner, kein UDP-Test.", wraplength=850).pack(anchor="w", pady=4)
         self.status = tk.StringVar(value="Bereit. SSH-Anmeldung ist standardmäßig ausgeschaltet.")
         ttk.Label(frame, textvariable=self.status, wraplength=660).pack(anchor="w", pady=8)
         self.output = ttk.Treeview(frame, columns=("step", "status", "detail"), show="tree headings")
@@ -108,11 +159,16 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         fit_window_to_parent(self, parent, 980, 520)
 
     def start(self):
+        try:
+            ports = parse_ports(self.ports.get())
+        except ValueError as exc:
+            messagebox.showwarning("Prüfports", str(exc), parent=self)
+            return
         self.start_button.configure(state="disabled")
         self.output.delete(*self.output.get_children())
         self.status.set("Diagnose läuft … maximal acht parallele Ziele.")
         user, authenticate = self.user.get().strip(), self.authenticate.get()
-        run_worker(self, lambda: diagnose_many(self.sessions, user, authenticate), self.show_results, self.failed)
+        run_worker(self, lambda: diagnose_many(self.sessions, user, authenticate, ports), self.show_results, self.failed)
 
     def show_results(self, results):
         for session, checks in results:
