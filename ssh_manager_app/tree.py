@@ -1120,6 +1120,11 @@ class SessionTree(ttk.Frame):
         """Einzelne Session per Doppelklick direkt öffnen."""
         item_id = self._tv.identify_row(event.y)
         if not item_id:
+            factory = self.__dict__.get("_action_menu_factory")
+            if factory:
+                menu = tk.Menu(self, tearoff=False)
+                factory(menu, None)
+                menu.tk_popup(event.x_root, event.y_root)
             return
         self._focus_item(item_id)
         if self.TAG_SESSION not in self._tv.item(item_id, "tags"):
@@ -1269,12 +1274,16 @@ class SessionTree(ttk.Frame):
         *,
         x_root: int | None = None,
         y_root: int | None = None,
+        return_menu: bool = False,
     ) -> None:
         """Kontextmenü für Ordner-Zeilen, in kurze thematische Gruppen geteilt."""
         folder_key = self._item_to_folder_key.get(item_id, "")
         folder_sessions = self._get_folder_sessions(item_id)
         count = len(folder_sessions)
         menu = tk.Menu(self, tearoff=False)
+        diagnosis = self.__dict__.get("_diagnose_sessions")
+        if diagnosis:
+            menu.add_command(label=f"Verbindungen im Ordner diagnostizieren… ({count})", command=lambda ss=list(folder_sessions): diagnosis(ss), state="normal" if count else "disabled")
 
         if self._on_connect_sessions and folder_sessions:
             menu.add_command(
@@ -1353,6 +1362,13 @@ class SessionTree(ttk.Frame):
         if folder_sessions and all(s.source in ("app", "ssh_alias") for s in folder_sessions) and self._on_delete_folder:
             menu.add_separator()
             menu.add_command(label="Ordner löschen", command=lambda ss=list(folder_sessions), fk=folder_key: self._on_delete_folder(ss, fk))
+        if return_menu:
+            return menu
+        factory = self.__dict__.get("_action_menu_factory")
+        if factory:
+            all_actions = tk.Menu(menu, tearoff=False)
+            factory(all_actions, list(folder_sessions))
+            menu.add_cascade(label="Alle Aktionen für diesen Ordner", menu=all_actions)
         menu.tk_popup(
             event.x_root if event is not None else int(x_root or 0),
             event.y_root if event is not None else int(y_root or 0),
@@ -1365,6 +1381,7 @@ class SessionTree(ttk.Frame):
         *,
         x_root: int | None = None,
         y_root: int | None = None,
+        return_menu: bool = False,
     ) -> None:
         """Kontextmenü für Session-Zeilen, thematisch in Sektionen sortiert."""
         session = self._item_to_session[item_id]
@@ -1384,6 +1401,11 @@ class SessionTree(ttk.Frame):
         # Öffnen / Verbinden – immer ganz oben.
         menu.add_command(label=f"Diese Verbindung: {session.display_name}", state="disabled")
         menu.add_command(label=f"Häkchen-Auswahl: {selected_count} Verbindung(en)", state="disabled")
+        diagnosis = self.__dict__.get("_diagnose_sessions")
+        if diagnosis:
+            menu.add_command(label="Verbindung diagnostizieren…", command=lambda s=session: diagnosis([s]))
+            if selected_count >= 2:
+                menu.add_command(label=f"Auswahl diagnostizieren… ({selected_count})", command=lambda ss=list(selected): diagnosis(ss))
         menu.add_separator()
         if self._on_quick_connect:
             menu.add_command(
@@ -1706,6 +1728,13 @@ class SessionTree(ttk.Frame):
         elif self._on_delete_session:
             menu.add_command(label="Löschen gesperrt – nur eigene Verbindungen/Alias-Kopien", state="disabled")
 
+        if return_menu:
+            return menu
+        factory = self.__dict__.get("_action_menu_factory")
+        if factory:
+            all_actions = tk.Menu(menu, tearoff=False)
+            factory(all_actions, [session])
+            menu.add_cascade(label="Alle Aktionen für diese Verbindung", menu=all_actions)
         menu.tk_popup(
             event.x_root if event is not None else int(x_root or 0),
             event.y_root if event is not None else int(y_root or 0),

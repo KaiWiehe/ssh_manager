@@ -816,14 +816,19 @@ def test_folder_context_menu_calls_dns_callback_for_folder_sessions():
 
 
 def test_main_actions_menu_contains_dns_entries():
-    from ssh_manager_app import ui
-
-    source = ui.build_main_ui.__code__.co_consts
-    labels = "\n".join(str(item) for item in source)
-
-    assert "DNS/IP auflösen…" in labels
-    assert "DNS/IP für Auswahl auflösen…" in labels
-    assert "DNS/IP für Auswahl auflösen… (DNS-Auswahl)" in labels
+    import tkinter as tk
+    from types import SimpleNamespace
+    from ssh_manager_app.action_menus import populate_actions_menu
+    root = tk.Tk()
+    root.withdraw()
+    root._tree = SimpleNamespace(get_selected_sessions=lambda: [])
+    try:
+        menu = tk.Menu(root, tearoff=False)
+        populate_actions_menu(root, menu)
+        labels = {menu.entrycget(i, "label") for i in range(menu.index("end") + 1) if menu.type(i) == "command"}
+        assert {"DNS/IP auflösen…", "DNS/IP für Auswahl auflösen…", "DNS/IP für Auswahl auflösen… (DNS-Auswahl)"} <= labels
+    finally:
+        root.destroy()
 
 
 def test_socket_lookup_never_changes_global_socket_timeout():

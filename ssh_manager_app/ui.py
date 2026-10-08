@@ -347,10 +347,10 @@ def deploy_certificate_files_callback(app, sessions) -> None:
     deploy_certificate_files(app, sessions)
 
 
-def upload_file_callback(app):
+def upload_file_callback(app, sessions=None):
     from .actions_certificates import deploy_certificate_files
     from .selection import single_action_target
-    session = single_action_target(app._tree)
+    session = (sessions[0] if len(sessions) == 1 else None) if sessions is not None else single_action_target(app._tree)
     deploy_certificate_files(app, [session] if session else [], simple=True)
 
 
@@ -999,48 +999,9 @@ def build_main_ui(self) -> None:
     view_menu.add_command(label="Ansicht auf Startzustand zurücksetzen", command=lambda: reset_view_state_callback(self))
     menubar.add_cascade(label="Ansicht", menu=view_menu)
 
+    from .action_menus import populate_actions_menu
     actions_menu = tk.Menu(menubar, tearoff=False)
-    actions_menu.add_command(label="Auswahl verbinden", accelerator=_acc("connect_selected"), command=lambda: connect_selected_sessions_callback(self))
-    actions_menu.add_command(label="Hosts prüfen", command=lambda: self._tree.check_selected_hosts(timeout=self.settings.host_check_timeout_seconds))
-    from .diagnosis import open_diagnosis
-    actions_menu.add_command(label="Verbindung diagnostizieren…", command=lambda: open_diagnosis(self))
-    from .operation_results import show_last_results
-    actions_menu.add_command(label="Letzte Sammelergebnisse…", command=lambda: show_last_results(self))
-    actions_menu.add_command(label="Server neu starten…", command=lambda: restart_servers_callback(self, self._tree.get_selected_sessions()))
-    actions_menu.add_command(label="Tunnel öffnen", command=lambda: open_tunnel_callback(self))
-    actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions()))
-    actions_menu.add_command(label="Lokales Skript ausführen…", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions(), "local_script"))
-    actions_menu.add_command(label="Serverskript ausführen…", command=lambda: run_remote_command_callback(self, self._tree.get_selected_sessions(), "remote_script"))
-    from .runbook_library import open_runbook_library
-    actions_menu.add_command(label="Runbook-Bibliothek…", command=lambda: open_runbook_library(self))
-    from .services import run_service_action, ACTION_LABELS
-    for action, label in ACTION_LABELS.items():
-        actions_menu.add_command(label=label + "…", command=lambda a=action: run_service_action(self, self._tree.get_selected_sessions(), a))
-    actions_menu.add_command(label="Datei hochladen…", command=lambda: upload_file_callback(self))
-    actions_menu.add_command(label="Dateien verteilen…", command=lambda: deploy_certificate_files_callback(self, self._tree.get_selected_sessions()))
-    actions_menu.add_command(label="Zertifikate ersetzen…", command=lambda: replace_certificates_callback(self, self._tree.get_selected_sessions()))
-    actions_menu.add_separator()
-    actions_menu.add_command(label="DNS/IP auflösen…", command=lambda: open_dns_lookup_dialog_callback(self))
-    actions_menu.add_command(label="DNS/IP für Auswahl auflösen…", command=lambda: resolve_dns_for_sessions_callback(self, self._tree.get_selected_sessions()))
-    actions_menu.add_command(
-        label="DNS/IP für Auswahl auflösen… (DNS-Auswahl)",
-        command=lambda: resolve_dns_for_sessions_with_server_callback(self, self._tree.get_selected_sessions()),
-    )
-    actions_menu.add_separator()
-    actions_menu.add_command(
-        label="Angezeigte Verbindungen als Markdown kopieren",
-        command=lambda: copy_visible_sessions_as_markdown_callback(self),
-    )
-    actions_menu.add_command(
-        label="Angezeigte Verbindungen als CSV exportieren…",
-        command=lambda: export_visible_sessions_callback(self, "csv"),
-    )
-    actions_menu.add_command(
-        label="Angezeigte Verbindungen als Excel exportieren…",
-        command=lambda: export_visible_sessions_callback(self, "xlsx"),
-    )
-    from .action_availability import configure_action_availability
-    configure_action_availability(self, actions_menu)
+    populate_actions_menu(self, actions_menu)
     menubar.add_cascade(label="Aktionen", menu=actions_menu)
 
     settings_menu = tk.Menu(menubar, tearoff=False)
@@ -1057,6 +1018,7 @@ def build_main_ui(self) -> None:
     self._help_menu = help_menu
     help_menu.add_command(label="Hilfe öffnen", accelerator=_acc("open_help"), command=lambda: open_help(self))
     menubar.add_cascade(label="Hilfe", menu=help_menu)
+    self._app_menu_sources = {"Datei": file_menu, "Auswahl": selection_menu, "Ansicht": view_menu, "Einstellungen": settings_menu, "Hilfe": help_menu}
 
     self._main_frame = ttk.Frame(self)
     self._main_frame.grid(row=0, column=0, sticky="nsew")
@@ -1222,6 +1184,9 @@ def build_main_ui(self) -> None:
     )
     self._session_area.add(self._tree, weight=3)
     self._tree._undo_owner = self
+    from .diagnosis import open_diagnosis
+    self._tree._diagnose_sessions = lambda sessions: open_diagnosis(self, sessions)
+    self._tree._action_menu_factory = lambda menu, sessions: populate_actions_menu(self, menu, sessions)
     self._undo_stack = []
     self._undo_depth = 0
     self._local_undo_enabled = True

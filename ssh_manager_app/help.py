@@ -20,6 +20,9 @@ class HelpTopic:
 TOPICS = (
     HelpTopic("start", "Schnellstart und Auswahl", """Der SSH-Manager sammelt Verbindungen aus mehreren Quellen in einem Baum. Er öffnet SSH-Verbindungen im konfigurierten Terminal; er ist selbst kein SSH-Terminal.
 
+Aktionen und Rechtsklick
+Die Diagnose steht direkt im Verbindung- und Ordner-Rechtsklick. ‚Alle Aktionen für diese Verbindung/diesen Ordner‘ enthält dieselben Werkzeuge wie das Hauptmenü und verwendet diese Kontextziele. Oben unter ‚Aktionen → Verbindung / Ordner verwalten‘ sind zusätzlich die Funktionen des fokussierten Baum-Kontexts erreichbar. ‚App-Werkzeuge‘ bietet Datei-, Auswahl-, Ansichts-, Einstellungs- und Hilfeaktionen mit ihrem ursprünglichen App-Geltungsbereich. Nicht anwendbare Zielaktionen bleiben mit einer Begründung deaktiviert. Globale Häkchen-Auswahl, Filter und angezeigte Listen sind in den Beschriftungen ausdrücklich benannt.
+
 Einzelne Verbindung öffnen
 Suche nach einem Namen oder Hostnamen, klicke auf eine Verbindung oder navigiere mit den Pfeiltasten. Enter oder ein Doppelklick öffnet diese Verbindung. Falls erforderlich, wähle den SSH-Benutzer im folgenden Dialog.
 
@@ -266,10 +269,16 @@ Lokaler SSH-Client, Aliasauflösung, DNS und TCP werden unabhängig beurteilt. E
 DNS und zusätzliche Ports
 Namensauflösung übersetzt einen DNS-Hostnamen in IP-Adressen. Bei einer eingetragenen IP-Adresse ist sie nicht nötig. Zusätzliche TCP-Ports als Liste oder kleinen Bereich angeben, z. B. 80,443,8000-8010 (maximal 64). Der SSH-Port bleibt automatisch dabei. Zusätzliche Ports werden direkt von deinem Rechner aus geprüft, auch bei einem SSH-Proxy. Es gibt keinen UDP-Test. Timeout/Ablehnung ist kein sicherer Beleg für einen geschlossenen Port; auch Netzwerkregeln können den Zugriff verhindern.
 
+Diagnose-Ports merken
+Gültige Eingaben werden appweit in ui_state.json gespeichert, auch beim Schließen ohne gestartete Diagnose. Sie stehen beim nächsten Host und nach App-Neustart wieder im Feld. Leeren entfernt die Vorgabe. Ungültige/unvollständige Eingaben ersetzen die letzte gültige Vorgabe nicht. Externe Verbindungsquellen bleiben unverändert.
+
 Alle TCP-Ports prüfen – dauert sehr lange
 Dieser eigene Einstieg öffnet einen Vollscan für Ports 1–65535. Erst ‚Vollscan starten‘ beginnt die Prüfung. Jede aufgelöste IPv4-/IPv6-Adresse wird separat angezeigt und nacheinander geprüft, direkt vom PC und ohne SSH-Proxy. Standard: maximal 50 Verbindungsstarts pro Sekunde, 64 gleichzeitige Verbindungen und 1 Sekunde Timeout. Scanrate (1–100/s) und Timeout (0,5–5 Sekunden) sind einstellbar. Bei 50/s dauert ein vollständiger Scan mindestens ca. 22 Minuten je IP, bei Timeouts länger. Fortschritt und offene Ports erscheinen laufend. Abbrechen oder Schließen stoppt neue Prüfungen; laufende enden nach dem Timeout. Abbruch bleibt ausdrücklich ein Teilergebnis.
 
 Der Scan stellt kurze TCP-Verbindungen her, schickt keine Nutzdaten und meldet sich nicht an. Er kann Logeinträge, Sicherheitsalarme oder Sperren auslösen und empfindliche Dienste beeinträchtigen; nur im dafür vorgesehenen Zielnetz verwenden. ‚Offen‘ bedeutet ausschließlich vom eigenen Rechner erreichbar, keine Aussage über Diensttyp oder Anmeldung. Timeouts/Netzwerkfehler sind gesondert gezählt und beweisen keine geschlossenen Ports. UDP und lokale Listener, die vom PC nicht erreichbar sind, werden damit nicht festgestellt.
+
+Fallback-Benutzer und Quickselect
+Bei einer normalen Host-Verbindung ohne fest eingetragenen Benutzer nutzt die optionale SSH-Anmeldung den Fallback-Benutzer. Ein fester Benutzer hat Vorrang; ein SSH-Alias verwendet seine SSH-Konfiguration. DNS und TCP benötigen keinen Benutzer. Die in den Einstellungen konfigurierten Quick-Select-Benutzer stehen direkt unter dem Feld als Buttons. Ein Klick ändert nur den Fallback des aktuellen Diagnosedialogs, keine Verbindungsdaten.
 
 Optionale Anmeldung
 Die zusätzliche SSH-Anmeldung muss ausdrücklich aktiviert werden. Sie verwendet vorhandene Schlüssel ohne Passwortabfrage, führt nur true aus und verändert keine bekannten Hostschlüssel. Unbekannte Hostschlüssel führen zu Fehlern. Feste Benutzer und SSH-Aliase haben Vorrang vor dem Fallback-Benutzer. Maximal acht Ziele werden parallel geprüft."""),

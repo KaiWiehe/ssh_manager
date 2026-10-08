@@ -207,3 +207,27 @@ insgesamt abgedeckt). Mockprüfungen für Rate, Parallelitätsgrenze, Abbruch,
 mehrere IPs und Fehler; einziger echter Netzwerkcheck ist ein lokaler
 Loopback-Testlistener. Keine echten Server oder vollständigen Netzscans getestet.
 Syntax und Versionskonsistenz geprüft; Python-only, kein Fallow/EXE-Build.
+
+## Diagnose-Einstellungen und vollständige Aktionsmenüs – 08.10.2026
+
+1. **0.2.67, 84f8243:** Gültige zusätzliche TCP-Ports werden im UI-State
+   gespeichert, auch beim Schließen ohne Diagnose-Start. Sie gelten für andere
+   Hosts und bleiben nach App-Neustart erhalten. Leeren entfernt die Vorgabe;
+   ungültige Zwischenstände überschreiben keine gültig gespeicherte Portliste.
+   Konfigurierte Quick-Select-Benutzer stehen im Diagnose-Dialog bereit.
+   Feste Session-Benutzer haben Vorrang, sonst gilt der Fallback-Benutzer für
+   die optionale SSH-Anmeldung. SSH-Aliase verwenden ihre SSH-Konfiguration.
+   DNS- und TCP-Prüfungen brauchen keinen Benutzer.
+2. **0.2.68:** Gemeinsame Aktionsmenüs oben unter Aktionen sowie im Rechtsklick
+   auf Verbindungen, Ordner und den leeren Baumbereich. Diagnose steht außerdem
+   direkt im Verbindungs- und Ordnermenü. Kontextaktionen benutzen die angeklickte
+   Verbindung bzw. alle Hosts im Ordner inklusive Unterordnern; fremde Häkchen
+   bleiben erhalten. Einzelhost-Aktionen sind bei mehreren Zielen gesperrt.
+   Verbindung / Ordner verwalten enthält die bestehenden Kontextaktionen auch
+   im oberen Menü. App-Werkzeuge erschließt Datei, Auswahl, Ansicht,
+   Einstellungen und Hilfe mit deren ursprünglichem globalen Wirkungsbereich.
+
+Vollständige Suite: **645 Tests bestanden**, 20 bestehende Pillow-Warnungen.
+Syntax geprüft; echte Windows-Tk-Menütests prüfen Zielumfang, wiederholtes Öffnen,
+gesperrte Aktionen und Callback-Lebensdauer. Keine echten Remote-Aufrufe.
+Python-only, daher kein Fallow; portable EXE nicht neu gebaut.
