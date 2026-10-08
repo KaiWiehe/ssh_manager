@@ -155,8 +155,17 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         bar.pack(side="right", fill="y")
         self.start_button = ttk.Button(frame, text="Diagnose starten", command=self.start)
         self.start_button.pack(side="bottom", pady=8)
+        self.scan_button = ttk.Button(frame, text="Alle TCP-Ports prüfen (dauert sehr lange)…", command=self.open_full_scan)
+        self.scan_button.pack(side="bottom", pady=4)
         self.output.pack(fill="both", expand=True)
         fit_window_to_parent(self, parent, 980, 520)
+
+    def open_full_scan(self):
+        from .port_scan import FullPortScanDialog
+        if "_scan_dialog" in self.__dict__ and self._scan_dialog.winfo_exists():
+            self._scan_dialog.lift()
+            return
+        self._scan_dialog = FullPortScanDialog(self, self.sessions, self.user.get().strip())
 
     def start(self):
         try:

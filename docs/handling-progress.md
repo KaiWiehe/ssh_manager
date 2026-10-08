@@ -179,3 +179,31 @@ und gesichtet; keine echten Serverabfragen oder Remote-Veränderungen ausgelöst
 Lokale Git-Bash-Ausführung prüft fehlende Dienste, Abfragefehler und gemischte
 Ergebnisse mit Rückmeldungen je Host. Python-only, daher kein Fallow-Lauf.
 Portable EXE nicht neu gebaut. Fortsetzung nach Limit-Reset war nicht nötig.
+
+## Vollständiger TCP-Portscan – 08.10.2026, 0.2.65
+
+Auf ausdrücklichen Wunsch zusätzlich zum begrenzten Diagnose-Portfeld:
+„Alle TCP-Ports prüfen (dauert sehr lange)“ öffnet einen eigenen Scan-Dialog.
+Erst dessen Startbutton prüft alle Ports 1–65535 je aufgelöster IPv4-/IPv6-IP.
+Ziele/IPs nacheinander, direkt vom PC und ohne SSH-Proxy. Keine Nutzdaten,
+Anmeldung oder UDP-Prüfung; keine zusätzlichen Laufzeitabhängigkeiten.
+
+Standard: 50 Verbindungsstarts/s, höchstens 64 laufende Verbindungen und
+1 Sekunde Timeout. Rate 1–100/s und Timeout 0,5–5 Sekunden einstellbar.
+50/s ergeben mindestens etwa 22 Minuten je IP; Timeouts verlängern den Lauf.
+Live-Fortschritt/offene Ports, getrennte Zähler für Ablehnung, Timeout und Fehler.
+Abbrechen/Schließen stoppt neue Prüfungen; laufende Verbindungen enden mit Timeout.
+Teilergebnisse und fehlgeschlagene Zielauflösung werden ausdrücklich benannt.
+
+Der Dialog erklärt mögliche Logeinträge, Sicherheitsalarme, Sperren und
+Beeinträchtigung empfindlicher Dienste. Technische Grundlage:
+https://nmap.org/book/scan-methods-connect-scan.html und
+https://nmap.org/book/man-performance.html (08.10.2026 geprüft).
+Keine aktive Diensterkennung: ein offener Port belegt nur PC-Erreichbarkeit.
+
+Vollständige Suite: 628 bestanden, 20 bestehende Pillow-Warnungen. Anschließend
+20 gezielte Scantests inklusive sechs zusätzlicher Fälle bestanden (634 Fälle
+insgesamt abgedeckt). Mockprüfungen für Rate, Parallelitätsgrenze, Abbruch,
+mehrere IPs und Fehler; einziger echter Netzwerkcheck ist ein lokaler
+Loopback-Testlistener. Keine echten Server oder vollständigen Netzscans getestet.
+Syntax und Versionskonsistenz geprüft; Python-only, kein Fallow/EXE-Build.
