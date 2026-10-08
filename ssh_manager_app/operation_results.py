@@ -51,9 +51,10 @@ def result_lines(lines, session):
 
 
 class OperationJob:
-    def __init__(self, sessions, title, retry=None, directory=None):
+    def __init__(self, sessions, title, retry=None, directory=None, exit_labels=None):
         self.sessions = list(dict((session.key, session) for session in sessions).values())
         self.title, self.retry = title, retry
+        self.exit_labels = dict(exit_labels or {})
         folder = Path(directory or tempfile.gettempdir()) / "ssh-manager-results" / uuid.uuid4().hex
         folder.mkdir(parents=True)
         self.paths = {session.key: folder / f"{i}.status" for i, session in enumerate(self.sessions)}
@@ -86,7 +87,7 @@ class OperationJob:
             elif re.fullmatch(r"exit\t\d{1,3}", receipt):
                 code = int(receipt.split("\t")[1])
                 if code <= 255:
-                    self.states[key] = ("success" if code == 0 else "failed", f"Exit-Code {code}")
+                    self.states[key] = ("success" if code == 0 else "failed", self.exit_labels.get(code, f"Exit-Code {code}"))
         return self.states
 
     def failed_sessions(self):
@@ -141,10 +142,10 @@ class OperationResultsDialog(tk.Toplevel):
             self.job.retry(failed)
 
 
-def create_job(app, sessions, title, retry=None):
+def create_job(app, sessions, title, retry=None, *, exit_labels=None):
     if not isinstance(app, tk.Misc):
         return None
-    job = OperationJob(sessions, title, retry)
+    job = OperationJob(sessions, title, retry, exit_labels=exit_labels)
     if "_operation_jobs" not in app.__dict__:
         app._operation_jobs = []
     app._operation_jobs.append(job)

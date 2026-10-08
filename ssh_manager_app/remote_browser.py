@@ -46,7 +46,8 @@ class ReferenceBrowser(ttk.Frame):
             self.host.current(0)
         self.host.bind("<<ComboboxSelected>>", self.load)
         self.warning = tk.StringVar()
-        ttk.Label(self, textvariable=self.warning, wraplength=420, justify="left").grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        self.warning_label = ttk.Label(self, textvariable=self.warning, wraplength=420, justify="left")
+        self.warning_label.grid(row=2, column=0, sticky="ew", pady=(0, 8))
         self.user = tk.StringVar(value=default_user)
         if user_getter is None:
             userrow = ttk.Frame(self)
@@ -81,9 +82,17 @@ class ReferenceBrowser(ttk.Frame):
         self.listbox.bind("<Double-Button-1>", self.select)
         self.listbox.bind("<Return>", self.select)
         self.status = tk.StringVar(value="Noch keine Abfrage. Laden startet eine lesende SSH-Abfrage.")
-        ttk.Label(self, textvariable=self.status, wraplength=420).grid(row=7, column=0, sticky="ew", pady=8)
+        self.status_label = ttk.Label(self, textvariable=self.status, wraplength=420)
+        self.status_label.grid(row=7, column=0, sticky="ew", pady=8)
         ttk.Button(self, text="Skript verwenden" if kind == "script" else "Dienst verwenden", command=self.select).grid(row=8, column=0, sticky="e")
         self._warning()
+        self.bind("<Configure>", self._resize_text)
+
+    def _resize_text(self, event):
+        width = max(120, event.width - 20)
+        for label in (self.warning_label, self.status_label):
+            if int(label.cget("wraplength")) != width:
+                label.configure(wraplength=width)
 
     def _warning(self):
         index = self.host.current()

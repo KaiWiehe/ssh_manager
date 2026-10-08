@@ -148,3 +148,34 @@ Ein fehlendes oder unbekanntes Limit ist keine Freigabe zum Weiterarbeiten.
 Alle 16 autorisierten Punkte umgesetzt, jeweils eigener Commit und Versionssprung.
 Syntax, Versionskonsistenz und vollständige Tests erfolgreich; main gepusht.
 Die temporäre Fortsetzungsautomation wird nach dem finalen Push deaktiviert.
+
+## Bedienfeedback vom 08.10.2026
+
+Separat vom abgeschlossenen 16-Punkte-Auftrag umgesetzt:
+
+1. **0.2.61 – Diagnose:** zusätzliche TCP-Portliste bzw. kleine Bereiche,
+   maximal 64 Ports. SSH-Port automatisch berücksichtigen, zusätzliche Ports
+   direkt vom PC testen (auch bei SSH-Proxy). DNS-Name und bereits eingetragene
+   IP unterscheiden. Keine UDP-Prüfung und kein automatischer Vollscan;
+   Nichterreichbarkeit kann auch an Netzwerkregeln liegen.
+2. **0.2.62 – Remote-Layout:** großes Befehlsfeld ohne redundante Blöcke;
+   optionalen Skriptablauf vollständig einklappen. Vor-/Nach-Editoren teilen
+   sich den verfügbaren Platz gleichmäßig.
+3. **0.2.63 – Serverskript-Browser:** lesende SSH-Ordner-/Dateiauswahl in
+   einer 50/50-Ansicht; Referenzhost, Suche, Navigation und freie Pfadeingabe.
+   Derselbe Skriptpfad muss auf allen Ausführungszielen vorhanden sein und
+   dasselbe Skript bezeichnen. Eingegebenen Fallback-Benutzer auch für die
+   Ausführung verwenden. Abgewählter Ablauf führt erhaltene Texte nicht aus.
+4. **0.2.64 – Dienste:** Referenzhost durchsuchen, Dienste suchen/übernehmen
+   und weiterhin Namen frei eingeben. Installierte und laufende systemd-Units
+   berücksichtigen. Fehlende Dienste vor Status/Logs/Neustart je Host erkennen
+   und im Terminal sowie Sammelergebnis als „Dienst wurde nicht gefunden“
+   ausweisen. Hilfe, kompakte Formularhöhe und umbrechende Browserhinweise
+   nach echter Windows-Tk-Sichtprüfung nachgebessert.
+
+Abschlussprüfung: **614 Tests bestanden**, 20 bestehende Pillow-Warnungen.
+Syntax und Versionskonsistenz geprüft. Windows-Tk-Dialoge mit Testdaten gerendert
+und gesichtet; keine echten Serverabfragen oder Remote-Veränderungen ausgelöst.
+Lokale Git-Bash-Ausführung prüft fehlende Dienste, Abfragefehler und gemischte
+Ergebnisse mit Rückmeldungen je Host. Python-only, daher kein Fallow-Lauf.
+Portable EXE nicht neu gebaut. Fortsetzung nach Limit-Reset war nicht nötig.

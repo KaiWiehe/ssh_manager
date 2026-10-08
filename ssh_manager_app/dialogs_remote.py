@@ -564,7 +564,7 @@ class RemoteCommandDialog(tk.Toplevel):
         build_dialog_header(
             root,
             f"{self.title()} für {target_count} Host(s)",
-            "Eingaben für diese Aufgabe konfigurieren. Gespeicherte Einträge können übernommen werden.",
+            "" if self._fixed_mode else "Eingaben für diese Aufgabe konfigurieren. Gespeicherte Einträge können übernommen werden.",
         )
 
         body = ttk.PanedWindow(root, orient="horizontal")
@@ -585,7 +585,8 @@ class RemoteCommandDialog(tk.Toplevel):
         mode_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         mode_frame.columnconfigure(1, weight=1)
         self._user_mode = tk.StringVar(value="all")
-        ttk.Label(mode_frame, text="Ein Benutzer für die komplette Befehlskette:").grid(row=0, column=0, sticky="w", columnspan=2)
+        if not self._fixed_mode:
+            ttk.Label(mode_frame, text="Ein Benutzer für die komplette Befehlskette:").grid(row=0, column=0, sticky="w", columnspan=2)
         self._user_var = tk.StringVar(value=self._default_user)
         ttk.Label(mode_frame, text="Benutzername:").grid(row=1, column=0, sticky="w", pady=(8, 0), padx=(0, 8))
         ttk.Entry(mode_frame, textvariable=self._user_var).grid(row=1, column=1, sticky="ew", pady=(8, 0))
@@ -593,7 +594,7 @@ class RemoteCommandDialog(tk.Toplevel):
         if self._editing:
             mode_frame.grid_remove()
 
-        source = ttk.LabelFrame(left, text="Skript / Modus", padding=10)
+        source = ttk.Frame(left) if self._fixed_mode else ttk.LabelFrame(left, text="Skript / Modus", padding=10)
         self._source_frame = source
         source.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         source.columnconfigure(0, weight=1)
@@ -606,10 +607,9 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Radiobutton(mode_row, text="Skript liegt auf Server", variable=self._run_mode, value="remote_script", command=self._update_help).pack(side="left")
         if self._fixed_mode:
             mode_row.grid_remove()
-            source.configure(text=self.title())
 
         self._settings_container = ttk.Frame(source)
-        self._settings_container.grid(row=1, column=0, sticky="ew", pady=(10, 0))
+        self._settings_container.grid(row=1, column=0, sticky="ew", pady=(0 if self._fixed_mode else 10, 0))
         self._settings_container.columnconfigure(0, weight=1)
 
         self._command_settings_frame = ttk.LabelFrame(self._settings_container, text="Remote-Befehl", padding=10)
@@ -656,7 +656,9 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Label(self._remote_settings_frame, text="Argumente:").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
         self._remote_arguments_entry = ttk.Entry(self._remote_settings_frame, textvariable=self._arguments_var)
         self._remote_arguments_entry.grid(row=2, column=1, sticky="ew", pady=(8, 0))
-        ttk.Label(self._remote_settings_frame, text="Bei mehreren Hosts: derselbe Pfad muss überall dasselbe Skript bezeichnen. Der Browser liest nur den gewählten Referenzhost.", wraplength=460, style="Muted.TLabel").grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        remote_info = ttk.Label(self._remote_settings_frame, text="Bei mehreren Hosts: derselbe Pfad muss überall dasselbe Skript bezeichnen. Der Browser liest nur den gewählten Referenzhost.", wraplength=460, style="Muted.TLabel")
+        remote_info.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        self._remote_settings_frame.bind("<Configure>", lambda event: remote_info.configure(wraplength=max(120, event.width - 24)))
 
         self._help_var = tk.StringVar()
 
@@ -856,6 +858,8 @@ class RemoteCommandDialog(tk.Toplevel):
         if self.__dict__.get("_fixed_mode"):
             script = mode != "command"
             show_advanced = script and self._advanced_flow.get()
+            self._before_label.configure(text="Vor-Befehl (optional)")
+            self._after_label.configure(text="Nach-Befehl (optional)")
             self._source_frame.grid() if script else self._source_frame.grid_remove()
             self._flow_frame.grid() if not script or show_advanced else self._flow_frame.grid_remove()
             self._left.rowconfigure(3, weight=1 if not script or show_advanced else 0)
@@ -864,6 +868,9 @@ class RemoteCommandDialog(tk.Toplevel):
                 self._flow_frame.rowconfigure(row, weight=weight, uniform="editors" if weight else "")
             for widget in (self._before_label, self._before_text, self._after_label, self._after_text):
                 widget.grid() if show_advanced else widget.grid_remove()
+            if show_advanced:
+                self._before_text.grid_configure(pady=(2, 0))
+                self._after_label.grid_configure(pady=(8, 0))
             self._command_label.grid_remove()
             self._command_text.grid_remove() if script else self._command_text.grid()
             self._advanced_flow_button.grid() if script else self._advanced_flow_button.grid_remove()
@@ -871,8 +878,8 @@ class RemoteCommandDialog(tk.Toplevel):
             if self.__dict__.get("_compact_flow") != compact:
                 self._compact_flow = compact
                 browsing = "_browser" in self.__dict__ and bool(self._browser.winfo_manager())
-                fit_window_to_parent(self, self.master, 1100 if browsing else 980, 720 if browsing else 520 if compact else 760,
-                                     min_width=860, min_height=460 if compact else 660)
+                fit_window_to_parent(self, self.master, 1100 if browsing else 980, 720 if browsing else 560 if compact else 760,
+                                     min_width=860, min_height=520 if compact else 660)
 
     def _current_spec(self, *, include_metadata: bool = False) -> dict:
         mode = self._run_mode.get() if hasattr(self, "_run_mode") else "command"
@@ -1027,7 +1034,7 @@ class RemoteCommandDialog(tk.Toplevel):
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
         compact = self.__dict__.get("_compact_flow", False)
-        fit_window_to_parent(self, parent, 980, 520 if compact else 760, min_width=720, min_height=460 if compact else 540)
+        fit_window_to_parent(self, parent, 980, 560 if compact else 760, min_width=720, min_height=520 if compact else 540)
 
 
 class RemoteCommandConfirmDialog(tk.Toplevel):

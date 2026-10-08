@@ -20,6 +20,8 @@ def root():
 
 @pytest.mark.parametrize("mode", ["command", "local_script", "remote_script"])
 def test_remote_task_only_exposes_relevant_inputs(root, mode):
+    root.geometry("1280x900")
+    root.deiconify()
     dialog = RemoteCommandDialog(root, 2, run_mode=mode)
     root.update()
     assert dialog._run_mode.get() == mode
@@ -35,9 +37,12 @@ def test_remote_task_only_exposes_relevant_inputs(root, mode):
         assert dialog._after_text.frame.winfo_manager() == "grid"
         assert dialog._flow_frame.grid_rowconfigure(3)["weight"] == 0
         assert abs(dialog._before_text.winfo_height() - dialog._after_text.winfo_height()) <= 2
+        assert dialog._before_text.winfo_height() >= 40
         dialog._advanced_flow.set(False)
         dialog._update_help()
+        root.update()
         assert not dialog._flow_frame.winfo_manager()
+        assert dialog._advanced_flow_button.winfo_y() + dialog._advanced_flow_button.winfo_height() <= dialog._left.winfo_height()
     else:
         assert not dialog._source_frame.winfo_manager()
         assert not dialog._command_label.winfo_manager()

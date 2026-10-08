@@ -147,10 +147,10 @@ Lokales Skript hochladen
 Wähle eine lokale Skriptdatei, Interpreter und Argumente. Die App überträgt das Skript per scp nach /tmp, führt es per SSH aus und entfernt die temporäre Remote-Datei danach. Upload und Ausführung sind im Terminal getrennt sichtbar. Lokale Datei, scp und der Remote-Interpreter müssen verfügbar sein.
 
 Skript liegt auf Server
-Gib den vorhandenen Remote-Pfad, Interpreter und Argumente an. Es findet kein Upload statt. Der Benutzer muss das Skript lesen/ausführen dürfen. Beispiel: /opt/tools/check.sh mit bash.
+Gib den vorhandenen Remote-Pfad, Interpreter und Argumente an. ‚Server durchsuchen‘ öffnet rechts eine Ordner-/Dateiauswahl mit Suche und explizitem Referenzhost. Nur dieser Host wird gelesen. Bei mehreren Zielen muss der gewählte Pfad überall dasselbe Skript bezeichnen. Die manuelle Eingabe bleibt möglich. Es findet kein Upload statt. Der Benutzer muss das Skript lesen/ausführen dürfen. Beispiel: /opt/tools/check.sh mit bash.
 
 Vor- und Nach-Befehl
-In den Skript-Modi können zusätzliche Befehle vor und nach dem Skript eingegeben werden. Der Terminal-Output zeigt die geplante Reihenfolge und getrennte Bereiche „Output vom Vor-Befehl“, „Output vom Skript“ und „Output vom Nach-Befehl“. Prüfe die Ausgaben jedes Schritts; der Nach-Befehl ist kein garantiertes Rollback.
+In den Skript-Modi können zusätzliche Befehle vor und nach dem Skript eingegeben werden. Der erweiterte Ablauf ist vollständig eingeklappt, bis sein Haken aktiviert wird. Vor- und Nach-Befehl teilen sich dann den Platz gleichmäßig. Beim Abwählen bleiben die Texte im Dialog erhalten, werden aber nicht ausgeführt. Der Terminal-Output zeigt die geplante Reihenfolge und getrennte Bereiche „Output vom Vor-Befehl“, „Output vom Skript“ und „Output vom Nach-Befehl“. Prüfe die Ausgaben jedes Schritts; der Nach-Befehl ist kein garantiertes Rollback.
 
 Favoriten und Verlauf
 Ein Runbook-Favorit speichert das vollständige Spec mit Name, Notiz und Pin-Status. Über den Favoriten-Dialog anlegen/bearbeiten, löschen oder anpinnen; angepinnte Einträge stehen oben. Der Verlauf hilft, frühere Einstellungen wiederzuverwenden. Das erneute Auswählen eines Eintrags ersetzt nicht die Prüfung der aktuellen Zielhosts."""),
@@ -263,13 +263,19 @@ Vorlagen für PostgreSQL, MySQL, HTTP und HTTPS setzen passende Ports; danach si
     HelpTopic("diagnosis", "Verbindungsdiagnose", """Getrennte Schritte
 Lokaler SSH-Client, Aliasauflösung, DNS und TCP werden unabhängig beurteilt. Ein offener Port bestätigt keine Anmeldung. Bei konfiguriertem Proxy wird ein direkter TCP-Test zum Ziel ausgelassen, weil er den Proxy umgehen würde.
 
+DNS und zusätzliche Ports
+Namensauflösung übersetzt einen DNS-Hostnamen in IP-Adressen. Bei einer eingetragenen IP-Adresse ist sie nicht nötig. Zusätzliche TCP-Ports als Liste oder kleinen Bereich angeben, z. B. 80,443,8000-8010 (maximal 64). Der SSH-Port bleibt automatisch dabei. Zusätzliche Ports werden direkt von deinem Rechner aus geprüft, auch bei einem SSH-Proxy. Es gibt keinen UDP-Test und keinen automatischen Vollscan. Timeout/Ablehnung ist kein sicherer Beleg für einen geschlossenen Port; auch Netzwerkregeln können den Zugriff verhindern.
+
 Optionale Anmeldung
 Die zusätzliche SSH-Anmeldung muss ausdrücklich aktiviert werden. Sie verwendet vorhandene Schlüssel ohne Passwortabfrage, führt nur true aus und verändert keine bekannten Hostschlüssel. Unbekannte Hostschlüssel führen zu Fehlern. Feste Benutzer und SSH-Aliase haben Vorrang vor dem Fallback-Benutzer. Maximal acht Ziele werden parallel geprüft."""),
     HelpTopic("services", "Dienststatus, Neustart und Logs", """Eine Aufgabe pro Aktion
 Dienststatus zeigt den systemd-Status; ein inaktiver Dienst ist eine erfolgreich abgefragte Information. Dienstneustart startet ausschließlich die gewählte Unit und prüft danach ihren aktiven Zustand. Dienstlogs zeigt eine begrenzte Zahl der letzten journalctl-Zeilen, ohne dauerhaften Live-Stream.
 
 Ziele und Rechte
-Hosts im Hauptfenster anhaken, Dienstnamen und sudo-Bedarf wählen, Vorschau prüfen. sudo ist für Neustarts vorbelegt und explizit änderbar. Ein optionales Passwort gilt nur für diesen Lauf. Die Werkzeuge setzen systemd/journalctl auf dem Zielhost voraus."""),
+Hosts im Hauptfenster anhaken, Dienstnamen und sudo-Bedarf wählen, Vorschau prüfen. sudo ist für Neustarts vorbelegt und explizit änderbar. Ein optionales Passwort gilt nur für diesen Lauf. Die Werkzeuge setzen systemd/journalctl auf dem Zielhost voraus.
+
+Dienst auswählen
+Die freie Eingabe bleibt erhalten. ‚Dienste auf einem Host durchsuchen‘ öffnet rechts eine lesende SSH-Abfrage mit Suche. Wähle ausdrücklich den Referenzhost. Nur dieser Host wird durchsucht; dieselbe Unit muss auf allen Zielhosts vorhanden sein. Jede Ausführung prüft das je Host und meldet fehlende Units als ‚Dienst wurde nicht gefunden‘ im Terminal und Sammelergebnis."""),
     HelpTopic("results", "Ergebnisse von Sammelaktionen", """Belegter Abschluss
 ‚Terminal gestartet‘ bestätigt nur den Start. ‚Läuft‘ stammt aus dem gestarteten Skript. Erfolg/Fehler basiert auf dem Exit-Code des Remote-Aufrufs bzw. Upload-Ablaufs. Der Nachweis erscheint vor einem anschließenden interaktiven Terminal. Ohne Rückmeldung bleibt der Status unbekannt; das Schließen der Übersicht stoppt keine Aufgabe.
 

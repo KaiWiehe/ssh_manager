@@ -118,3 +118,26 @@ def test_remote_form_user_is_used_for_unset_hosts_without_second_prompt():
         users = resolve_users_for_sessions(SimpleNamespace(), sessions, "all", shared_user="chosen")
     prompt.assert_not_called()
     assert users == [(sessions[0], "ops"), (sessions[1], "chosen")]
+
+
+@pytest.mark.parametrize("action", ["status", "logs", "restart"])
+def test_service_dialog_opens_half_width_browser_and_keeps_manual_entry(root, action):
+    from ssh_manager_app.services import ServiceActionDialog
+    dialog = ServiceActionDialog(root, action, 2, reference_sessions=hosts())
+    with patch("ssh_manager_app.remote_browser.run_worker"):
+        dialog._browse_services()
+    root.update()
+    assert abs(dialog._body.sashpos(0) - dialog._body.winfo_width() // 2) <= 3
+    dialog._browser.on_select("wildfly.service")
+    assert dialog.unit.get() == "wildfly.service"
+    dialog.unit.set("custom.service")
+    assert dialog.unit.get() == "custom.service"
+    dialog._close_browser()
+    assert len(dialog._body.panes()) == 1
+    dialog.cancel()
+
+
+def test_failed_service_list_is_not_reported_as_empty_success():
+    with patch("ssh_manager_app.remote_browser.subprocess.run", return_value=SimpleNamespace(returncode=255, stdout="")):
+        with pytest.raises(ValueError):
+            list_services(hosts()[0], "ops")
