@@ -85,6 +85,9 @@ def current_ui_state(app):
         "search_history": list(app._search_history),
     }
     remote_history = list(app._initial_toolbar_search_texts.get("remote_command_history", []))
+    diagnosis_ports = app._initial_toolbar_search_texts.get("diagnosis_ports")
+    if isinstance(diagnosis_ports, str):
+        toolbar_texts["diagnosis_ports"] = diagnosis_ports
     if remote_history:
         toolbar_texts["remote_command_history"] = remote_history
     remote_favorites = list(app._initial_toolbar_search_texts.get("remote_command_favorites", []))

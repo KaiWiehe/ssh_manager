@@ -125,6 +125,8 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         install_context_help(self, "diagnosis")
         self.title("Verbindung diagnostizieren")
         self.sessions = list(sessions)
+        self._app = parent
+        self._ports_timer = None
         self.transient(parent)
         frame = ttk.Frame(self, padding=14)
         frame.pack(fill="both", expand=True)
@@ -136,10 +138,22 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         ttk.Label(userrow, text="Fallback-Benutzer (feste Benutzer/Aliase haben Vorrang)").pack(side="left")
         self.user = tk.StringVar(value=parent.settings.default_user)
         ttk.Entry(userrow, textvariable=self.user, width=20).pack(side="left", padx=8)
+        from .dialogs_base import _build_quickselect_buttons
+        _build_quickselect_buttons(frame, list(parent.settings.quick_users), self.user).pack(fill="x", pady=(6, 0))
+        ttk.Label(frame, text="Nur für die optionale SSH-Anmeldung: ohne festen Benutzer gilt der Fallback. SSH-Aliase verwenden ihre SSH-Konfiguration.", wraplength=850).pack(anchor="w", pady=4)
         portrow = ttk.Frame(frame)
         portrow.pack(fill="x", pady=(10, 0))
         ttk.Label(portrow, text="Zusätzliche TCP-Ports").pack(side="left")
-        self.ports = tk.StringVar()
+        saved_ports = parent.__dict__.get("_initial_toolbar_search_texts", {}).get("diagnosis_ports", "")
+        if not isinstance(saved_ports, str):
+            saved_ports = ""
+        try:
+            parse_ports(saved_ports)
+        except ValueError:
+            saved_ports = ""
+        self.ports = tk.StringVar(value=saved_ports)
+        self.ports.trace_add("write", self.schedule_port_save)
+        self.bind("<Destroy>", self.close_ports, add="+")
         ttk.Entry(portrow, textvariable=self.ports, width=35).pack(side="left", padx=8)
         ttk.Label(frame, text="z. B. 80,443,8000-8010 · maximal 64 · SSH-Port immer dabei. Direkte Prüfung von diesem Rechner, kein UDP-Test.", wraplength=850).pack(anchor="w", pady=4)
         self.status = tk.StringVar(value="Bereit. SSH-Anmeldung ist standardmäßig ausgeschaltet.")
@@ -158,7 +172,31 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         self.scan_button = ttk.Button(frame, text="Alle TCP-Ports prüfen (dauert sehr lange)…", command=self.open_full_scan)
         self.scan_button.pack(side="bottom", pady=4)
         self.output.pack(fill="both", expand=True)
-        fit_window_to_parent(self, parent, 980, 520)
+        fit_window_to_parent(self, parent, 980, 620)
+
+    def schedule_port_save(self, *_args):
+        if self._ports_timer is not None:
+            self.after_cancel(self._ports_timer)
+        self._ports_timer = self.after(250, self.save_ports)
+
+    def save_ports(self):
+        if self._ports_timer is not None:
+            self.after_cancel(self._ports_timer)
+            self._ports_timer = None
+        value = self.ports.get().strip()
+        try:
+            parse_ports(value)
+        except ValueError:
+            return
+        state = self._app.__dict__.get("_initial_toolbar_search_texts")
+        if state is not None and state.get("diagnosis_ports", "") != value:
+            from .actions_ui import persist_ui_state
+            state["diagnosis_ports"] = value
+            persist_ui_state(self._app)
+
+    def close_ports(self, event):
+        if event.widget is self:
+            self.save_ports()
 
     def open_full_scan(self):
         from .port_scan import FullPortScanDialog
@@ -173,6 +211,7 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         except ValueError as exc:
             messagebox.showwarning("Prüfports", str(exc), parent=self)
             return
+        self.save_ports()
         self.start_button.configure(state="disabled")
         self.output.delete(*self.output.get_children())
         self.status.set("Diagnose läuft … maximal acht parallele Ziele.")
@@ -192,10 +231,11 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         self.start_button.configure(state="normal")
 
 
-def open_diagnosis(app):
+def open_diagnosis(app, sessions=None):
     from .selection import single_action_target
-    sessions = app._tree.get_selected_sessions()
-    if not sessions:
+    explicit = sessions is not None
+    sessions = list(sessions) if explicit else app._tree.get_selected_sessions()
+    if not sessions and not explicit:
         target = single_action_target(app._tree)
         sessions = [target] if target else []
     if not sessions:
