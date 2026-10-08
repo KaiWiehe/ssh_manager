@@ -228,6 +228,7 @@ def build_remote_command_wt_command(
     parts = []
     for i, (session, user, remote_script) in enumerate(session_commands):
         ssh_cmd = _build_ssh_command(session, user)
+        request_cmd = ssh_cmd if close_on_success else shell_command(ssh_argv(session, user, ["-t"]))
         delimiter = _here_doc_delimiter(remote_script + str(sudo_password))
         start_label = f"Start: {(display_command if display_command is not None else remote_script).strip() or '-'}"
         script_lines = [
@@ -240,9 +241,9 @@ def build_remote_command_wt_command(
         if sudo_password:
             script_lines.append("trap 'unset SSH_MANAGER_SUDO_PASSWORD; rm -f \"$0\"' EXIT")
         if close_on_success:
-            script_lines.append(f"{ssh_cmd} <<'{delimiter}'")
+            script_lines.append(f"{request_cmd} 'bash -s' <<'{delimiter}'")
         else:
-            script_lines.append(f"{ssh_cmd} -t <<'{delimiter}'")
+            script_lines.append(f"{request_cmd} 'bash -s' <<'{delimiter}'")
         script_lines.extend(_sudo_password_prelude(sudo_password))
         script_lines.append(remote_script)
         script_lines.append(delimiter)
