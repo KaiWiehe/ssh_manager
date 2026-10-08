@@ -163,3 +163,16 @@ def test_invalid_saved_presets_fall_back_and_empty_lists_stay_empty(tmp_path):
     settings = load_settings_from_path(path)
     assert settings.tunnel_presets == settings.service_presets == []
 
+
+def test_real_certificate_replace_dialog_opens_and_cancel_preserves_whitelist(app):
+    from ssh_manager_app.dialogs_certificate_replace import CertificateReplaceDialog
+    changed = []
+    dialog = CertificateReplaceDialog(app, 1, ['/etc/ssl'], [], changed.append)
+    app.update()
+    assert dialog._context_help_button.winfo_exists()
+    assert dialog._roots.get('1.0', 'end').strip() == '/etc/ssl'
+    dialog._cancel()
+    app.update()
+    assert dialog.result is None
+    assert changed == []
+

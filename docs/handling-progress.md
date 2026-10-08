@@ -282,3 +282,11 @@ Keine echten Remote-Aufrufe. Python-only, Fallow nicht anwendbar; EXE nicht geba
 Abschluss: **661 Tests bestanden**, 20 bestehende Pillow-Warnungen; Syntax und
 Versionskonsistenz geprüft. Zusätzliche Kontext-Toolbar-Auswahlen danach gezielt
 mit den Menü-, Settings- und Exporttests geprüft.
+
+## Zertifikatstausch-Dialog öffnet nicht – 08.10.2026, 0.2.73
+
+error.log: NameError in dialogs_certificate_replace.py:19 beim Aufruf von
+install_context_help. Der Import der gemeinsamen Hilfeleiste fehlte in diesem
+Modul; betroffen waren Eingabe und Vorschau. Import ergänzt. Echter Windows-Tk-
+Regressionstest öffnet den Eingabedialog und bricht ab: keine Serveraktion und
+keine Whitelist-Änderung. 26 relevante Zertifikats-/Dialogtests bestanden.

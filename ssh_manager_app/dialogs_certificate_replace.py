@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .dialogs_certificates import RemoteFolderBrowserDialog
 from .secret_scripts import clear_password_fields
+from .ui_components import install_context_help
 
 
 class CertificateReplaceDialog(tk.Toplevel):
