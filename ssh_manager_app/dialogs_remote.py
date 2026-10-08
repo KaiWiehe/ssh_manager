@@ -567,10 +567,12 @@ class RemoteCommandDialog(tk.Toplevel):
         )
 
         body = ttk.PanedWindow(root, orient="horizontal")
+        self._body = body
         body.grid(row=1, column=0, sticky="nsew")
 
         left = ttk.Frame(body, padding=(0, 0, 10, 0))
         right = ttk.Frame(body)
+        self._left, self._right = left, right
         body.add(left, weight=3)
         body.add(right, weight=1)
         left.columnconfigure(0, weight=1)
@@ -591,6 +593,7 @@ class RemoteCommandDialog(tk.Toplevel):
             mode_frame.grid_remove()
 
         source = ttk.LabelFrame(left, text="Skript / Modus", padding=10)
+        self._source_frame = source
         source.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         source.columnconfigure(0, weight=1)
 
@@ -651,7 +654,8 @@ class RemoteCommandDialog(tk.Toplevel):
 
         self._help_var = tk.StringVar()
 
-        flow = ttk.LabelFrame(left, text="Ablauf", padding=8)
+        flow = ttk.Frame(left) if self._fixed_mode == "command" else ttk.LabelFrame(left, text="Ablauf", padding=8)
+        self._flow_frame = flow
         flow.grid(row=3, column=0, sticky="nsew")
         flow.columnconfigure(0, weight=1)
         flow.rowconfigure(1, weight=1)
@@ -672,10 +676,11 @@ class RemoteCommandDialog(tk.Toplevel):
         self._after_text = scrolledtext.ScrolledText(flow, wrap="word", height=3)
         self._after_text.grid(row=5, column=0, sticky="nsew", pady=(2, 0))
         self._advanced_flow = tk.BooleanVar(value=False)
-        self._advanced_flow_button = ttk.Checkbutton(flow, text="Erweiterter Ablauf: Vor-/Nach-Befehl", variable=self._advanced_flow, command=self._update_help)
-        self._advanced_flow_button.grid(row=6, column=0, sticky="w", pady=(8, 0))
+        self._advanced_flow_button = ttk.Checkbutton(left, text="Erweiterter Ablauf: Vor-/Nach-Befehl", variable=self._advanced_flow, command=self._update_help)
+        self._advanced_flow_button.grid(row=2, column=0, sticky="w", pady=(0, 8))
 
         library = ttk.Notebook(right)
+        self._library = library
         library.grid(row=0, column=0, sticky="nsew")
         favorites_box = ttk.Frame(library, padding=8)
         history_box = ttk.Frame(library, padding=8)
@@ -817,11 +822,22 @@ class RemoteCommandDialog(tk.Toplevel):
         if self.__dict__.get("_fixed_mode"):
             script = mode != "command"
             show_advanced = script and self._advanced_flow.get()
+            self._source_frame.grid() if script else self._source_frame.grid_remove()
+            self._flow_frame.grid() if not script or show_advanced else self._flow_frame.grid_remove()
+            self._left.rowconfigure(3, weight=1 if not script or show_advanced else 0)
+            for row in (1, 3, 5):
+                weight = int((row == 3 and not script) or (row in (1, 5) and show_advanced))
+                self._flow_frame.rowconfigure(row, weight=weight, uniform="editors" if weight else "")
             for widget in (self._before_label, self._before_text, self._after_label, self._after_text):
                 widget.grid() if show_advanced else widget.grid_remove()
-            for widget in (self._command_label, self._command_text):
-                widget.grid_remove() if script else widget.grid()
+            self._command_label.grid_remove()
+            self._command_text.grid_remove() if script else self._command_text.grid()
             self._advanced_flow_button.grid() if script else self._advanced_flow_button.grid_remove()
+            compact = script and not show_advanced
+            if self.__dict__.get("_compact_flow") != compact:
+                self._compact_flow = compact
+                fit_window_to_parent(self, self.master, 980, 520 if compact else 760,
+                                     min_width=860, min_height=460 if compact else 660)
 
     def _current_spec(self, *, include_metadata: bool = False) -> dict:
         mode = self._run_mode.get() if hasattr(self, "_run_mode") else "command"
@@ -973,7 +989,8 @@ class RemoteCommandDialog(tk.Toplevel):
         self.destroy()
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        fit_window_to_parent(self, parent, 980, 760, min_width=720, min_height=540)
+        compact = self.__dict__.get("_compact_flow", False)
+        fit_window_to_parent(self, parent, 980, 520 if compact else 760, min_width=720, min_height=460 if compact else 540)
 
 
 class RemoteCommandConfirmDialog(tk.Toplevel):

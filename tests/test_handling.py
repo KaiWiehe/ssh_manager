@@ -27,10 +27,22 @@ def test_remote_task_only_exposes_relevant_inputs(root, mode):
     assert not dialog._before_text.frame.winfo_manager()
     assert not dialog._after_text.frame.winfo_manager()
     if mode != "command":
+        assert not dialog._flow_frame.winfo_manager()
         dialog._advanced_flow.set(True)
         dialog._update_help()
+        root.update()
         assert dialog._before_text.frame.winfo_manager() == "grid"
         assert dialog._after_text.frame.winfo_manager() == "grid"
+        assert dialog._flow_frame.grid_rowconfigure(3)["weight"] == 0
+        assert abs(dialog._before_text.winfo_height() - dialog._after_text.winfo_height()) <= 2
+        dialog._advanced_flow.set(False)
+        dialog._update_help()
+        assert not dialog._flow_frame.winfo_manager()
+    else:
+        assert not dialog._source_frame.winfo_manager()
+        assert not dialog._command_label.winfo_manager()
+        assert dialog._flow_frame.grid_rowconfigure(1)["weight"] == 0
+        assert dialog._flow_frame.grid_rowconfigure(5)["weight"] == 0
     dialog._on_cancel()
 
 
