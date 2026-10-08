@@ -1187,6 +1187,8 @@ def build_main_ui(self) -> None:
     from .diagnosis import open_diagnosis
     self._tree._diagnose_sessions = lambda sessions: open_diagnosis(self, sessions)
     self._tree._action_menu_factory = lambda menu, sessions: populate_actions_menu(self, menu, sessions)
+    from .action_menus import add_scoped_exports
+    self._tree._export_menu_factory = lambda menu, sessions, prefix: add_scoped_exports(self, menu, sessions, prefix)
     self._undo_stack = []
     self._undo_depth = 0
     self._local_undo_enabled = True

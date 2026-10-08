@@ -27,8 +27,8 @@ class ExportColumnsDialog(tk.Toplevel):
         self.result: list[str] | None = None
         self._excel_safe_var = tk.BooleanVar(value=True)
         self.excel_safe = True
-        self.scope = "view"
-        self._scope_var = tk.StringVar(value="view")
+        self.scope = "context" if scope_counts and "context" in scope_counts else "view"
+        self._scope_var = tk.StringVar(value=self.scope)
         self._scope_counts = scope_counts or {}
         self._vars = {
             key: tk.BooleanVar(value=key in {"display_name", "hostname"})
@@ -52,7 +52,8 @@ class ExportColumnsDialog(tk.Toplevel):
         )
         scope = ttk.LabelFrame(frame, text="Umfang", padding=8)
         scope.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        for key, label in (("view", "Aktuelle Ansicht"), ("selection", "Häkchen-Auswahl (auch verborgene Hosts)"), ("all", "Alle geladenen Verbindungen")):
+        options = (("context", "Nur Ziele aus diesem Rechtsklick"),) if "context" in self._scope_counts else (("view", "Aktuelle Ansicht"), ("selection", "Häkchen-Auswahl (auch verborgene Hosts)"), ("all", "Alle geladenen Verbindungen"))
+        for key, label in options:
             count = self._scope_counts.get(key)
             text = f"{label}: {count}" if count is not None else label
             ttk.Radiobutton(scope, text=text, variable=self._scope_var, value=key).pack(anchor="w")

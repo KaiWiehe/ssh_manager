@@ -17,7 +17,7 @@ from .workers import run_worker
 
 
 def parse_ports(value):
-    """Parse a bounded, explicit TCP port list; never silently scan all ports."""
+    """Parse explicit TCP ports and ranges within the TCP port space."""
     ports = set()
     for token in re.split(r"[,;\s]+", value.strip()):
         if not token:
@@ -28,11 +28,7 @@ def parse_ports(value):
         first, last = bounds[0], bounds[-1]
         if not 1 <= first <= last <= 65535:
             raise ValueError("Ports müssen zwischen 1 und 65535 liegen; Bereiche aufsteigend angeben.")
-        if last - first >= 64:
-            raise ValueError("Maximal 64 zusätzliche TCP-Ports pro Diagnose wählen.")
         ports.update(range(first, last + 1))
-        if len(ports) > 64:
-            raise ValueError("Maximal 64 zusätzliche TCP-Ports pro Diagnose wählen.")
     return tuple(sorted(ports))
 
 
@@ -155,7 +151,7 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         self.ports.trace_add("write", self.schedule_port_save)
         self.bind("<Destroy>", self.close_ports, add="+")
         ttk.Entry(portrow, textvariable=self.ports, width=35).pack(side="left", padx=8)
-        ttk.Label(frame, text="z. B. 80,443,8000-8010 · maximal 64 · SSH-Port immer dabei. Direkte Prüfung von diesem Rechner, kein UDP-Test.", wraplength=850).pack(anchor="w", pady=4)
+        ttk.Label(frame, text="z. B. 80,443,8000-8010 · Je mehr Ports, desto länger dauert die Diagnose. SSH-Port immer dabei. Direkte Prüfung von diesem Rechner, kein UDP-Test.", wraplength=850).pack(anchor="w", pady=4)
         self.status = tk.StringVar(value="Bereit. SSH-Anmeldung ist standardmäßig ausgeschaltet.")
         ttk.Label(frame, textvariable=self.status, wraplength=660).pack(anchor="w", pady=8)
         self.output = ttk.Treeview(frame, columns=("step", "status", "detail"), show="tree headings")

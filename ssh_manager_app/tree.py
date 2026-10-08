@@ -1362,6 +1362,9 @@ class SessionTree(ttk.Frame):
         if folder_sessions and all(s.source in ("app", "ssh_alias") for s in folder_sessions) and self._on_delete_folder:
             menu.add_separator()
             menu.add_command(label="Ordner löschen", command=lambda ss=list(folder_sessions), fk=folder_key: self._on_delete_folder(ss, fk))
+        export = self.__dict__.get("_export_menu_factory")
+        if export:
+            export(menu, folder_sessions, "Ordner")
         if return_menu:
             return menu
         factory = self.__dict__.get("_action_menu_factory")
@@ -1728,6 +1731,11 @@ class SessionTree(ttk.Frame):
         elif self._on_delete_session:
             menu.add_command(label="Löschen gesperrt – nur eigene Verbindungen/Alias-Kopien", state="disabled")
 
+        export = self.__dict__.get("_export_menu_factory")
+        if export:
+            export(menu, [session], "Verbindung")
+            if selected_count >= 2:
+                export(menu, selected, "Auswahl")
         if return_menu:
             return menu
         factory = self.__dict__.get("_action_menu_factory")

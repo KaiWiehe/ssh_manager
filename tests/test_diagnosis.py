@@ -51,13 +51,14 @@ def test_parallel_checks_cap_worker_count_and_keep_effective_user():
     diagnose.assert_called_once_with(target(), "ops", authenticate=False)
 
 
-@pytest.mark.parametrize("value", ["0", "65536", "80-1", "1-65535", "abc", "80; rm", "-22"])
+@pytest.mark.parametrize("value", ["0", "65536", "80-1", "abc", "80; rm", "-22"])
 def test_invalid_or_unbounded_scan_is_rejected(value):
     with pytest.raises(ValueError):
         parse_ports(value)
 
 
 def test_ports_accept_list_and_small_ranges_without_duplicates():
+    assert len(parse_ports("1-65535")) == 65535
     assert parse_ports("80,443; 8000-8002 80") == (80, 443, 8000, 8001, 8002)
     assert parse_ports("") == ()
 

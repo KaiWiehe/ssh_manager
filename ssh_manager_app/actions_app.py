@@ -60,9 +60,11 @@ def close_app(app) -> None:
     app.destroy()
 
 
-def copy_visible_sessions_as_markdown(app) -> None:
+def copy_visible_sessions_as_markdown(app, sessions=None) -> None:
     """Kopiert die aktuell angezeigte Baumansicht als Markdown."""
-    text = app._tree.get_visible_sessions_markdown()
+    text = app._tree.get_visible_sessions_markdown() if sessions is None else "\n\n".join(
+        f"# {folder or 'Verbindungen ohne Ordner'}\n\n" + "\n".join(f"- {s.display_name}, {s.hostname}" for s in group)
+        for folder, group in group_export_sessions(sessions))
     if not text:
         messagebox.showinfo(
             "Keine Verbindungen",
@@ -75,21 +77,22 @@ def copy_visible_sessions_as_markdown(app) -> None:
     ToastNotification(app, "Markdown-Export kopiert")
 
 
-def export_visible_sessions(app, export_format: str) -> None:
+def export_visible_sessions(app, export_format: str, sessions=None) -> None:
     """Exportiert die sichtbare Baumansicht nach CSV oder XLSX."""
     export_options = {
         "csv": ("CSV", ".csv", "ssh-manager-verbindungen.csv", [("CSV-Dateien", "*.csv"), ("Alle Dateien", "*.*")]),
         "xlsx": ("Excel", ".xlsx", "ssh-manager-verbindungen.xlsx", [("Excel-Dateien", "*.xlsx"), ("Alle Dateien", "*.*")]),
     }
     label, extension, filename, filetypes = export_options[export_format]
-    scope_counts = {scope: len({s.key for _folder, sessions in export_scope_groups(app, scope) for s in sessions}) for scope in ("view", "selection", "all")}
+    fixed_groups = group_export_sessions(sessions) if sessions is not None else None
+    scope_counts = {"context": sum(len(group) for _, group in fixed_groups)} if fixed_groups is not None else {scope: len({s.key for _folder, group in export_scope_groups(app, scope) for s in group}) for scope in ("view", "selection", "all")}
     dialog = ExportColumnsDialog(app, label, scope_counts=scope_counts)
     app.wait_window(dialog)
     fields = dialog.result
     if not fields:
         return
 
-    groups = export_scope_groups(app, dialog.__dict__.get("scope", "view"))
+    groups = fixed_groups if fixed_groups is not None else export_scope_groups(app, dialog.__dict__.get("scope", "view"))
     if not groups:
         messagebox.showinfo("Keine Verbindungen", "Es sind keine Verbindungen zum Exportieren sichtbar.", parent=app)
         return
@@ -113,6 +116,15 @@ def export_visible_sessions(app, export_format: str) -> None:
     ToastNotification(app, f"{label}-Export erstellt")
 
 
+def group_export_sessions(sessions):
+    seen, groups = set(), {}
+    for session in sessions:
+        if session.key not in seen:
+            seen.add(session.key)
+            groups.setdefault(session.folder_key, []).append(session)
+    return list(groups.items())
+
+
 def export_scope_groups(app, scope):
     if scope == "view":
         return app._tree.get_visible_sessions_by_folder()
@@ -125,12 +137,7 @@ def export_scope_groups(app, scope):
             sessions.extend(_with_effective_username(app, s) for s in app.__dict__.get(key, []))
     else:
         raise ValueError("Unbekannter Exportumfang")
-    seen, groups = set(), {}
-    for session in sessions:
-        if session.key not in seen:
-            seen.add(session.key)
-            groups.setdefault(session.folder_key, []).append(session)
-    return list(groups.items())
+    return group_export_sessions(sessions)
 
 
 def open_command_palette(app) -> None:

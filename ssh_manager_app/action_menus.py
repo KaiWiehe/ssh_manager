@@ -81,6 +81,15 @@ def check_context_hosts(app, sessions):
         app._tree.check_hosts(pairs, timeout=app.settings.host_check_timeout_seconds)
 
 
+def add_scoped_exports(app, menu, sessions, prefix="Verbindungen"):
+    from .actions_app import copy_visible_sessions_as_markdown, export_visible_sessions
+    targets = list(sessions)
+    state = "normal" if targets else "disabled"
+    menu.add_command(label=f"{prefix} als Markdown kopieren", state=state, command=lambda: copy_visible_sessions_as_markdown(app, targets))
+    menu.add_command(label=f"{prefix} als CSV exportieren…", state=state, command=lambda: export_visible_sessions(app, "csv", targets))
+    menu.add_command(label=f"{prefix} als Excel exportieren…", state=state, command=lambda: export_visible_sessions(app, "xlsx", targets))
+
+
 def copy_menu(source, destination):
     """Give cloned entries their own callbacks; Tcl commands belong to one menu."""
     destination._source_menu = source

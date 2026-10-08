@@ -49,3 +49,29 @@ def test_service_ssh_options_precede_target_and_remote_shell_receives_stdin(tmp_
     assert 'BAD_REMOTE_COMMAND' not in result.stdout
     assert "ssh -t -- ops@example.invalid 'bash -s'" in captured[0]
 
+
+def test_context_exports_use_folder_or_exact_checked_selection(app, tmp_path):
+    import tkinter as tk
+    from test_action_menus import setup_hosts, invoke
+    from ssh_manager_app.actions_app import export_visible_sessions, copy_visible_sessions_as_markdown
+    from types import SimpleNamespace
+    a, b, ids = setup_hosts(app)
+    app._tree.set_all_checked(True)
+    menus = []
+    with patch.object(tk.Menu, 'tk_popup', autospec=True, side_effect=lambda menu, *args: menus.append(menu)):
+        app._tree._show_session_menu(ids[a.key], x_root=0, y_root=0)
+    with patch('ssh_manager_app.actions_app.export_visible_sessions') as export:
+        invoke(menus[-1], 'Auswahl als CSV exportieren…')
+    assert {s.key for s in export.call_args.args[2]} == {'a', 'b'}
+    with patch('ssh_manager_app.actions_app.ToastNotification'):
+        copy_visible_sessions_as_markdown(app, [a])
+    assert a.hostname in app.clipboard_get()
+    assert b.hostname not in app.clipboard_get()
+    path = tmp_path / 'folder.csv'
+    dialog = SimpleNamespace(result=['display_name', 'hostname'], scope='all', excel_safe=True)
+    with patch('ssh_manager_app.actions_app.ExportColumnsDialog', return_value=dialog) as columns, patch.object(app, 'wait_window'), patch('ssh_manager_app.actions_app.filedialog.asksaveasfilename', return_value=str(path)), patch('ssh_manager_app.actions_app.ToastNotification'):
+        export_visible_sessions(app, 'csv', [a])
+    assert columns.call_args.kwargs['scope_counts'] == {'context': 1}
+    assert a.hostname in path.read_text(encoding='utf-8-sig')
+    assert b.hostname not in path.read_text(encoding='utf-8-sig')
+

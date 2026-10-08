@@ -48,7 +48,7 @@ def test_invalid_edit_does_not_replace_last_valid_saved_ports(app, tmp_path):
     app._initial_toolbar_search_texts["diagnosis_ports"] = "443"
     with patch("ssh_manager_app.storage._STATE_FILE", tmp_path / "ui_state.json"), patch("ssh_manager_app.actions_ui.persist_ui_state") as save:
         dialog = ConnectionDiagnosisDialog(app, [target("first")])
-        dialog.ports.set("1-65535")
+        dialog.ports.set("1-65536")
         dialog.destroy()
     save.assert_not_called()
     assert app._initial_toolbar_search_texts["diagnosis_ports"] == "443"
