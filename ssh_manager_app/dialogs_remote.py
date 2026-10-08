@@ -1206,7 +1206,10 @@ class SshTunnelDialog(tk.Toplevel):
         ttk.Radiobutton(intro, text="Dienst auf dem SSH-Server", variable=self._tunnel_kind, value="direct", command=self._update_tunnel_route).pack(anchor="w")
         ttk.Radiobutton(intro, text="Internen Dienst über den SSH-Server", variable=self._tunnel_kind, value="internal", command=self._update_tunnel_route).pack(anchor="w")
         self._port_preset = tk.StringVar(value="Eigene Ports")
-        preset = ttk.Combobox(intro, textvariable=self._port_preset, values=("Eigene Ports", "PostgreSQL", "MySQL", "HTTP", "HTTPS"), state="readonly")
+        from .models import default_settings
+        settings = getattr(self.master, 'settings', None) or default_settings()
+        self._tunnel_presets = {row['name']: (row['local'], row['remote']) for row in settings.tunnel_presets}
+        preset = ttk.Combobox(intro, textvariable=self._port_preset, values=("Eigene Ports", *self._tunnel_presets), state="readonly")
         preset.pack(anchor="w", pady=5)
         preset.bind("<<ComboboxSelected>>", lambda _: self._apply_tunnel_preset())
         self._tunnel_route = tk.StringVar()
@@ -1283,7 +1286,7 @@ class SshTunnelDialog(tk.Toplevel):
         self._tunnel_route.set(f"PC localhost:{self._local_port_var.get() or '…'} → SSH {self._jumphost_var.get() or '…'} → {target}:{self._remote_port_var.get() or '…'}")
 
     def _apply_tunnel_preset(self):
-        ports = {"PostgreSQL": (5432, 5432), "MySQL": (3306, 3306), "HTTP": (8080, 80), "HTTPS": (8443, 443)}
+        ports = self._tunnel_presets
         if self._port_preset.get() in ports:
             local, remote = ports[self._port_preset.get()]
             self._local_port_var.set(str(local))

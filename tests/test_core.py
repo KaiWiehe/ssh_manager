@@ -251,7 +251,7 @@ def test_build_remote_command_wt_command_creates_temp_script_and_uses_git_bash()
     assert cmd.argv[-2].endswith('bash.exe')
     assert captured["prefix"] == "remote_cmd_"
     script_text = captured["content"]
-    assert "ssh -- deploy@10.0.0.9 -t <<'__SSH_MANAGER_" in script_text
+    assert "ssh -t -- deploy@10.0.0.9 'bash -s' <<'__SSH_MANAGER_" in script_text
     assert "uptime" in script_text
     assert "exec ssh -- deploy@10.0.0.9" in script_text
 

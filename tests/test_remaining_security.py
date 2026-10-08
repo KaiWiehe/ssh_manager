@@ -244,7 +244,7 @@ sudo() {
   if [ "$1" != 'chown' ]; then command "$@"; fi
 }
 ssh() {
-  if [ "${@: -1}" = '-t' ]; then eval "$(cat)"; else eval "${@: -1}"; fi
+  if [ "${@: -1}" = 'bash -s' ]; then eval "$(cat)"; else eval "${@: -1}"; fi
 }
 scp() { local dst="${@: -1}"; command cp -- "$2" "${dst#*:}"; }
 ''' + captured["content"], encoding="utf-8")

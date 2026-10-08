@@ -250,3 +250,35 @@ des Originals sowie Originalaufrufe nach erneutem Öffnen der App-Werkzeuge.
 Abschluss: **648 Tests bestanden**, 20 bestehende Pillow-Warnungen. Syntax,
 Versionskonsistenz und Diff geprüft. Keine echten Remote-Aufrufe; Python-only,
 Fallow nicht anwendbar. Portable EXE nicht neu gebaut. App-Neustart erforderlich.
+
+## Weiteres Bedienfeedback – 08.10.2026, 0.2.70–0.2.72
+
+1. **0.2.70, 3b5c30d:** DNS-Eingabe-, DNS-Server- und Ergebnisdialoge verwenden
+   für die Hilfeleiste denselben Geometry-Manager wie ihre Inhalte (grid).
+   Echte Tk-Dialogtests decken ein und drei Ergebnisse ab. Dienstbefehle setzen
+   SSH-Optionen vor `--`/Ziel und starten ausdrücklich `bash -s` für den
+   Skriptinhalt auf stdin. Zuvor wurde `-t` nach dem Ziel als Remote-Befehl
+   behandelt; dies erklärt den gemeldeten Bash-Fehler. Git-Bash-Tests simulieren
+   die SSH-Argumentgrenze und führen alle drei Dienstaktionen lokal aus.
+2. **0.2.71, 4217875:** 64-Port-Limit entfernt, explizite Listen/Bereiche von
+   1 bis 65535 zulässig. Hinweis: mehr Ports verlängern die Diagnose. Gültige
+   Listen bleiben gespeichert. Kontextmenüs bieten Markdown/CSV/Excel direkt
+   für Verbindung, Ordner mit Unterordnern oder Häkchen-Auswahl. Der Exportdialog
+   fixiert diesen Zielumfang; fremde Hosts können nicht versehentlich hinzukommen.
+3. **0.2.72:** Jede Menüaktion einzeln als optionale Toolbar-Schnellauswahl;
+   einschließlich Diagnose/Vollscan, Skriptmodi, aller Dienstaktionen, Upload,
+   DNS, Exporte, globaler App-Werkzeuge und Funktionen des fokussierten Eintrags.
+   Neue Optionen sind abgewählt, bestehende Toolbar bleibt aktiv. Sofortige
+   Vorschau, dauerhafte Speicherung und vorhandenes Mehr-Menü bei Platzmangel.
+   Einstellungen → Tunnel / Dienste: Tunnel je Zeile `Name | lokal | Ziel`,
+   Dienste je Zeile ein Name. Bearbeiten, Ergänzen und Leeren möglich; Ports
+   und eindeutige Namen validiert. Freie Eingaben/Serverbrowser bleiben erhalten.
+   Vorgaben und Toolbar-Auswahl sind Teil von Einstellungen, Export/Import und
+   App-Backup. Gemeinsame SSH-Korrektur auch auf Skript-/Verteilungsabläufe
+   angewendet, die denselben Optionsfehler enthielten.
+
+Windows-Tk-Einstellungsseiten mit isolierten Testdaten gerendert und gesichtet.
+Keine echten Remote-Aufrufe. Python-only, Fallow nicht anwendbar; EXE nicht gebaut.
+Abschluss: **661 Tests bestanden**, 20 bestehende Pillow-Warnungen; Syntax und
+Versionskonsistenz geprüft. Zusätzliche Kontext-Toolbar-Auswahlen danach gezielt
+mit den Menü-, Settings- und Exporttests geprüft.

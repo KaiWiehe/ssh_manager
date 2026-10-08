@@ -180,7 +180,10 @@ Entfernt den ausgewählten Schlüssel aus der Autorisierung des Remote-Benutzers
 
 Geltungsbereich
 Die Kontextmenüs bieten Einzelhost- und Auswahlaktionen entsprechend den unterstützten Sessiontypen. Die Aktion verändert die SSH-Zugangsberechtigung auf den Servern, nicht nur eine Einstellung im SSH-Manager."""),
-    HelpTopic("settings", "Suche, Ansicht und Einstellungen", """Suche und Suchverlauf
+    HelpTopic("settings", "Suche, Ansicht und Einstellungen", """Toolbar-Schnellauswahl
+Unter Einstellungen → Toolbar steht jede Menüaktion als einzelner optionaler Button bereit: Diagnose/Vollscan, beide Skriptmodi, alle Dienstaktionen, Upload, DNS, Exporte, App-Werkzeuge und die Aktionen für den fokussierten Eintrag. Neue Buttons sind zunächst abgewählt. Die Auswahl wirkt sofort; Speichern übernimmt sie dauerhaft. Bei schmalen Fenstern stehen überzählige Buttons unter Mehr. Aktionen verwenden dieselben Zielregeln wie ihr Menü; gesperrte Aktionen erklären den fehlenden Fokus oder die nötige Häkchen-Auswahl.
+
+Suche und Suchverlauf
 Das Suchfeld filtert die Hauptansicht live nach Name, Hostname und Ordnerpfad, ohne Beachtung der Groß-/Kleinschreibung. Es sucht nicht nach Port oder Notiztext. Strg+F (Standard) setzt den Fokus hinein. Leeren zeigt wieder die normale Ansicht. Der Verlauf-Button übernimmt frühere Suchbegriffe; „Verlauf leeren“ entfernt den gespeicherten Suchverlauf. Hauptsuche und Befehlspalette sind unterschiedliche Suchoberflächen.
 
 Toolbar und Quellen
@@ -262,12 +265,12 @@ Interner Dienst über SSH-Server
 Der SSH-Server erreicht den eingegebenen internen Zielserver. Dieser ist ausdrücklich erforderlich. Die Vorschau zeigt PC → SSH-Server → Ziel.
 
 Ports und Laufzeit
-Vorlagen für PostgreSQL, MySQL, HTTP und HTTPS setzen passende Ports; danach sind sie editierbar. Der lokale Port muss frei sein. Das Terminal hält den Tunnel offen; beende dessen SSH-Prozess zum Schließen. Es gibt hier keine Reverse-Tunnel oder SOCKS-Proxys."""),
+Vorgaben setzen lokale und Zielports; danach sind beide frei editierbar. Unter Einstellungen → Tunnel / Dienste lassen sich Vorgaben bearbeiten, hinzufügen oder entfernen (Name | lokaler Port | Zielport je Zeile). Der lokale Port muss frei sein. Das Terminal hält den Tunnel offen; beende dessen SSH-Prozess zum Schließen. Es gibt hier keine Reverse-Tunnel oder SOCKS-Proxys."""),
     HelpTopic("diagnosis", "Verbindungsdiagnose", """Getrennte Schritte
 Lokaler SSH-Client, Aliasauflösung, DNS und TCP werden unabhängig beurteilt. Ein offener Port bestätigt keine Anmeldung. Bei konfiguriertem Proxy wird ein direkter TCP-Test zum Ziel ausgelassen, weil er den Proxy umgehen würde.
 
 DNS und zusätzliche Ports
-Namensauflösung übersetzt einen DNS-Hostnamen in IP-Adressen. Bei einer eingetragenen IP-Adresse ist sie nicht nötig. Zusätzliche TCP-Ports als Liste oder kleinen Bereich angeben, z. B. 80,443,8000-8010 (maximal 64). Der SSH-Port bleibt automatisch dabei. Zusätzliche Ports werden direkt von deinem Rechner aus geprüft, auch bei einem SSH-Proxy. Es gibt keinen UDP-Test. Timeout/Ablehnung ist kein sicherer Beleg für einen geschlossenen Port; auch Netzwerkregeln können den Zugriff verhindern.
+Namensauflösung übersetzt einen DNS-Hostnamen in IP-Adressen. Bei einer eingetragenen IP-Adresse ist sie nicht nötig. Zusätzliche TCP-Ports als Liste oder Bereich angeben, z. B. 80,443,8000-8010. Es gibt kein 64-Port-Limit. Je mehr Ports, desto länger dauert die Diagnose. Der SSH-Port bleibt automatisch dabei. Zusätzliche Ports werden direkt von deinem Rechner aus geprüft, auch bei einem SSH-Proxy. Es gibt keinen UDP-Test. Timeout/Ablehnung ist kein sicherer Beleg für einen geschlossenen Port; auch Netzwerkregeln können den Zugriff verhindern.
 
 Diagnose-Ports merken
 Gültige Eingaben werden appweit in ui_state.json gespeichert, auch beim Schließen ohne gestartete Diagnose. Sie stehen beim nächsten Host und nach App-Neustart wieder im Feld. Leeren entfernt die Vorgabe. Ungültige/unvollständige Eingaben ersetzen die letzte gültige Vorgabe nicht. Externe Verbindungsquellen bleiben unverändert.
@@ -282,7 +285,10 @@ Bei einer normalen Host-Verbindung ohne fest eingetragenen Benutzer nutzt die op
 
 Optionale Anmeldung
 Die zusätzliche SSH-Anmeldung muss ausdrücklich aktiviert werden. Sie verwendet vorhandene Schlüssel ohne Passwortabfrage, führt nur true aus und verändert keine bekannten Hostschlüssel. Unbekannte Hostschlüssel führen zu Fehlern. Feste Benutzer und SSH-Aliase haben Vorrang vor dem Fallback-Benutzer. Maximal acht Ziele werden parallel geprüft."""),
-    HelpTopic("services", "Dienststatus, Neustart und Logs", """Eine Aufgabe pro Aktion
+    HelpTopic("services", "Dienststatus, Neustart und Logs", """Vorgaben bearbeiten
+Unter Einstellungen → Tunnel / Dienste kannst du die Dienstliste bearbeiten, erweitern oder leeren (ein Dienstname je Zeile). Freie Dienstnamen und der Serverbrowser bleiben verfügbar.
+
+Eine Aufgabe pro Aktion
 Dienststatus zeigt den systemd-Status; ein inaktiver Dienst ist eine erfolgreich abgefragte Information. Dienstneustart startet ausschließlich die gewählte Unit und prüft danach ihren aktiven Zustand. Dienstlogs zeigt eine begrenzte Zahl der letzten journalctl-Zeilen, ohne dauerhaften Live-Stream.
 
 Ziele und Rechte

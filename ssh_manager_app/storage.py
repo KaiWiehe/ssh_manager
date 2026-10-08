@@ -359,10 +359,24 @@ def load_settings_from_path(path: Path, *, require_settings: bool = False) -> Ap
         hostname_index = column_order.index("hostname") if "hostname" in column_order else 0
         column_order.insert(hostname_index, "username")
 
+    from .tool_presets import validate_tunnels, validate_services
+    try:
+        tunnel_presets = validate_tunnels(raw_dict.get("tunnel_presets", defaults.tunnel_presets))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        tunnel_presets = defaults.tunnel_presets
+    try:
+        service_presets = validate_services(raw_dict.get("service_presets", defaults.service_presets))
+    except (ValueError, TypeError):
+        service_presets = defaults.service_presets
+    extras = toolbar_raw.get("extra_actions", [])
+    extras = list(dict.fromkeys(extras)) if isinstance(extras, list) and all(isinstance(item, str) for item in extras) else []
     return AppSettings(
+        tunnel_presets=tunnel_presets,
+        service_presets=service_presets,
         quick_users=quick_users,
         default_user=default_user,
         toolbar=ToolbarSettings(
+            extra_actions=extras,
             show_select_all=bool(toolbar_raw.get("show_select_all", defaults.toolbar.show_select_all)),
             show_deselect_all=bool(toolbar_raw.get("show_deselect_all", defaults.toolbar.show_deselect_all)),
             show_expand_all=bool(toolbar_raw.get("show_expand_all", defaults.toolbar.show_expand_all)),

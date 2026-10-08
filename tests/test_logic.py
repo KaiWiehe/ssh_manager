@@ -2626,6 +2626,10 @@ def test_settings_view_collect_settings_normalizes_values():
     view.TITLE_MODE_LABELS = SettingsView.TITLE_MODE_LABELS
     view._quick_users_text = MagicMock()
     view._quick_users_text.get.return_value = " alice\n\n bob \n"
+    view._tunnel_presets_text = MagicMock()
+    view._tunnel_presets_text.get.return_value = "HTTP | 8080 | 80"
+    view._service_presets_text = MagicMock()
+    view._service_presets_text.get.return_value = "nginx.service"
     view._default_user_var = MagicMock()
     view._default_user_var.get.return_value = "charlie"
     view._host_timeout_var = MagicMock()

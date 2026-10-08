@@ -18,6 +18,8 @@ def populate_actions_menu(app, actions_menu, sessions=None):
     actions_menu.add_command(label="Hosts prüfen", command=lambda: check_context_hosts(self, sessions))
     from .diagnosis import open_diagnosis
     actions_menu.add_command(label="Verbindung diagnostizieren…", command=lambda: open_diagnosis(self, sessions))
+    from .diagnosis import open_full_port_scan
+    actions_menu.add_command(label="Alle TCP-Ports prüfen (dauert sehr lange)…", command=lambda: open_full_port_scan(self, sessions))
     from .operation_results import show_last_results
     actions_menu.add_command(label="Letzte Sammelergebnisse…", command=lambda: show_last_results(self))
     actions_menu.add_command(label="Server neu starten…", command=lambda: ui.restart_servers_callback(self, targets()))
@@ -82,12 +84,12 @@ def check_context_hosts(app, sessions):
 
 
 def add_scoped_exports(app, menu, sessions, prefix="Verbindungen"):
-    from .actions_app import copy_visible_sessions_as_markdown, export_visible_sessions
+    from . import actions_app
     targets = list(sessions)
     state = "normal" if targets else "disabled"
-    menu.add_command(label=f"{prefix} als Markdown kopieren", state=state, command=lambda: copy_visible_sessions_as_markdown(app, targets))
-    menu.add_command(label=f"{prefix} als CSV exportieren…", state=state, command=lambda: export_visible_sessions(app, "csv", targets))
-    menu.add_command(label=f"{prefix} als Excel exportieren…", state=state, command=lambda: export_visible_sessions(app, "xlsx", targets))
+    menu.add_command(label=f"{prefix} als Markdown kopieren", state=state, command=lambda: actions_app.copy_visible_sessions_as_markdown(app, targets))
+    menu.add_command(label=f"{prefix} als CSV exportieren…", state=state, command=lambda: actions_app.export_visible_sessions(app, "csv", targets))
+    menu.add_command(label=f"{prefix} als Excel exportieren…", state=state, command=lambda: actions_app.export_visible_sessions(app, "xlsx", targets))
 
 
 def copy_menu(source, destination):

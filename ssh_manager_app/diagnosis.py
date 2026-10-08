@@ -16,6 +16,19 @@ from .ui_components import install_context_help, fit_window_to_parent
 from .workers import run_worker
 
 
+def open_full_port_scan(app, sessions=None):
+    from .port_scan import FullPortScanDialog
+    targets = list(sessions) if sessions is not None else app._tree.get_selected_sessions()
+    if not targets and sessions is None:
+        from .selection import single_action_target
+        target = single_action_target(app._tree)
+        targets = [target] if target else []
+    if not targets:
+        messagebox.showinfo("Keine Verbindung", "Eine Verbindung fokussieren oder Hosts anhaken.", parent=app)
+        return
+    return FullPortScanDialog(app, targets, app.settings.default_user)
+
+
 def parse_ports(value):
     """Parse explicit TCP ports and ranges within the TCP port space."""
     ports = set()

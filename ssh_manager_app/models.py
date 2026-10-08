@@ -40,6 +40,7 @@ class Session:
 
 @dataclass
 class ToolbarSettings:
+    extra_actions: list[str] = field(default_factory=list)
     show_select_all: bool = True
     show_deselect_all: bool = True
     show_expand_all: bool = True
@@ -99,8 +100,15 @@ class AppearanceSettings:
     tree_row_height: int = 28
 
 
+def _default_tunnel_presets():
+    from .tool_presets import DEFAULT_TUNNELS
+    return [dict(row) for row in DEFAULT_TUNNELS]
+
+
 @dataclass
 class AppSettings:
+    tunnel_presets: list[dict] = field(default_factory=_default_tunnel_presets)
+    service_presets: list[str] = field(default_factory=lambda: ["nginx.service", "wildfly.service", "postgresql.service", "ssh.service"])
     quick_users: list[str] = field(default_factory=lambda: list(QUICK_USERS))
     default_user: str = DEFAULT_USER
     toolbar: ToolbarSettings = field(default_factory=ToolbarSettings)

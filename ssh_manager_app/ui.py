@@ -80,6 +80,7 @@ def layout_toolbar_buttons(app) -> None:
         key for key in TOOLBAR_BUTTON_ORDER
         if key != "show_add_connection" and getattr(app.settings.toolbar, key)
     ]
+    enabled.extend(key for key in app.settings.toolbar.extra_actions if key in app._toolbar_buttons)
     try:
         width = int(app.__dict__["_main_frame"].winfo_width())
     except (AttributeError, TypeError, ValueError):
@@ -1001,6 +1002,7 @@ def build_main_ui(self) -> None:
 
     from .action_menus import populate_actions_menu
     actions_menu = tk.Menu(menubar, tearoff=False)
+    self._actions_menu = actions_menu
     populate_actions_menu(self, actions_menu)
     menubar.add_cascade(label="Aktionen", menu=actions_menu)
 
@@ -1217,6 +1219,9 @@ def build_main_ui(self) -> None:
     self._search_history_after_id = None
     self._search_var.trace_add("write", lambda *_: on_search_changed_callback(self))
 
+    from .toolbar_actions import install_toolbar_actions
+    install_toolbar_actions(self)
+    layout_toolbar_buttons(self)
     self._settings_view = SettingsView(self, self)
     try:
         apply_session_filters(self, self._initial_toolbar_search_texts.get("session_filters", {}), self._search_var.get(), persist=False)

@@ -53,7 +53,9 @@ class ServiceActionDialog(tk.Toplevel):
         initial = initial or {}
         self.unit = tk.StringVar(value=initial.get("unit", "nginx.service"))
         ttk.Label(frame, text="Dienst").grid(row=1, column=0, sticky="w", padx=(0, 10))
-        ttk.Combobox(frame, textvariable=self.unit, values=("nginx.service", "wildfly.service", "postgresql.service", "ssh.service")).grid(row=1, column=1, sticky="ew")
+        from .models import default_settings
+        settings = getattr(parent, 'settings', None) or default_settings()
+        ttk.Combobox(frame, textvariable=self.unit, values=settings.service_presets).grid(row=1, column=1, sticky="ew")
         self._browse_button = ttk.Button(frame, text="Dienste auf einem Host durchsuchen…", command=self._browse_services)
         self._browse_button.grid(row=2, column=0, columnspan=2, sticky="w", pady=8)
         if not self._reference_sessions:

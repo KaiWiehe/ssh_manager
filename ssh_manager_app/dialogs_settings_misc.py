@@ -232,6 +232,7 @@ class SettingsView(ttk.Frame):
             ("sources", "Quellen / Ansicht"),
             ("appearance", "Design"),
             ("users", "Schnellauswahl-Benutzer"),
+            ("presets", "Tunnel / Dienste"),
             ("toolbar", "Toolbar"),
             ("columns", "Spalten"),
             ("terminal", "Terminal"),
@@ -249,6 +250,7 @@ class SettingsView(ttk.Frame):
         self._section_frames["sources"] = self._build_sources_section()
         self._section_frames["appearance"] = self._build_appearance_section()
         self._section_frames["users"] = self._build_users_section()
+        self._section_frames["presets"] = self._build_presets_section()
         self._section_frames["toolbar"] = self._build_toolbar_section()
         self._section_frames["columns"] = self._build_columns_section()
         self._section_frames["terminal"] = self._build_terminal_section()
@@ -476,6 +478,16 @@ class SettingsView(ttk.Frame):
         frame.rowconfigure(2, weight=1)
         return frame
 
+    def _build_presets_section(self):
+        frame = self._build_section_frame("Tunnel / Dienste", "Vorgaben bearbeiten, erweitern oder entfernen. Freie Eingaben bleiben möglich.")
+        ttk.Label(frame, text="Tunnel: je Zeile Name | lokaler Port | Zielport").grid(row=2, column=0, sticky="w")
+        self._tunnel_presets_text = scrolledtext.ScrolledText(frame, height=8, wrap="none")
+        self._tunnel_presets_text.grid(row=3, column=0, sticky="ew", pady=8)
+        ttk.Label(frame, text="Dienste: ein Dienstname je Zeile").grid(row=4, column=0, sticky="w")
+        self._service_presets_text = scrolledtext.ScrolledText(frame, height=8)
+        self._service_presets_text.grid(row=5, column=0, sticky="ew", pady=8)
+        return frame
+
     def _build_toolbar_section(self) -> ttk.Frame:
         frame = self._build_section_frame("Toolbar", "Lege fest, welche Buttons oben sichtbar sind. Änderungen wirken direkt.")
         grid = ttk.Frame(frame, style="SettingsPanel.TFrame")
@@ -501,7 +513,14 @@ class SettingsView(ttk.Frame):
             self._toolbar_vars[key] = var
             ttk.Checkbutton(grid, text=label, variable=var, command=self._on_toolbar_changed).grid(row=idx // 2, column=idx % 2, sticky="w", padx=(0, 28), pady=6)
 
-        self._add_section_tools(frame, 3, "toolbar")
+        extras = ttk.LabelFrame(frame, text="Einzelne Aktionen als Schnellauswahl", padding=10)
+        extras.grid(row=3, column=0, sticky="ew", pady=12)
+        self._extra_toolbar_vars = {}
+        for index, (key, (label, _command)) in enumerate(self._app._extra_toolbar_catalog.items()):
+            var = tk.BooleanVar()
+            self._extra_toolbar_vars[key] = var
+            ttk.Checkbutton(extras, text=label, variable=var, command=self._on_toolbar_changed).grid(row=index, column=0, sticky="w", pady=3)
+        self._add_section_tools(frame, 4, "toolbar")
         return frame
 
     def _build_columns_section(self) -> ttk.Frame:
@@ -849,6 +868,7 @@ class SettingsView(ttk.Frame):
             "appearance": "Design",
             "users": "Schnellauswahl-Benutzer",
             "toolbar": "Toolbar",
+            "presets": "Tunnel / Dienste",
             "columns": "Spalten",
             "terminal": "Terminal",
             "shortcuts": "Tastenkürzel",
@@ -867,6 +887,10 @@ class SettingsView(ttk.Frame):
 
     def load_from_app(self) -> None:
         settings = self._app.settings
+        self._tunnel_presets_text.delete("1.0", "end")
+        self._tunnel_presets_text.insert("1.0", "\n".join(f"{r['name']} | {r['local']} | {r['remote']}" for r in settings.tunnel_presets))
+        self._service_presets_text.delete("1.0", "end")
+        self._service_presets_text.insert("1.0", "\n".join(settings.service_presets))
         self._quick_users_text.delete("1.0", "end")
         self._quick_users_text.insert("1.0", "\n".join(settings.quick_users))
         self._default_user_combo.configure(values=settings.quick_users)
@@ -875,6 +899,8 @@ class SettingsView(ttk.Frame):
         self._startup_expand_var.set(self.STARTUP_LABELS.get(settings.startup_expand_mode, self.STARTUP_LABELS["remember"]))
         for key, var in self._toolbar_vars.items():
             var.set(bool(getattr(settings.toolbar, key)))
+        for key, var in self._extra_toolbar_vars.items():
+            var.set(key in settings.toolbar.extra_actions)
         self._column_order_keys = self._visible_column_order(settings.toolbar)
         self._render_column_order_headers()
         for key, var in self._source_visibility_vars.items():
@@ -1003,6 +1029,7 @@ class SettingsView(ttk.Frame):
             if data.get(self._column_visibility_key(column), False) and column not in visible_order:
                 visible_order.append(column)
         data["column_order"] = visible_order
+        data["extra_actions"] = [key for key, var in self._extra_toolbar_vars.items() if var.get()]
         return ToolbarSettings(**data)
 
     def _collect_source_visibility_settings(self) -> SourceVisibilitySettings:
@@ -1052,9 +1079,12 @@ class SettingsView(ttk.Frame):
         self._on_source_visibility_changed()
 
     def _collect_settings(self) -> AppSettings:
+        from .tool_presets import parse_tunnels, validate_services
         quick_users = [line.strip() for line in self._quick_users_text.get("1.0", "end").splitlines() if line.strip()]
         if not quick_users:
             raise ValueError("Mindestens ein Quick-User ist erforderlich.")
+        tunnel_presets = parse_tunnels(self._tunnel_presets_text.get("1.0", "end"))
+        service_presets = validate_services([line.strip() for line in self._service_presets_text.get("1.0", "end").splitlines() if line.strip()])
         default_user = self._default_user_var.get().strip() or quick_users[0]
         if default_user not in quick_users:
             default_user = quick_users[0]
@@ -1069,6 +1099,8 @@ class SettingsView(ttk.Frame):
         winscp_open_mode_label = getattr(getattr(self, "_winscp_open_mode_var", None), "get", lambda: self.WINSCP_OPEN_MODE_LABELS["tabs"])()
         winscp_open_mode = next((key for key, label in self.WINSCP_OPEN_MODE_LABELS.items() if label == winscp_open_mode_label), "tabs")
         return AppSettings(
+            tunnel_presets=tunnel_presets,
+            service_presets=service_presets,
             quick_users=quick_users,
             default_user=default_user,
             toolbar=self._collect_toolbar_settings(),
