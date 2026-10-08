@@ -181,13 +181,12 @@ def open_tunnel(app, session: Session | None = None) -> None:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
-def resolve_users_for_sessions(app, sessions: list[Session], mode: str) -> list[tuple[Session, str]] | None:
+def resolve_users_for_sessions(app, sessions: list[Session], mode: str, *, shared_user: str | None = None) -> list[tuple[Session, str]] | None:
     """Löst Benutzernamen für Sessions auf, global oder pro Host."""
     resolved: list[tuple[Session, str]] = []
     if mode == "all":
         missing = [session for session in sessions if not session.username]
-        shared_user = None
-        if missing:
+        if missing and not shared_user:
             dialog = UserDialog(app, title="Benutzername für alle Hosts", quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
             app.wait_window(dialog)
             if dialog.result is None:
@@ -230,6 +229,8 @@ def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = N
     remote_favorites = list(app._initial_toolbar_search_texts.get("remote_command_favorites", []))
     if run_mode is not None:
         dialog_kwargs["run_mode"] = run_mode
+        if run_mode == "remote_script":
+            dialog_kwargs["reference_sessions"] = runnable
         remote_history = [item for item in remote_history if item.get("mode", "command") == run_mode]
         remote_favorites = [item for item in remote_favorites if item.get("mode", "command") == run_mode]
     if remote_history:
@@ -269,7 +270,9 @@ def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = N
             favorites.insert(0, history_item)
         app._initial_toolbar_search_texts["remote_command_favorites"] = favorites[:25]
 
-    session_users = resolve_users_for_sessions(app, runnable, user_mode)
+    entered_user = dialog._user_var.get() if hasattr(dialog, "_user_var") else None
+    user_options = {"shared_user": entered_user.strip()} if user_mode == "all" and isinstance(entered_user, str) and entered_user.strip() else {}
+    session_users = resolve_users_for_sessions(app, runnable, user_mode, **user_options)
     if session_users is None:
         return
 

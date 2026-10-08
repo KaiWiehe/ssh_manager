@@ -17,12 +17,13 @@ def test_remote_folder_listing_uses_ssh_stdin_for_sudo_password_not_arguments():
     assert error == ""
     command = run.call_args.args[0]
     assert "secret" not in command
-    assert command == ["ssh", "-o", "BatchMode=yes", "-p", "2222", "--", "deploy@10.0.0.9", "bash", "-s"]
+    assert command == ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=yes", "-o", "UpdateHostKeys=no", "-p", "2222", "--", "deploy@10.0.0.9", "bash", "-s"]
     remote_script = run.call_args.kwargs["input"].decode("utf-8")
     assert "\r" not in remote_script
     assert "SSH_MANAGER_SUDO_PASSWORD='secret'" in remote_script
     assert "-maxdepth 1" in remote_script
     assert "%y\\t%p" in remote_script
+    assert "set -uo pipefail" in remote_script
 
 
 def test_remote_folder_listing_returns_ssh_errors():

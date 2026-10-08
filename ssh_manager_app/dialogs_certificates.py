@@ -7,7 +7,7 @@ from .workers import run_worker
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
-from .ssh_utils import connection_value
+from .ssh_utils import connection_value, ssh_argv
 from .certificate_paths import certificate_paths, confirm_broad_certificate_paths
 from .dialogs_certificate_permissions import CertificatePermissionsDialog
 from .secret_scripts import clear_password_fields
@@ -21,15 +21,9 @@ def _shell_single_quote(text: str) -> str:
 
 def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_password: str) -> tuple[list[tuple[str, str]], str]:
     """Read direct child entries over SSH without exposing the password in args."""
-    if session.is_ssh_config_session:
-        command = ["ssh", "-o", "BatchMode=yes", "--", connection_value(session.display_name), "bash", "-s"]
-    else:
-        command = ["ssh", "-o", "BatchMode=yes"]
-        if session.port != 22:
-            command.extend(["-p", str(session.port)])
-        command.extend(["--", f"{connection_value(user)}@{connection_value(session.hostname)}", "bash", "-s"])
+    command = ssh_argv(session, user, ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=yes", "-o", "UpdateHostKeys=no"]) + ["bash", "-s"]
 
-    script = ["set -u"]
+    script = ["set -uo pipefail"]
     if sudo_password:
         script.extend([
             f"SSH_MANAGER_SUDO_PASSWORD={_shell_single_quote(sudo_password)}",
@@ -40,7 +34,7 @@ def _ssh_folder_list_command(session: Session, user: str, path: str, sudo_passwo
         "if [ -d \"$path\" ] && [ -r \"$path\" ] && [ -x \"$path\" ]; then",
         "  find \"$path\" -mindepth 1 -maxdepth 1 -printf '%y\\t%p\\n' | sort -t $'\\t' -k2",
         "else",
-        "  sudo find \"$path\" -mindepth 1 -maxdepth 1 -printf '%y\\t%p\\n' | sort -t $'\\t' -k2",
+        f"  sudo {'' if sudo_password else '-n '}find \"$path\" -mindepth 1 -maxdepth 1 -printf '%y\\t%p\\n' | sort -t $'\\t' -k2",
         "fi",
     ])
     remote_input = ("\n".join(script) + "\n").encode("utf-8")

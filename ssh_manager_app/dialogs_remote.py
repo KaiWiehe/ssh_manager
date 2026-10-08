@@ -533,13 +533,14 @@ class RemoteFavoriteEditDialog(tk.Toplevel):
 class RemoteCommandDialog(tk.Toplevel):
     """Dialog für Remote-Befehl, Skript-Runbooks, Verlauf und Favoriten."""
 
-    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, history: list[dict] | None = None, favorites: list[dict] | None = None, run_mode: str | None = None, editing: bool = False):
+    def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, history: list[dict] | None = None, favorites: list[dict] | None = None, run_mode: str | None = None, editing: bool = False, reference_sessions: list[Session] | None = None):
         if run_mode not in (None, "command", "local_script", "remote_script"):
             raise ValueError("Unbekannte Remote-Aufgabe")
         super().__init__(parent)
         install_context_help(self, "remote")
         self._fixed_mode = run_mode
         self._editing = editing
+        self._reference_sessions = list(reference_sessions or [])
         self.title({"command": "Befehl ausführen", "local_script": "Lokales Skript ausführen", "remote_script": "Serverskript ausführen"}.get(run_mode, "Befehl/Skript ausführen"))
         self.geometry("980x760")
         self.minsize(860, 660)
@@ -644,13 +645,18 @@ class RemoteCommandDialog(tk.Toplevel):
         ttk.Label(self._remote_settings_frame, text="Remote-Pfad:").grid(row=0, column=0, sticky="w", padx=(0, 8))
         self._path_entry = ttk.Entry(self._remote_settings_frame, textvariable=self._remote_path_var)
         self._path_entry.grid(row=0, column=1, sticky="ew")
+        if self._fixed_mode == "remote_script":
+            self._browse_button = ttk.Button(self._remote_settings_frame, text="Server durchsuchen…", command=self._browse_remote)
+            self._browse_button.grid(row=0, column=2, padx=(6, 0))
+            if not self._reference_sessions:
+                self._browse_button.configure(state="disabled", text="Durchsuchen: zuerst Zielhost auswählen")
         ttk.Label(self._remote_settings_frame, text="Interpreter:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
         self._remote_interpreter_combo = ttk.Combobox(self._remote_settings_frame, textvariable=self._interpreter, values=("bash", "sh", "python3", "python", "direct"), width=14, state="readonly")
         self._remote_interpreter_combo.grid(row=1, column=1, sticky="w", pady=(8, 0))
         ttk.Label(self._remote_settings_frame, text="Argumente:").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
         self._remote_arguments_entry = ttk.Entry(self._remote_settings_frame, textvariable=self._arguments_var)
         self._remote_arguments_entry.grid(row=2, column=1, sticky="ew", pady=(8, 0))
-        ttk.Label(self._remote_settings_frame, text="Das Skript muss bereits auf dem Zielhost vorhanden sein.", style="Muted.TLabel").grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(self._remote_settings_frame, text="Bei mehreren Hosts: derselbe Pfad muss überall dasselbe Skript bezeichnen. Der Browser liest nur den gewählten Referenzhost.", wraplength=460, style="Muted.TLabel").grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         self._help_var = tk.StringVar()
 
@@ -778,6 +784,34 @@ class RemoteCommandDialog(tk.Toplevel):
             self._run_mode.set("local_script")
             self._update_help()
 
+    def _browse_remote(self):
+        from .remote_browser import ReferenceBrowser
+        import posixpath
+        if "_browser" not in self.__dict__:
+            path = self._remote_path_var.get().strip()
+            self._browser = ReferenceBrowser(self._right, self._reference_sessions, self._remote_path_var.set,
+                                            user_getter=self._user_var.get,
+                                            initial_path=posixpath.dirname(path) if path.startswith("/") else "/",
+                                            on_close=self._close_browser)
+        self._library.grid_remove()
+        self._browser.grid(row=0, column=0, sticky="nsew")
+        self._body.pane(self._left, weight=1)
+        self._body.pane(self._right, weight=1)
+        fit_window_to_parent(self, self.master, 1100, 720, min_width=860, min_height=600)
+        self.update_idletasks()
+        self._body.sashpos(0, self._body.winfo_width() // 2)
+        self._browser.load()
+
+    def _close_browser(self):
+        self._browser.generation += 1
+        self._browser.grid_remove()
+        self._library.grid()
+        self._body.pane(self._left, weight=3)
+        self._body.pane(self._right, weight=1)
+        self._center_on_parent(self.master)
+        self.update_idletasks()
+        self._body.sashpos(0, self._body.winfo_width() * 3 // 4)
+
     def _set_text_state(self, widget: scrolledtext.ScrolledText, enabled: bool) -> None:
         style = ttk.Style(widget)
         background = style.lookup("TEntry", "fieldbackground") or style.lookup("TFrame", "background")
@@ -836,7 +870,8 @@ class RemoteCommandDialog(tk.Toplevel):
             compact = script and not show_advanced
             if self.__dict__.get("_compact_flow") != compact:
                 self._compact_flow = compact
-                fit_window_to_parent(self, self.master, 980, 520 if compact else 760,
+                browsing = "_browser" in self.__dict__ and bool(self._browser.winfo_manager())
+                fit_window_to_parent(self, self.master, 1100 if browsing else 980, 720 if browsing else 520 if compact else 760,
                                      min_width=860, min_height=460 if compact else 660)
 
     def _current_spec(self, *, include_metadata: bool = False) -> dict:
@@ -863,6 +898,8 @@ class RemoteCommandDialog(tk.Toplevel):
             spec["local_path"] = path
         if mode == "remote_script":
             spec["remote_path"] = path
+        if self.__dict__.get("_fixed_mode") and mode != "command" and not self._advanced_flow.get():
+            spec["before_command"] = spec["after_command"] = ""
         if include_metadata:
             spec.setdefault("name", spec.get("path") or (command.splitlines()[0] if command else "Neuer Favorit"))
             spec.setdefault("note", "")
