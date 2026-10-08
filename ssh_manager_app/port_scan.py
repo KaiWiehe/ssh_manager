@@ -134,7 +134,8 @@ class FullPortScanDialog(tk.Toplevel):
         self.status = tk.StringVar(value="Bereit. Ein Scan startet erst mit „Vollscan starten“.")
         status_label = ttk.Label(frame, textvariable=self.status, wraplength=860)
         status_label.grid(row=3, column=0, sticky="ew", pady=4)
-        frame.bind("<Configure>", lambda event: [label.configure(wraplength=max(180, event.width - 28)) for label in (info, rate_hint, status_label)])
+        for label in (info, rate_hint, status_label):
+            label.bind("<Configure>", lambda event: event.widget.configure(wraplength=max(180, event.width - 2)))
         self.progress = ttk.Progressbar(frame, maximum=65535)
         self.progress.grid(row=4, column=0, sticky="ew", pady=8)
         ttk.Label(frame, text="Erreichbare TCP-Ports · kein Beleg für einen bestimmten Dienst oder eine erfolgreiche Anmeldung").grid(row=5, column=0, sticky="w")
