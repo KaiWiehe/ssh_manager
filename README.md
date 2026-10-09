@@ -271,11 +271,13 @@ Für eine richtige Windows-App als portable Einzel-EXE:
 powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 ```
 
-Das Script nutzt die aktuell aktive Python-Version, installiert die festgelegten Build-Abhängigkeiten und erzeugt:
+Das Script nutzt bevorzugt `.venv\Scripts\python.exe`, sonst `python` aus dem PATH, installiert die festgelegten Build-Abhängigkeiten und erzeugt:
 
 ```text
 dist\SSH Manager.exe
 ```
+
+Jeder fehlgeschlagene externe Schritt stoppt den Build mit einem Fehlerexit. Alte Buildausgaben werden erst nach erfolgreicher Python-, Versions- und Abhängigkeitsprüfung entfernt; auch Bereinigungsfehler brechen ab. Die Erfolgsmeldung erscheint nur nach erfolgreichem PyInstaller-Lauf mit einer neu erzeugten, nicht leeren EXE.
 
 Die EXE läuft ohne Terminalfenster, nutzt das App-Icon aus `assets/ssh-manager.ico` und speichert Daten weiterhin unter `%APPDATA%\SSH-Manager\`.
 Die Paket-Metadaten einschließlich der Lizenzdateien von ttkbootstrap und Pillow werden in die portable Anwendung aufgenommen.
