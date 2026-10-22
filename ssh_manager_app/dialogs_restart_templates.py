@@ -13,10 +13,11 @@ from .ui_components import fit_window_to_parent, install_context_help
 from .workers import run_worker
 
 
-def modal(window, parent, title, width=820, height=520):
+def modal(window, parent, title, width=820, height=520, *, blocking=True):
     window.title(title)
-    window.transient(parent)
-    window.grab_set()
+    if blocking:
+        window.transient(parent)
+        window.grab_set()
     fit_window_to_parent(window, parent, width, height)
 
 
@@ -235,9 +236,9 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", lambda _: self.close())
         self.refresh_library()
-        modal(self, app, "Massen-Neustarts", 1150, 800)
+        modal(self, app, "Massen-Neustarts", 1150, 800, blocking=False)
         if selection:
-            self.create()
+            self.create(selection)
         else:
             ttk.Label(self.editor, text="Eine Vorlage öffnen oder aus ausgewählten Servern erstellen.").pack(pady=30)
 
@@ -276,12 +277,13 @@ class RestartTemplatesDialog(tk.Toplevel):
         if self.discard_ok():
             self.destroy()
 
-    def create(self):
-        if not self.selection:
+    def create(self, selection=None):
+        selected = list(selection) if selection is not None else self.app._tree.get_selected_sessions()
+        if not selected:
             messagebox.showinfo("Server auswählen", "Links im Hauptfenster Server anhaken und Massen-Neustarts erneut öffnen. Alternativ eine gespeicherte Vorlage öffnen.", parent=self)
             return
         if self.discard_ok():
-            self.load(new_template(self.selection), existing=False)
+            self.load(new_template(selected), existing=False)
 
     def open_selected(self):
         selected = self.list.selection()
@@ -438,7 +440,6 @@ class RestartTemplatesDialog(tk.Toplevel):
     def pick(self, multiple=False):
         picker = ConnectionPicker(self, all_connections(self.app), multiple)
         self.wait_window(picker)
-        self.grab_set()
         return picker.result
 
     def replace_target(self, index):
@@ -472,7 +473,6 @@ class RestartTemplatesDialog(tk.Toplevel):
             self._bind_scroll(checks)
         picker = ServicePicker(self, session, user.get().strip(), apply)
         self.wait_window(picker)
-        self.grab_set()
 
     def persist(self, library):
         from .actions_ui import persist_ui_state
@@ -499,7 +499,6 @@ class RestartTemplatesDialog(tk.Toplevel):
             if self.original is not None:
                 choice = SaveTemplateChoice(self, item["name"])
                 self.wait_window(choice)
-                self.grab_set()
                 if choice.result is None:
                     return False
                 mode, name = choice.result
@@ -544,7 +543,6 @@ class RestartTemplatesDialog(tk.Toplevel):
             return
         preview = RestartPreview(self, template, targets)
         self.wait_window(preview)
-        self.grab_set()
         if preview.result is None:
             return
         password, preview.result = preview.result, None
@@ -558,4 +556,3 @@ class RestartTemplatesDialog(tk.Toplevel):
             messagebox.showwarning("Neustart nicht gestartet", str(error), parent=self)
         finally:
             password = ""
-            self.grab_set()

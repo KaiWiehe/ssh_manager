@@ -291,6 +291,11 @@ mehrere Zeilen; Strg+C oder „Auswahl kopieren“ kopiert sie. Textausschnitte 
 oder nach Doppelklick in den vollständigen Details markieren. Lange Meldungen
 bleiben beim Kopieren vollständig erhalten.
 
+Fortschritts-/Ergebnisfenster und Vorlagenverwaltung bleiben als unabhängige
+Arbeitsfenster offen. Das Hauptfenster ist während laufender und abgeschlossener
+Neustarts weiter bedienbar: andere Verbindungen oder Fehler-Server auswählen und
+weitere Aktionen ausführen. Nur Eingaben und Startbestätigungen sperren vorübergehend.
+
 ## Portable Windows-EXE bauen
 
 Die Python-Variante bleibt weiterhin nutzbar:

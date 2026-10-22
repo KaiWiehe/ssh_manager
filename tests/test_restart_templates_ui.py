@@ -178,7 +178,9 @@ def test_execution_pause_keeps_monitoring_active_and_stop_skips_pending(app, mon
         app.after(25, observe)
     app.after(25, observe)
     watchdog = app.after(5000, lambda: [w.destroy() for w in app.winfo_children() if isinstance(w, ServerRestartProgressDialog)])
-    run_template(app, item, resolve_targets(item, app._app_sessions), "")
+    progress = run_template(app, item, resolve_targets(item, app._app_sessions), "")
+    assert progress.winfo_exists() and app.grab_current() is None
+    app.wait_window(progress)
     app.after_cancel(watchdog)
     assert final == {"one": "error", "two": "online", "three": "not_started"}
 
@@ -199,3 +201,65 @@ def test_ambiguous_connection_is_visible_and_cannot_be_browsed(app, monkeypatch)
     window.browse(0)
     picker.assert_not_called()
     window.destroy()
+
+
+def test_results_and_template_manager_leave_main_window_usable(app):
+    main_tree = ttk.Treeview(app, selectmode="extended")
+    main_tree.pack(fill="both", expand=True)
+    for session in app._app_sessions:
+        main_tree.insert("", "end", iid=session.key, text=session.display_name)
+    performed = []
+    action = ttk.Button(app, text="Aktion auf Auswahl", command=lambda: performed.append(main_tree.selection()))
+    action.pack()
+    manager = RestartTemplatesDialog(app, [])
+    progress = ServerRestartProgressDialog(app, [(s, "admin") for s in app._app_sessions], "")
+    app.update()
+    assert app.grab_current() is None
+    assert not str(manager.transient()) and not str(progress.transient())
+    progress.update_host("one", "error", "Service fehlgeschlagen")
+    progress._tree.selection_set(progress._rows["one"])
+    # The main selection and another action are independent of the result rows.
+    main_tree.selection_set("one")
+    action.invoke()
+    assert performed == [("one",)]
+    assert progress.winfo_exists() and manager.winfo_exists()
+    assert progress._tree.selection() == (progress._rows["one"],)
+    progress.finish()
+    main_tree.selection_set("two", "three")
+    action.invoke()
+    assert performed[-1] == ("two", "three")
+    assert app.grab_current() is None
+    progress.destroy()
+    manager.destroy()
+
+
+def test_direct_restart_returns_without_waiting_for_results(app, monkeypatch):
+    from ssh_manager_app.actions_restart import RestartResult, restart_servers
+    dialogs_waited = []
+    original_wait = app.wait_window
+    def wait(window):
+        dialogs_waited.append(window)
+        original_wait(window)
+    monkeypatch.setattr(app, "wait_window", wait)
+    def input_dialog(parent, targets):
+        window = tk.Toplevel(parent)
+        window.result = {"sudo_password": "", "service": "", "timeout_seconds": 300, "max_parallel": 1}
+        window.after_idle(window.destroy)
+        return window
+    monkeypatch.setattr("ssh_manager_app.actions_restart.ServerRestartDialog", input_dialog)
+    monkeypatch.setattr("ssh_manager_app.actions_restart.resolve_users_for_sessions", lambda _, sessions, mode: [(s, "admin") for s in sessions])
+    monkeypatch.setattr("ssh_manager_app.actions_restart.monitor_server_restart", lambda *a, **k: RestartResult("online", "simulated"))
+    progress = restart_servers(app, app._app_sessions)
+    assert len(dialogs_waited) == 1
+    assert progress.winfo_exists() and app.grab_current() is None
+    progress.cancel_event.set()
+    # Closing only this independent result window leaves the app available.
+    progress.destroy()
+
+
+def test_modeless_manager_creates_from_current_main_selection(app):
+    manager = RestartTemplatesDialog(app, [])
+    app._tree.get_selected_sessions.return_value = [app._app_sessions[1]]
+    manager.create()
+    assert [t["key"] for t in manager.template["targets"]] == ["two"]
+    manager.destroy()

@@ -255,7 +255,7 @@ def _deduplicate_sessions(sessions: list[Session]) -> list[Session]:
     return result
 
 
-def restart_servers(app, sessions: list[Session]) -> None:
+def restart_servers(app, sessions: list[Session]) -> ServerRestartProgressDialog | None:
     """Run and monitor ``sudo reboot`` on all selected sessions in parallel."""
     runnable = _deduplicate_sessions(sessions)
     if not runnable:
@@ -323,6 +323,7 @@ def restart_servers(app, sessions: list[Session]) -> None:
     completed: set[str] = set()
 
     def pump_events() -> None:
+        nonlocal sudo_password
         if not progress.winfo_exists():
             return
         try:
@@ -334,9 +335,10 @@ def restart_servers(app, sessions: list[Session]) -> None:
         except queue.Empty:
             pass
         if len(completed) == len(session_users):
+            sudo_password = ""
             progress.finish()
         else:
             app.after(100, pump_events)
 
     app.after(50, pump_events)
-    app.wait_window(progress)
+    return progress

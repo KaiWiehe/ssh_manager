@@ -95,9 +95,11 @@ def run_template(app, template, targets, password):
     gate.grid_remove()
     completed = set()
     def pump():
+        nonlocal password
         if not progress.winfo_exists():
             cancel.set()
             scheduler.decide(False)
+            password = ""
             return
         if cancel.is_set():
             scheduler.decide(False)
@@ -126,12 +128,12 @@ def run_template(app, template, targets, password):
         else:
             gate.grid_remove()
         if scheduler.done and len(completed) == len(targets):
+            password = ""
             progress.finish()
             return
         progress.after(80, pump)
     pump()
-    app.wait_window(progress)
-    password = ""
+    return progress
 
 
 def open_restart_templates(app, sessions=None):

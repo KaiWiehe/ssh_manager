@@ -108,7 +108,10 @@ def test_restart_limit_bounds_running_hosts_and_cancel_skips_waiting(cancel):
          patch("ssh_manager_app.actions_restart.ServerRestartDialog", return_value=Mock(result={"max_parallel": 1 if cancel else 2})), \
          patch("ssh_manager_app.actions_restart.ServerRestartProgressDialog", return_value=progress), \
          patch("ssh_manager_app.actions_restart.monitor_server_restart", side_effect=monitor):
-        restart_servers(app, sessions)
+        assert restart_servers(app, sessions) is progress
+        # Production now returns immediately; drive the Tk pump in this test
+        # while all worker dependencies are still patched.
+        wait(progress)
     assert peak <= (1 if cancel else 2)
     assert len(called) == (1 if cancel else 5)
     assert progress.update_host.call_count == 5

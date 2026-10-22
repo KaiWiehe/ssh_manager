@@ -212,8 +212,8 @@ class ServerRestartProgressDialog(tk.Toplevel):
         self._rows: dict[str, str] = {}
         self._full_rows: dict[str, tuple] = {}
         self._states = {session.key: "pending" for session, _user in session_users}
-        self.transient(parent)
-        self.grab_set()
+        # Results are a separate work window: do not grab input or force them
+        # above the main window when the user returns to other connections.
         self.protocol("WM_DELETE_WINDOW", self._on_stop)
         self._build(session_users)
         self._center_on_parent(parent)

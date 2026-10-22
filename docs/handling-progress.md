@@ -1,5 +1,26 @@
 # Handling-Verbesserungen – Auftrag vom 07.10.2026
 
+## Neustartergebnisse lassen Hauptfenster bedienbar – 22.10.2026, 0.2.76
+
+Kai möchte bei offenem Neustartergebnis im Hauptfenster Verbindungen auswählen
+und weitere Aktionen ausführen. Fortschritt/Ergebnisse und Vorlagenverwaltung
+verwenden deshalb keinen Eingabegrab und keine Transient-Bindung ans
+Hauptfenster. Beide Startpfade geben das Ergebnisfenster unmittelbar zurück;
+die bestehende Überwachung läuft über ihre Event-Pumps weiter. Nur konkrete
+Eingabe-, Speicher- und Startbestätigungen bleiben modal. Danach wird kein Grab
+auf der Vorlagenverwaltung wiederhergestellt. Passwörter werden nach dem Ende
+der Überwachung freigegeben.
+
+Regressionstests mit echten Tk-Widgets prüfen Hauptauswahl und weitere Aktion
+bei gleichzeitig offenem Ergebnis/Manager, sowohl laufend als auch abgeschlossen.
+Ein separater Test prüft, dass der direkte Start nur auf den Eingabedialog wartet.
+Die bisherige Pause-/Stop-Prüfung prüft jetzt den asynchronen Rückgabewert.
+
+Abschluss: **705 Tests bestanden**, 20 bestehende Pillow-Warnungen; Syntax und
+Version 0.2.76 synchron. Unabhängige Prüfung/Nachprüfung ohne Befunde (29 Tests
+separat ausgeführt). Portable EXE erfolgreich neu gebaut, Dateiversion 0.2.76.
+Fallow entfällt beim Python-Projekt ohne package.json. Keine echten Serveraktionen.
+
 ## Neustart-Vorlagen und Ergebnisse – 22.10.2026, 0.2.75
 
 Kai hat nach der Anforderungsklärung die Umsetzung und anschließend Entwurf 2
