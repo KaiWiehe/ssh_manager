@@ -305,6 +305,12 @@ Quellserver anhaken, dann Aktionen → Portfreigabe prüfen… öffnen. Die voll
 Ziele und Prüfvorlagen
 Ziel-IP oder Hostname und TCP-Port frei eingeben. „Server suchen…“ durchsucht alle geladenen Verbindungen nach Name, Host/IP, Ordner und Quelle. Übernehmen oder Doppelklick trägt den Zielhost ein; der gewählte TCP-Port und die Quellserver-Häkchen bleiben unverändert. SSH-Aliase werden lokal mit ssh -G ausgewertet; der tatsächliche Host wird übernommen, kein Tunnel. Hostnamen werden erst auf jedem Quellserver aufgelöst. Benannte Vorlagen speichern nur Zieladressen und Ports und sind im App-Backup enthalten. Laden und Speichern starten keine Prüfung.
 
+Startvorschau und Mausrad
+Schon vor dem Start zeigt die untere Liste jede geplante Quellserver-/Ziel-Kombination als „Noch nicht geprüft“, einschließlich Benutzer. Ziel-/Port-/Benutzeränderungen und das Laden einer Vorlage aktualisieren die Vorschau ohne SSH; bisherige Ergebnisse werden dabei durch die neue Vorschau ersetzt. Unvollständige Zeilen bleiben sichtbar und müssen vor dem Start vervollständigt werden. Das Mausrad scrollt die obere Zielliste auch über Eingabefeldern und Buttons. Entfernen ist bei jeder Zeile rot mit Papierkorb-Icon.
+
+Quick-Access-Benutzer
+Die konfigurierten Quick-Access-Benutzer stehen als Buttons am Fallback-Feld. Ein Klick setzt nur den Benutzer dieses Laufs, verändert keine gespeicherten Verbindungen und überschreibt keine festen Benutzer oder SSH-Aliasregeln. Während der Prüfung sind die Buttons gesperrt; laufende Prüfungen behalten ihre Laufdaten.
+
 Anmeldung und Voraussetzungen
 Nur Linux-/Ubuntu-Quellserver mit SSH-Schlüssel/Agent ohne Passwortabfrage. Feste Benutzer haben Vorrang vor dem Fallback, SSH-Aliase verwenden ihre SSH-Konfiguration. Bekannte Hostschlüssel sind erforderlich; unbekannte werden nicht automatisch akzeptiert. Vorhandenes Python 3 wird bevorzugt; sonst OpenBSD-netcat mit timeout, für Hostnamen zusätzlich getent. Nichts wird installiert oder dauerhaft auf den Server geschrieben. Die tatsächliche Quell-IP hinter Routing/NAT kann von der SSH-Verwaltungsadresse abweichen.
 

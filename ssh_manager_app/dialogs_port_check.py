@@ -12,6 +12,7 @@ from .restart_templates import all_connections
 from .result_table import ResultTableTools
 from .ui_components import fit_window_to_parent, install_context_help
 from .workers import run_worker
+from .dialogs_base import _build_quickselect_buttons
 
 
 class DestinationPicker(tk.Toplevel):
@@ -99,10 +100,10 @@ class PortResultTools(ResultTableTools):
             if mode == "errors" and result.status not in NEGATIVE:
                 continue
             session = dialog.run_sources[source]
-            rows.append((session.display_name, session.hostname, session.folder_key,
+            rows.append((session.display_name, session.hostname, session.folder_key, dialog.source_user(session),
                          destination[0], destination[1], STATUS[result.status], result.addresses,
                          result.checked_at, result.detail))
-        return ("Quellserver", "Quellhost (SSH)", "Ordner", "Ziel", "TCP-Port", "Ergebnis",
+        return ("Quellserver", "Quellhost (SSH)", "Ordner", "Benutzer", "Ziel", "TCP-Port", "Ergebnis",
                 "Aufgelöste Ziel-IP(s)", "Zeitpunkt", "Details"), rows
 
     def select_all(self, _event=None):
@@ -117,6 +118,8 @@ class PortCheckDialog(tk.Toplevel):
         self.title("Portfreigabe prüfen – Server → Ziel")
         self.fields, self.values, self.run_sources = [], {}, {}
         self.destinations, self.job, self.timer = (), None, None
+        self.preview_timer = None
+        self.is_preview = True
         self.run_timeout, self.run_user = 3, ""
         self.library = {"schema": 1, "items": []}
         raw = app._initial_toolbar_search_texts.get(STATE_KEY)
@@ -150,7 +153,7 @@ class PortCheckDialog(tk.Toplevel):
         target_area = ttk.Frame(frame)
         target_area.pack(fill="x")
         background = ttk.Style(self).lookup("TFrame", "background") or self.cget("background")
-        self.canvas = tk.Canvas(target_area, height=100, highlightthickness=0, background=background)
+        self.canvas = tk.Canvas(target_area, height=100, highlightthickness=0, background=background, yscrollincrement=24)
         self.canvas.pack(side="left", fill="x", expand=True)
         scroll = ttk.Scrollbar(target_area, orient="vertical", command=self.canvas.yview)
         scroll.pack(side="right", fill="y")
@@ -160,6 +163,8 @@ class PortCheckDialog(tk.Toplevel):
         self.target_frame.columnconfigure(0, weight=1)
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(embedded, width=e.width))
         self.target_frame.bind("<Configure>", lambda _: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.bind_target_wheel(self.canvas)
+        self.bind_target_wheel(self.target_frame)
         self.add_button = ttk.Button(frame, text="+ Ziel hinzufügen", command=self.add_target)
         self.add_button.pack(anchor="w", pady=5)
         self.edit_widgets.append(self.add_button)
@@ -173,6 +178,11 @@ class PortCheckDialog(tk.Toplevel):
         timeout_entry = ttk.Spinbox(options, from_=1, to=30, textvariable=self.timeout, width=4)
         timeout_entry.pack(side="left", padx=6)
         self.edit_widgets.extend((user_entry, timeout_entry))
+        ttk.Label(frame, text="Quick-Access-Benutzer", style="Muted.TLabel").pack(anchor="w")
+        self.quick_users = _build_quickselect_buttons(frame, list(app.settings.quick_users), self.user)
+        self.quick_users.pack(fill="x", pady=(2, 4))
+        self.edit_widgets.extend(self.quick_users.winfo_children())
+        self.user.trace_add("write", self.schedule_preview)
         ttk.Label(frame, text="Feste Benutzer und SSH-Konfiguration haben Vorrang · Schlüssel/Agent · maximal 8 Quellserver parallel",
                   style="Muted.TLabel").pack(anchor="w")
         actions = ttk.Frame(frame)
@@ -191,6 +201,7 @@ class PortCheckDialog(tk.Toplevel):
         ttk.Label(filterbar, text="Ergebnisse nach Ziel · Anzeigen:").pack(side="left")
         filterbox = ttk.Combobox(filterbar, textvariable=self.filter, state="readonly", width=19,
                                 values=("Alle", "Nicht erreichbar", "Nicht geprüft", "Erreichbar"))
+        self.result_filter = filterbox
         filterbox.pack(side="left", padx=8)
         filterbox.bind("<<ComboboxSelected>>", lambda _: self.render_results())
         ttk.Label(frame, textvariable=self.status, wraplength=1000).pack(anchor="w", pady=3)
@@ -198,11 +209,11 @@ class PortCheckDialog(tk.Toplevel):
         result_frame.pack(fill="both", expand=True)
         result_frame.rowconfigure(0, weight=1)
         result_frame.columnconfigure(0, weight=1)
-        columns = ("source", "status", "ip", "time")
+        columns = ("source", "user", "status", "ip", "time")
         self.results = ttk.Treeview(result_frame, columns=columns, show="tree headings", height=8)
         self.results.heading("#0", text="Ziel / Quellserver")
         self.results.column("#0", width=240)
-        for col, title, width in (("source", "Quellhost (SSH)", 170), ("status", "Ergebnis", 160),
+        for col, title, width in (("source", "Quellhost (SSH)", 170), ("user", "Benutzer", 130), ("status", "Ergebnis", 160),
                                   ("ip", "Ziel-IP(s)", 180), ("time", "Zeitpunkt", 175)):
             self.results.heading(col, text=title)
             self.results.column(col, width=width)
@@ -220,6 +231,7 @@ class PortCheckDialog(tk.Toplevel):
         self.bind("<Destroy>", self.on_destroy, add="+")
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self.update_summary()
+        self.refresh_preview()
         fit_window_to_parent(self, app, 1100, 850, min_width=820, min_height=650)
         # Deliberately no transient, grab or wait_window for this working window.
 
@@ -240,6 +252,57 @@ class PortCheckDialog(tk.Toplevel):
     def update_summary(self, *_):
         self.summary.set(f"{len(self.sources)} Quellserver × {len(self.fields)} Zielzeilen")
 
+    def bind_target_wheel(self, widget):
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            widget.bind(sequence, self.scroll_targets, add="+")
+
+    def scroll_targets(self, event):
+        delta = getattr(event, "delta", 0)
+        number = getattr(event, "num", None)
+        if delta or number in (4, 5):
+            steps = -max(1, abs(int(delta)) // 120) if delta > 0 or number == 4 else max(1, abs(int(delta)) // 120)
+            self.canvas.yview_scroll(steps, "units")
+        return "break"
+
+    def source_user(self, session):
+        if session.is_ssh_config_session:
+            return session.ssh_user_override or "SSH-Konfiguration"
+        return session.username or (self.user.get().strip() if self.is_preview else self.run_user)
+
+    def schedule_preview(self, *_):
+        if not hasattr(self, "results") or self.job is not None:
+            return
+        if self.preview_timer is not None:
+            self.after_cancel(self.preview_timer)
+        self.preview_timer = self.after_idle(self.refresh_preview)
+
+    def refresh_preview(self):
+        if self.preview_timer is not None:
+            self.after_cancel(self.preview_timer)
+            self.preview_timer = None
+        if self.job is not None:
+            return
+        self.is_preview = True
+        self.filter.set("Alle")
+        self.result_filter.configure(state="disabled")
+        self.run_sources = {s.key: deepcopy(s) for s in self.sources}
+        planned = []
+        for _, host, port in self.fields:
+            try:
+                destination = targets([(host.get(), port.get())])[0]
+            except ValueError:
+                destination = (host.get().strip() or "Ziel-IP / Hostname eingeben", port.get().strip() or "?")
+            if destination not in planned:
+                planned.append(destination)
+        self.destinations = tuple(planned)
+        self.values = {(s.key, t): ProbeResult("planned", "Vorschau – noch nicht geprüft. Erst Prüfung starten führt SSH-/TCP-Tests aus.")
+                       for s in self.sources for t in planned}
+        self.progress.configure(value=0)
+        self.retry_button.configure(state="disabled")
+        self.render_results()
+        self.tools.show_selection()
+        self.status.set(self.library_warning or f"Vorschau · {len(self.values)} Kombination(en) · noch nicht geprüft.")
+
     def add_target(self, host="", port="443"):
         if len(self.fields) >= 100:
             self.status.set("Maximal 100 Zielzeilen.")
@@ -256,10 +319,17 @@ class PortCheckDialog(tk.Toplevel):
         port_entry = ttk.Entry(row, textvariable=port_var, width=7)
         port_entry.grid(row=0, column=3, padx=5)
         field = (row, host_var, port_var)
-        remove = ttk.Button(row, text="Entfernen", command=lambda: self.remove_target(field))
+        remove = ttk.Button(row, text="Entfernen", style="Danger.TButton", command=lambda: self.remove_target(field))
+        from .ui import _decorate
+        _decorate(remove, icon="trash")
         remove.grid(row=0, column=4, padx=(5, 0))
         self.fields.append(field)
+        for widget in (row, *row.winfo_children()):
+            self.bind_target_wheel(widget)
+        host_var.trace_add("write", self.schedule_preview)
+        port_var.trace_add("write", self.schedule_preview)
         self.update_summary()
+        self.schedule_preview()
         return field
 
     def remove_target(self, field):
@@ -268,6 +338,7 @@ class PortCheckDialog(tk.Toplevel):
         for index, (row, _, _) in enumerate(self.fields):
             row.grid_configure(row=index)
         self.update_summary()
+        self.schedule_preview()
 
     def pick_destination(self, host_var):
         return DestinationPicker(self, self.app, host_var.set)
@@ -358,6 +429,11 @@ class PortCheckDialog(tk.Toplevel):
         except ValueError as error:
             messagebox.showwarning("Portprüfung", str(error), parent=self)
             return
+        if self.preview_timer is not None:
+            self.after_cancel(self.preview_timer)
+            self.preview_timer = None
+        self.is_preview = False
+        self.result_filter.configure(state="readonly")
         self.destinations = tuple(destinations)
         self.run_sources = {s.key: deepcopy(s) for s in self.sources}
         self.run_timeout, self.run_user = timeout, self.user.get().strip()
@@ -427,6 +503,8 @@ class PortCheckDialog(tk.Toplevel):
         yview = self.results.yview()
         self.results.delete(*self.results.get_children())
         mode = self.filter.get()
+        if self.is_preview:
+            mode = "Alle"
         for index, ((source, destination), result) in enumerate(self.values.items()):
             if (mode == "Nicht erreichbar" and result.status not in NEGATIVE
                     or mode == "Nicht geprüft" and result.status in NEGATIVE | {"open"}
@@ -439,7 +517,7 @@ class PortCheckDialog(tk.Toplevel):
                 self.results.insert("", "end", iid=group, text=label, open=opened.get(group, True))
             session = self.run_sources[source]
             self.results.insert(group, "end", iid=f"r{index}", text=session.display_name,
-                                values=(session.hostname, STATUS[result.status], result.addresses, result.checked_at))
+                                values=(session.hostname, self.source_user(session), STATUS[result.status], result.addresses, result.checked_at))
         self.results.selection_set([iid for iid in selected if self.results.exists(iid)])
         if focused and self.results.exists(focused):
             self.results.focus(focused)
@@ -448,6 +526,9 @@ class PortCheckDialog(tk.Toplevel):
 
     def on_destroy(self, event):
         if event.widget is self:
+            if self.preview_timer is not None:
+                self.after_cancel(self.preview_timer)
+                self.preview_timer = None
             if self.job is not None:
                 self.job.cancel.set()
             if self.timer is not None:

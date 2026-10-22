@@ -16,7 +16,7 @@ import time
 
 from .ssh_utils import read_port, ssh_argv
 
-STATUS = {"pending": "Ausstehend", "running": "Prüft", "open": "Erreichbar",
+STATUS = {"planned": "Noch nicht geprüft", "pending": "Ausstehend", "running": "Prüft", "open": "Erreichbar",
           "refused": "Abgelehnt", "timeout": "Timeout", "network": "Netzwerkfehler",
           "dns": "DNS fehlgeschlagen", "ssh": "Nicht geprüft (SSH)",
           "tool": "Nicht geprüft (Werkzeug)", "error": "Nicht geprüft (Prüffehler)",

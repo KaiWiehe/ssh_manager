@@ -1,5 +1,29 @@
 # Handling-Verbesserungen – Auftrag vom 07.10.2026
 
+## Portprüfung: Zielbereich und Startvorschau – 22.10.2026, 0.2.78
+
+Mausradereignisse sind lokal an Zielcanvas, Zeilen und deren Eingabe-/Button-
+Kinder gebunden; auch dynamische Zeilen unterstützen das Scrollen. Keine globale
+Mausradbindung. Die untere Liste zeigt bereits vor dem Start alle Kombinationen
+als „Noch nicht geprüft“, einschließlich Quellhost und effektivem Benutzer.
+Änderungen an Ziel, Port, Zielliste, Vorlagen oder Fallback-Benutzer aktualisieren
+diese Vorschau ohne SSH; unvollständige Ziele bleiben als Eingabeaufforderung
+sichtbar. Nach Eingabeänderungen wird ein neuer Lauf vorbereitet, keine alten
+Erfolge als Vorschau übernommen. Ein Start friert die Laufdaten wie zuvor ein.
+
+Quick-Access-Buttons übernehmen die konfigurierten Benutzer in den Fallback und
+sind während der Prüfung deaktiviert; feste Benutzer/SSH-Konfiguration haben
+Vorrang. Alle Entfernen-Buttons erhalten direkt bei Erstellung Danger-Stil und
+Papierkorb-Icon, einschließlich nachgeladenen/dynamisch erzeugten Zeilen. Der
+von ttkbootstrap erzeugte Icon-Stil bleibt erhalten. Korrekturen zusätzlich in
+AGENTS.md dokumentiert. Echte Tk-Regressionstests und unabhängiger Review.
+
+Abschluss: **748 Tests bestanden**, 20 bestehende Pillow-Warnungen. Syntax und
+Versionskonsistenz geprüft. Light-/Dark-/Midnight-Vorschau gerendert und gesichtet;
+unabhängige Prüfung ohne offene konkrete Befunde. Portable EXE 0.2.78 neu gebaut
+(23.157.415 Bytes), nicht zusätzlich gestartet; keine echten Serverkontakte.
+Fallow entfällt ohne package.json.
+
 ## Portfreigabe von ausgewählten Servern prüfen – 22.10.2026, 0.2.77
 
 Aktionen → Portfreigabe prüfen… übernimmt die vollständige Häkchenauswahl.

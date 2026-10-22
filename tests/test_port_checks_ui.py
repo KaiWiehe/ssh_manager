@@ -22,6 +22,11 @@ from ssh_manager_app.ui import _apply_palette_styles
 @pytest.fixture
 def app(monkeypatch):
     root = tk.Tk()
+    # ttkbootstrap owns a process singleton bound to one Tcl interpreter. Each
+    # isolated Tk root needs a fresh engine, as the real app has on startup.
+    from ttkbootstrap import Style
+    monkeypatch.setattr(Style, "instance", None)
+    Style(theme="bootstrap-light", default_button="neutral")
     root.geometry("1200x950+20+20")
     root.settings = default_settings()
     root._initial_toolbar_search_texts = {}
@@ -120,6 +125,103 @@ def test_multiple_modeless_windows_preserve_each_others_templates(app):
     second.destroy()
 
 
+def test_preview_tracks_edits_add_remove_load_and_never_starts_checks(app, monkeypatch):
+    start = MagicMock()
+    monkeypatch.setattr(ui, "PortCheckJob", start)
+    window = ui.open_port_checks(app)
+    app.update()
+    assert len(window.values) == 2
+    assert all(r.status == "planned" for r in window.values.values())
+    assert "Vorschau" in window.status.get()
+    assert window.results.get_children() == ("g0",)
+    set_targets(window)
+    app.update()
+    assert len(window.values) == 4
+    assert window.destinations == (("192.0.2.10", 443), ("192.0.2.20", 5432))
+    window.fields[0][2].set("8443")
+    app.update()
+    assert window.destinations[0] == ("192.0.2.10", 8443)
+    window.remove_target(window.fields[1])
+    app.update()
+    assert len(window.values) == 2
+    window.name.set("Preview")
+    window.save_template()
+    window.fields[0][1].set("")
+    app.update()
+    assert "eingeben" in window.destinations[0][0]
+    window.load_template()
+    app.update()
+    assert window.destinations[0] == ("192.0.2.10", 8443)
+    window.filter.set("Nicht erreichbar")
+    window.fields[0][2].set("443")
+    app.update()
+    assert window.filter.get() == "Alle"
+    assert str(window.retry_button["state"]) == "disabled"
+    assert not window.tools.snapshot("errors")[1]
+    start.assert_not_called()
+    window.destroy()
+
+
+def test_mousewheel_scrolls_over_target_fields_buttons_and_canvas_only(app):
+    window = ui.open_port_checks(app)
+    for i in range(18):
+        window.add_target(f"192.0.2.{i + 1}", 443)
+    app.update()
+    row = window.fields[0][0]
+    for widget in (window.canvas, window.target_frame, row, *row.winfo_children()):
+        window.canvas.yview_moveto(0)
+        widget.event_generate("<MouseWheel>", delta=-120)
+        app.update()
+        assert window.canvas.yview()[0] > 0, widget
+    before = window.canvas.yview()
+    window.tools.text.event_generate("<MouseWheel>", delta=-120)
+    app.update()
+    assert window.canvas.yview() == before
+    window.canvas.yview_moveto(0)
+    window.canvas.event_generate("<MouseWheel>", delta=-1)
+    app.update()
+    assert window.canvas.yview()[0] > 0
+    window.destroy()
+
+
+def test_quick_access_uses_settings_and_preview_preserves_fixed_and_alias_users(app):
+    app.settings.quick_users = ["deploy", "postgres"]
+    alias = Session("alias", "alias", [], "alias.example", source="ssh_config")
+    window = ui.PortCheckDialog(app, [*app._app_sessions[:2], alias])
+    set_targets(window)
+    buttons = window.quick_users.winfo_children()
+    assert [b.cget("text") for b in buttons] == ["deploy", "postgres"]
+    buttons[0].invoke()
+    app.update()
+    assert window.user.get() == "deploy"
+    by_name = {row[0]: row[3] for row in window.tools.snapshot("all")[1]}
+    assert by_name == {"APP-01": "ops", "APP-02": "deploy", "alias": "SSH-Konfiguration"}
+    window.set_running(True)
+    assert all(str(b["state"]) == "disabled" for b in buttons)
+    window.set_running(False)
+    assert all(str(b["state"]) == "normal" for b in buttons)
+    window.destroy()
+
+
+@pytest.mark.parametrize("theme", ["modern_light", "dark_neutral", "midnight"])
+def test_all_remove_buttons_have_red_style_and_trash_icon_including_dynamic_rows(app, theme):
+    from ssh_manager_app.ui import _style_dialog_actions
+    _apply_palette_styles(app, palette_for_theme(theme))
+    window = ui.open_port_checks(app)
+    app.update()
+    _style_dialog_actions(window)
+    window.add_target("192.0.2.20", 5432)
+    app.update()
+    for row, _, _ in window.fields:
+        remove = next(b for b in row.winfo_children() if isinstance(b, ttk.Button) and b.cget("text") == "Entfernen")
+        assert str(remove.cget("style")).endswith("Danger.TButton")
+        assert remove._tb_icon["name"] == "trash"
+        assert remove._tb_icon["base"] == "Danger.TButton"
+        assert str(remove.cget("style")).startswith("Icon")
+        assert ttk.Style(window).lookup(remove.cget("style"), "foreground") == ttk.Style(window).lookup("Danger.TButton", "foreground")
+    window.destroy()
+
+
 def test_ui_live_grouping_copy_full_values_filter_retry_and_modeless(app, monkeypatch):
     calls, release = [], threading.Event()
     long = "Full detail\n" + "x" * 1200 + "\tend"
@@ -193,13 +295,9 @@ def test_render_target_groups_and_themes(app, monkeypatch, theme):
     _apply_palette_styles(app, palette_for_theme(theme))
     window = ui.open_port_checks(app)
     set_targets(window)
-    window.destinations = tuple(window.destinations_from_fields())
-    window.run_sources = {s.key: s for s in window.sources}
-    window.values = {(s.key, destination): pc.ProbeResult("open" if i == 0 else "timeout", "Test details", destination[0], "2026-10-22T15:30:00+02:00")
-                     for s in window.sources for i, destination in enumerate(window.destinations)}
-    window.render_results()
-    window.status.set("Beispiel · 4/4 abgeschlossen · 2 nicht erreichbar")
     app.update()
+    assert window.is_preview and len(window.values) == 4
+    assert all(value.status == "planned" for value in window.values.values())
     assert window.results.winfo_height() > 100
     assert window.tools.text.winfo_height() > 30
     assert window.start_button.winfo_ismapped()
