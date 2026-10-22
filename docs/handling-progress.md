@@ -1,5 +1,35 @@
 # Handling-Verbesserungen – Auftrag vom 07.10.2026
 
+## Portfreigabe von ausgewählten Servern prüfen – 22.10.2026, 0.2.77
+
+Aktionen → Portfreigabe prüfen… übernimmt die vollständige Häkchenauswahl.
+Im eigenständigen nichtmodalen Fenster stehen oben editierbare Zieladressen und
+TCP-Ports; „Server suchen…“ durchsucht alle geladenen Quellen und übernimmt den
+Host ohne Änderung von Zielport oder Quellhäkchen. SSH-Aliase werden lokal mit
+ssh -G ausgewertet, Ziel-DNS erst auf dem jeweiligen Quellserver.
+
+Jede Quelle prüft alle Ziele per SSH-Schlüssel/Agent. Acht Quellen maximal
+parallel; TCP-Timeout 1–30 s, Standard 3 s, zusätzlich SSH-Gesamtzeitlimit.
+Vorhandenes Python 3 liefert Socket-/DNS-Nachweise, OpenBSD-netcat mit timeout
+ist der Fallback. Keine Installation oder dauerhaften Remote-Dateien.
+TCP-Erfolg, Ablehnung, Timeout, Netzwerk-/DNS-Fehler, ungeprüfte SSH-/Werkzeugfehler
+und Abbruch sind getrennt. Ergebnisse nach Ziel gruppiert, live filterbar und
+vollständig kopierbar; Auswahl und mehrzeilige Details bleiben nutzbar. Negative
+Kombinationen lassen sich nach Bestätigung mit ursprünglichen Laufdaten erneut
+prüfen. Abbruch/Schließen beendet laufende lokale SSH-Prozesse und weitere Arbeit.
+
+Benannte Zielvorlagen liegen im UI-State und sind Teil von Backup/Restore.
+Mehrere Prüffenster lesen vor Vorlagenaktionen den aktuellen gemeinsamen Stand.
+Live-Ergebnisse erhalten Auswahl, Fokus, Scrollposition und geöffnete Gruppen.
+Diese beiden Randfälle wurden im unabhängigen Review gefunden, behoben und
+unabhängig nachgeprüft. 37 neue Tests mit synthetischen Verbindungen, echten
+Windows-Tk-Fenstern und lokal ausgeführtem Bash-Fallback; keine echten Servertests.
+Alle drei Themes wurden gerendert und gesichtet. Fallow entfällt ohne package.json.
+
+Abschlussprüfung: **742 Tests bestanden**, 20 bestehende Pillow-Warnungen.
+Syntax und Versionskonsistenz 0.2.77 geprüft; portable EXE erfolgreich neu gebaut
+unter `dist/SSH Manager.exe` (nicht zusätzlich gestartet).
+
 ## Neustartergebnisse lassen Hauptfenster bedienbar – 22.10.2026, 0.2.76
 
 Kai möchte bei offenem Neustartergebnis im Hauptfenster Verbindungen auswählen

@@ -16,6 +16,8 @@ def populate_actions_menu(app, actions_menu, sessions=None):
         actions_menu.add_command(label=f"Ziele aus diesem Kontext: {len(sessions)}", state="disabled")
     actions_menu.add_command(label="Auswahl verbinden", accelerator=_acc("connect_selected"), command=lambda: ui.connect_sessions_callback(self, targets()))
     actions_menu.add_command(label="Hosts prüfen", command=lambda: check_context_hosts(self, sessions))
+    from .dialogs_port_check import open_port_checks
+    actions_menu.add_command(label="Portfreigabe prüfen…", command=lambda: open_port_checks(self, targets()))
     from .diagnosis import open_diagnosis
     actions_menu.add_command(label="Verbindung diagnostizieren…", command=lambda: open_diagnosis(self, sessions))
     from .diagnosis import open_full_port_scan

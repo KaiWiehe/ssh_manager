@@ -158,6 +158,7 @@ def open_command_palette(app) -> None:
     )
     from .actions_sessions import add_session, delete_session, edit_session, edit_session_details
     from .actions_dns import open_dns_lookup_dialog
+    from .dialogs_port_check import open_port_checks
 
     if getattr(app, "_command_palette", None) is not None:
         try:
@@ -215,6 +216,8 @@ def open_command_palette(app) -> None:
         return mgr.current_mapping().get(action_id, "") if mgr else ""
 
     action_items = [
+        CommandPaletteItem("act:port_checks", "Portfreigabe prüfen…", "",
+                           kind="action", callback=lambda: open_port_checks(app)),
         CommandPaletteItem("act:help", "Hilfe öffnen", _accel("open_help"),
                            kind="action", callback=lambda: open_help(app)),
         CommandPaletteItem("act:connect", "Verbinden mit Auswahl", _accel("connect"),

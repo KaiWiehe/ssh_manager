@@ -130,6 +130,10 @@ def validate_app_backup(payload: dict) -> dict[str, dict]:
     if templates is not None:
         from .restart_templates import validate_library
         validate_library(templates)
+    port_templates = state.get("toolbar_search_texts", {}).get("port_check_templates") if isinstance(state.get("toolbar_search_texts", {}), dict) else None
+    if port_templates is not None:
+        from .port_checks import validate_library as validate_port_library
+        state["toolbar_search_texts"]["port_check_templates"] = validate_port_library(port_templates)
     if not isinstance(state.get("expanded_folders", []), list) or not all(isinstance(v, str) for v in state.get("expanded_folders", [])):
         raise ValueError("Ungültiger Ordnerzustand.")
     for key in ("session_colors", "toolbar_search_texts", "favorite_sessions", "session_user_overrides"):
@@ -505,6 +509,10 @@ def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], to
     if toolbar_search_texts and "restart_templates" in toolbar_search_texts:
         from .restart_templates import validate_library
         validate_library(toolbar_search_texts["restart_templates"])
+    if toolbar_search_texts and "port_check_templates" in toolbar_search_texts:
+        from .port_checks import validate_library as validate_port_library
+        toolbar_search_texts = dict(toolbar_search_texts)
+        toolbar_search_texts["port_check_templates"] = validate_port_library(toolbar_search_texts["port_check_templates"])
     _atomic_write_json(_STATE_FILE, _ui_state_payload(expanded_folders, session_colors, toolbar_search_texts))
 
 

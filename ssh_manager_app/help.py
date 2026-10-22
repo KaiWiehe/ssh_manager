@@ -299,6 +299,17 @@ Bei einer normalen Host-Verbindung ohne fest eingetragenen Benutzer nutzt die op
 
 Optionale Anmeldung
 Die zusätzliche SSH-Anmeldung muss ausdrücklich aktiviert werden. Sie verwendet vorhandene Schlüssel ohne Passwortabfrage, führt nur true aus und verändert keine bekannten Hostschlüssel. Unbekannte Hostschlüssel führen zu Fehlern. Feste Benutzer und SSH-Aliase haben Vorrang vor dem Fallback-Benutzer. Maximal acht Ziele werden parallel geprüft."""),
+    HelpTopic("port_checks", "Portfreigabe von Servern prüfen", """Server → Ziel
+Quellserver anhaken, dann Aktionen → Portfreigabe prüfen… öffnen. Die vollständige Häkchenauswahl gilt, auch bei aktiver Suche. Jeder Quellserver prüft alle Ziel-IP/Port-Kombinationen direkt von dort aus. Maximal acht Quellserver arbeiten parallel. Im Gegensatz zur Verbindungsdiagnose wird nicht vom eigenen PC aus geprüft. Die Quellliste wird beim Öffnen festgehalten; ein neuer Aufruf übernimmt die neue Häkchenauswahl.
+
+Ziele und Prüfvorlagen
+Ziel-IP oder Hostname und TCP-Port frei eingeben. „Server suchen…“ durchsucht alle geladenen Verbindungen nach Name, Host/IP, Ordner und Quelle. Übernehmen oder Doppelklick trägt den Zielhost ein; der gewählte TCP-Port und die Quellserver-Häkchen bleiben unverändert. SSH-Aliase werden lokal mit ssh -G ausgewertet; der tatsächliche Host wird übernommen, kein Tunnel. Hostnamen werden erst auf jedem Quellserver aufgelöst. Benannte Vorlagen speichern nur Zieladressen und Ports und sind im App-Backup enthalten. Laden und Speichern starten keine Prüfung.
+
+Anmeldung und Voraussetzungen
+Nur Linux-/Ubuntu-Quellserver mit SSH-Schlüssel/Agent ohne Passwortabfrage. Feste Benutzer haben Vorrang vor dem Fallback, SSH-Aliase verwenden ihre SSH-Konfiguration. Bekannte Hostschlüssel sind erforderlich; unbekannte werden nicht automatisch akzeptiert. Vorhandenes Python 3 wird bevorzugt; sonst OpenBSD-netcat mit timeout, für Hostnamen zusätzlich getent. Nichts wird installiert oder dauerhaft auf den Server geschrieben. Die tatsächliche Quell-IP hinter Routing/NAT kann von der SSH-Verwaltungsadresse abweichen.
+
+Ergebnisse und Abbruch
+Erreichbar bestätigt nur den TCP-Verbindungsaufbau, keine Dienstanmeldung. Abgelehnt, Timeout, Netzwerk-/DNS-Fehler und ungeprüfte SSH-/Werkzeugprobleme bleiben getrennt. Kein negatives Ergebnis beweist eine fehlende Firewallregel. Ergebnisse sind nach Ziel aufklappbar; Filter ändern nur die Anzeige. Alles/Fehler kopieren verwendet vollständige Ergebnisse auch außerhalb des Filters; Auswahl kopieren nimmt ausgewählte Zeilen oder die ausgewählte Zielgruppe. Vollständige Details sind unten als markierbarer Text verfügbar. Angezeigte Ziel-IPs stammen vom Quellserver. Abbrechen oder Schließen beendet weitere Prüfungen und laufende lokale SSH-Prozesse; ausstehende Kombinationen werden nicht als Portfehler gezählt. Negative erneut prüfen wiederholt nach Bestätigung nur belegte negative Kombinationen mit den ursprünglichen Laufdaten."""),
     HelpTopic("services", "Dienststatus, Neustart und Logs", """Vorgaben bearbeiten
 Unter Einstellungen → Tunnel / Dienste kannst du die Dienstliste bearbeiten, erweitern oder leeren (ein Dienstname je Zeile). Freie Dienstnamen und der Serverbrowser bleiben verfügbar.
 
