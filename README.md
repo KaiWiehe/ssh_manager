@@ -49,6 +49,8 @@ prüfen; der Windows-Build führt diese Prüfung automatisch aus.
 
 ## Wichtige Features
 
+- **Massen-Neustarts…**: benannte Vorlagen mit direkt editierbaren Benutzern und Service-Sollzuständen je Server, lesender Dienstauswahl, Startvorschau und Fehlerstrategie
+- Neustartergebnisse vollständig als Tabelle kopieren; mehrere Zeilen oder einzelne Textausschnitte auswählen, mit Zeilen-Hover und vollständigen Details
 - portable Windows-EXE mit eigenem Icon baubar; Python-Start bleibt möglich
 - mehrere Verbindungen gleichzeitig in **einem** Windows-Terminal-Fenster öffnen
 - optional normale SSH-Verbindungen als Tabs im Herdr-Workspace **SSH Manager** öffnen
@@ -256,6 +258,38 @@ Eine isolierte Vorschau mit Beispieldaten lässt sich ohne Zugriff auf Registry 
 ```bat
 .venv\Scripts\python scripts\ui_preview.py
 ```
+
+## Massen-Neustarts und Vorlagen
+
+Server im Hauptfenster anhaken und **Aktionen → Massen-Neustarts…** öffnen.
+„Aus Auswahl erstellen“ übernimmt die Ziele in eine Tabelle. Vorhandene Benutzer
+bleiben vorbelegt; Quick-Access-User und „Leere Benutzer füllen“ ergänzen fehlende
+Benutzer. Pro Server Dienste frei eingeben (+), entfernen, den Sollzustand
+aktiv/inaktiv wählen oder direkt auf diesem Host mehrere Dienste durchsuchen.
+Benutzer gelten nur für die Vorlage, auch bei SSH-Aliasen.
+
+Vorlagen lassen sich später ohne Häkchen-Auswahl öffnen. Geänderte Vorlagen als
+Kopie speichern oder ausdrücklich überschreiben. Hostnamen/Ports kommen aus den
+aktuellen Verbindungen; fehlende Verbindungen ersetzen oder entfernen. Vorlagen
+sind lokal im UI-State gespeichert und im App-Backup enthalten, ohne Passwörter.
+
+Parallel mit einstellbarer Grenze oder nacheinander in Tabellenreihenfolge starten.
+Bei Fehlern weiterlaufen, weitere Starts stoppen oder pausieren und nachfragen.
+Laufende Neustarts werden während einer Pause weiter überwacht. Separate Fristen
+gelten für Neustart/SSH und anschließend die Serviceprüfungen. Erfolg benötigt
+Neustartnachweis, SSH-Rückkehr und alle Sollzustände. Inaktiv heißt vorhanden und
+sauber gestoppt; `failed` zählt nicht als inaktiv. Dienste werden nur geprüft.
+Fehlende Units verhindern den Reboot dieses Ziels bereits in der Vorprüfung.
+
+Die Vorschau zeigt alle Ziele und Prüfungen; erst „Server jetzt neu starten“ löst
+Neustarts aus. Stoppen verhindert weitere Starts, nimmt ausgelöste Reboots aber
+nicht zurück. Das optionale sudo-Passwort gilt nur für diesen Lauf.
+
+Im Ergebnisfenster kopiert „Alle Fehler kopieren“ Fehler und Zeitüberschreitungen,
+„Alles kopieren“ alle Tabellenzeilen samt Überschriften. Strg/Umschalt markiert
+mehrere Zeilen; Strg+C oder „Auswahl kopieren“ kopiert sie. Textausschnitte unten
+oder nach Doppelklick in den vollständigen Details markieren. Lange Meldungen
+bleiben beim Kopieren vollständig erhalten.
 
 ## Portable Windows-EXE bauen
 

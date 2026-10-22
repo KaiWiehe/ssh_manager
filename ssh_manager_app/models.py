@@ -20,6 +20,7 @@ class Session:
     port: int = 22
     source: str = "winscp"
     legacy_key: str = ""
+    ssh_user_override: str = ""
 
     @property
     def folder_key(self) -> str:

@@ -126,6 +126,10 @@ def validate_app_backup(payload: dict) -> dict[str, dict]:
     if not isinstance(notes, dict) or not all(isinstance(v, str) for v in notes.values()):
         raise ValueError("Ungültige Notizen.")
     state = documents["ui_state.json"]
+    templates = state.get("toolbar_search_texts", {}).get("restart_templates") if isinstance(state.get("toolbar_search_texts", {}), dict) else None
+    if templates is not None:
+        from .restart_templates import validate_library
+        validate_library(templates)
     if not isinstance(state.get("expanded_folders", []), list) or not all(isinstance(v, str) for v in state.get("expanded_folders", [])):
         raise ValueError("Ungültiger Ordnerzustand.")
     for key in ("session_colors", "toolbar_search_texts", "favorite_sessions", "session_user_overrides"):
@@ -498,6 +502,9 @@ def _ui_state_payload(expanded_folders, session_colors, toolbar_search_texts):
 
 def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], toolbar_search_texts: dict[str, str] | None = None) -> None:
     _recover_session_transaction()
+    if toolbar_search_texts and "restart_templates" in toolbar_search_texts:
+        from .restart_templates import validate_library
+        validate_library(toolbar_search_texts["restart_templates"])
     _atomic_write_json(_STATE_FILE, _ui_state_payload(expanded_folders, session_colors, toolbar_search_texts))
 
 

@@ -39,6 +39,8 @@ def _ssh_args(session: Session, user: str, connect_timeout: int = 5) -> list[str
         "ConnectionAttempts=1",
     ]
     if session.is_ssh_config_session:
+        if session.ssh_user_override:
+            args.extend(["-l", connection_value(session.ssh_user_override)])
         args.extend(["--", connection_value(session.display_name)])
         return args
     if session.port and session.port != 22:
@@ -69,13 +71,13 @@ def _run_ssh(
 def _process_error(completed: subprocess.CompletedProcess[str], fallback: str) -> str:
     value = (completed.stderr or completed.stdout or fallback).strip()
     compact = " ".join(value.split())
-    return compact[:500] if compact else fallback
+    return compact if compact else fallback
 
 
-def _read_boot_id(session: Session, user: str) -> tuple[bool, str | None, str]:
+def _read_boot_id(session: Session, user: str, *, timeout=SSH_PROBE_TIMEOUT_SECONDS) -> tuple[bool, str | None, str]:
     command = f"printf '%s\\n' '{_CONNECTED_MARKER}'; cat /proc/sys/kernel/random/boot_id 2>/dev/null || true"
     try:
-        completed = _run_ssh(session, user, command)
+        completed = _run_ssh(session, user, command, timeout=timeout)
     except subprocess.TimeoutExpired:
         return False, None, "SSH-Verbindung hat das Zeitlimit überschritten."
     except OSError as exc:
@@ -118,7 +120,7 @@ def _service_active(session: Session, user: str, service: str) -> tuple[bool, bo
     return True, completed.returncode == 0 and state_text == "active", state_text
 
 
-def _issue_reboot(session: Session, user: str, sudo_password: str) -> tuple[bool, bool, str]:
+def _issue_reboot(session: Session, user: str, sudo_password: str, *, timeout=SSH_REBOOT_TIMEOUT_SECONDS) -> tuple[bool, bool, str]:
     if sudo_password:
         remote_command = "sudo -S -p '' reboot"
         input_text = sudo_password + "\n"
@@ -131,7 +133,7 @@ def _issue_reboot(session: Session, user: str, sudo_password: str) -> tuple[bool
             user,
             remote_command,
             input_text=input_text,
-            timeout=SSH_REBOOT_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired:
         return False, True, "SSH-Verbindung wurde während des Neustarts beendet."
@@ -155,6 +157,7 @@ def monitor_server_restart(
     *,
     poll_interval_seconds: float = POLL_INTERVAL_SECONDS,
     monotonic=time.monotonic,
+    evidence_detail=False,
 ) -> RestartResult:
     """Restart one server and wait until SSH and the optional unit are ready."""
     report("preflight", "SSH und Neustartstatus werden geprüft")
@@ -174,7 +177,8 @@ def monitor_server_restart(
 
     report("restarting", "sudo reboot wird ausgeführt")
     deadline = monotonic() + timeout_seconds
-    accepted, uncertain, reboot_error = _issue_reboot(session, user, sudo_password)
+    issue_options = {"timeout": min(SSH_REBOOT_TIMEOUT_SECONDS, timeout_seconds)} if evidence_detail else {}
+    accepted, uncertain, reboot_error = _issue_reboot(session, user, sudo_password, **issue_options)
     if not accepted and not uncertain:
         return RestartResult("error", reboot_error)
 
@@ -188,7 +192,10 @@ def monitor_server_restart(
         if cancel_event.is_set():
             return RestartResult("stopped", "Überwachung durch Benutzer beendet")
 
-        connected, current_boot_id, _probe_error = _read_boot_id(session, user)
+        probe_options = {"timeout": max(.001, min(SSH_PROBE_TIMEOUT_SECONDS, deadline - monotonic()))} if evidence_detail else {}
+        connected, current_boot_id, _probe_error = _read_boot_id(session, user, **probe_options)
+        if evidence_detail and monotonic() >= deadline:
+            break
         last_connected = connected
         if not connected:
             saw_ssh_down = True
@@ -219,6 +226,9 @@ def monitor_server_restart(
                         last_service_state = state
                         report("waiting_service", f"{service}: {state}")
                 else:
+                    if evidence_detail:
+                        evidence = "Boot-ID geändert" if original_boot_id and current_boot_id else "SSH-Ausfall und Rückkehr (schwächerer Ersatznachweis)"
+                        return RestartResult("online", f"Neustart bestätigt: {evidence}; SSH ist wieder erreichbar")
                     return RestartResult("online", "Neustart bestätigt; SSH ist wieder erreichbar")
 
         if cancel_event.wait(max(0.0, poll_interval_seconds)):

@@ -172,6 +172,19 @@ Standardmäßig starten alle Hosts gleichzeitig. Optional die Anzahl gleichzeiti
 
 Einzelhost, Auswahl und Ordner
 Die Beschriftung des Kontextmenüs nennt den Geltungsbereich. Im Menü Aktionen und in der Toolbar werden die angehakten Sessions übergeben. Vor dem Start die endgültige Hostliste im jeweiligen Dialog prüfen. Die Hilfe selbst führt keine Serveraktion aus."""),
+    HelpTopic("restart_templates", "Massen-Neustarts und Vorlagen", """Vorlagen erstellen
+Server links anhaken und Aktionen → Massen-Neustarts öffnen. „Aus Auswahl erstellen“ übernimmt die Server in eine direkt editierbare Tabelle. Benutzer werden aus den aktuellen Verbindungen vorbelegt. Quick-Access-User und „Leere Benutzer füllen“ ergänzen nur fehlende Angaben. Benutzeränderungen gelten ausschließlich für die Vorlage, auch bei SSH-Aliasen.
+
+Serviceprüfungen je Server
+Dienstnamen frei eingeben und mit + ergänzen, Sollzustand aktiv/inaktiv auswählen oder auf diesem Server mehrere Dienste lesend durchsuchen. Inaktiv bedeutet vorhanden und sauber gestoppt; failed und fehlende Units sind kein erfüllter Sollzustand. Die Prüfung verändert keine Dienste. Eine leere Liste prüft nur Neustart und SSH-Rückkehr.
+
+Speichern und starten
+Vorlagen bleiben lokal und sind im App-Backup enthalten. Änderungen lassen sich als neue Vorlage oder durch Überschreiben speichern. Aktuelle Verbindungsdaten werden erneut aufgelöst; fehlende Server müssen ersetzt oder entfernt werden. Die Startvorschau nennt alle Ziele, Benutzer, Service-Sollzustände und Ablaufoptionen. Passwörter gelten nur für den aktuellen Lauf.
+
+Parallel oder nacheinander, mit getrennter Wartezeit für Neustart/SSH und anschließend alle Services eines Servers. Bei Fehlern weiterlaufen, weitere Neustarts stoppen oder pausieren und nachfragen. Eine Pause verhindert weitere Starts; laufende Server werden weiter überwacht. Fehlende Units verhindern bereits vor dem Reboot diesen Server. Nach dem Reboot werden vorübergehend abweichende Zustände bis zum Servicezeitlimit beobachtet.
+
+Ergebnisse
+„Alle Fehler kopieren“ enthält Fehler und Zeitüberschreitungen, „Alles kopieren“ die ganze Tabelle mit Überschriften. Strg/Umschalt markiert mehrere Zeilen; „Auswahl kopieren“ oder Strg+C kopiert sie. Einzelne Textstellen unten oder in der vollständigen Detailansicht markieren. Doppelklick öffnet die Details. Hover hebt die ganze Zeile hervor. Nicht gestartete und nicht weiter überwachte Server sind keine bestätigten Erfolge oder Fehler."""),
     HelpTopic("sshkeys", "SSH-Keys übertragen und entfernen", """SSH Key übertragen
 Überträgt einen öffentlichen SSH-Key auf die ausgewählten Hosts, damit spätere Anmeldungen mit dem passenden privaten Schlüssel möglich sind. Wähle die öffentliche Schlüsseldatei und den Benutzer im Dialog. Erfordert zunächst eine funktionierende Anmeldung und Schreibrechte auf die SSH-Autorisierung des Benutzers. Ein privater Schlüssel bleibt lokal.
 

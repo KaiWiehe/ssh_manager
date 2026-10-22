@@ -186,7 +186,7 @@ class ServerRestartDialog(tk.Toplevel):
 class ServerRestartProgressDialog(tk.Toplevel):
     """Displays live status for all parallel restart workers."""
 
-    TERMINAL_STATES = {"online", "error", "timeout", "stopped"}
+    TERMINAL_STATES = {"online", "error", "timeout", "stopped", "not_started"}
     STATUS_LABELS = {
         "pending": "… Wartet",
         "preflight": "… Vorprüfung",
@@ -198,6 +198,7 @@ class ServerRestartProgressDialog(tk.Toplevel):
         "error": "✗ Fehler",
         "timeout": "✗ Zeitüberschreitung",
         "stopped": "■ Überwachung gestoppt",
+        "not_started": "■ Nicht gestartet",
     }
 
     def __init__(self, parent: tk.Tk, session_users: list[tuple[Session, str]], service: str):
@@ -209,6 +210,7 @@ class ServerRestartProgressDialog(tk.Toplevel):
         self._finished = False
         self._service = service
         self._rows: dict[str, str] = {}
+        self._full_rows: dict[str, tuple] = {}
         self._states = {session.key: "pending" for session, _user in session_users}
         self.transient(parent)
         self.grab_set()
@@ -243,8 +245,10 @@ class ServerRestartProgressDialog(tk.Toplevel):
         table_frame.grid(row=1, column=0, sticky="nsew")
         table_frame.columnconfigure(0, weight=1)
         table_frame.rowconfigure(0, weight=1)
-        self._tree = ttk.Treeview(table_frame, columns=("host", "status", "detail"), show="headings", selectmode="none")
+        self._tree = ttk.Treeview(table_frame, columns=("host", "user", "status", "detail"), show="headings", selectmode="extended")
         self._tree.heading("host", text="Server", anchor="w")
+        self._tree.heading("user", text="Benutzer", anchor="w")
+        self._tree.column("user", width=100, minwidth=70, anchor="w")
         self._tree.heading("status", text="Status", anchor="w")
         self._tree.heading("detail", text="Details", anchor="w")
         self._tree.column("host", width=210, minwidth=140, anchor="w")
@@ -254,10 +258,21 @@ class ServerRestartProgressDialog(tk.Toplevel):
         self._tree.configure(yscrollcommand=scrollbar.set)
         self._tree.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
+        horizontal = ttk.Scrollbar(table_frame, orient="horizontal", command=self._tree.xview)
+        horizontal.grid(row=1, column=0, sticky="ew")
+        self._tree.configure(xscrollcommand=horizontal.set)
         for session, _user in session_users:
             host_label = f"{session.display_name} ({session.hostname})"
-            item_id = self._tree.insert("", "end", values=(host_label, self.STATUS_LABELS["pending"], ""))
+            item_id = self._tree.insert("", "end", values=(host_label, _user, self.STATUS_LABELS["pending"], ""))
             self._rows[session.key] = item_id
+            self._full_rows[item_id] = (host_label, _user, self.STATUS_LABELS["pending"], "")
+
+        tools_frame = ttk.Frame(table_frame)
+        tools_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
+        from .result_table import ResultTableTools
+        self._table_tools = ResultTableTools(self, self._tree, tools_frame,
+            lambda: [self._rows[key] for key, state in self._states.items() if state in {"error", "timeout"}],
+            row_values=lambda row: self._full_rows[row])
 
         footer = ttk.Frame(self, padding=(14, 4, 14, 14))
         footer.grid(row=2, column=0, sticky="ew")
@@ -270,9 +285,13 @@ class ServerRestartProgressDialog(tk.Toplevel):
             return
         self._states[session_key] = state
         values = list(self._tree.item(item_id, "values"))
-        values[1] = self.STATUS_LABELS.get(state, state)
-        values[2] = detail
+        values[2] = self.STATUS_LABELS.get(state, state)
+        values[3] = detail
+        self._full_rows[item_id] = tuple(values)
+        values[3] = " · ".join(detail.splitlines())
         self._tree.item(item_id, values=values)
+        if item_id in self._tree.selection():
+            self._table_tools.show_selection()
         completed = sum(state in self.TERMINAL_STATES for state in self._states.values())
         self._summary_var.set(f"Neustart läuft… {completed} von {len(self._states)} abgeschlossen")
 
@@ -285,11 +304,14 @@ class ServerRestartProgressDialog(tk.Toplevel):
         online = sum(state == "online" for state in self._states.values())
         failed = sum(state in {"error", "timeout"} for state in self._states.values())
         stopped = sum(state == "stopped" for state in self._states.values())
+        not_started = sum(state == "not_started" for state in self._states.values())
         parts = [f"{online} online"]
         if failed:
             parts.append(f"{failed} fehlgeschlagen")
         if stopped:
             parts.append(f"{stopped} nicht weiter überwacht")
+        if not_started:
+            parts.append(f"{not_started} nicht gestartet")
         self._summary_var.set("Abgeschlossen: " + ", ".join(parts))
         self._stop_button.configure(text="Schließen", command=self.destroy, style="Accent.TButton")
         self.protocol("WM_DELETE_WINDOW", self.destroy)
@@ -311,4 +333,4 @@ class ServerRestartProgressDialog(tk.Toplevel):
             self._stop_button.configure(state="disabled", text="Überwachung wird beendet…")
 
     def _center_on_parent(self, parent: tk.Tk) -> None:
-        fit_window_to_parent(self, parent, 860, 480, min_width=640, min_height=340)
+        fit_window_to_parent(self, parent, 1020, 650, min_width=680, min_height=420)

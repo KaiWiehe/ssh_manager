@@ -93,7 +93,7 @@ def current_ui_state(app):
     remote_favorites = list(app._initial_toolbar_search_texts.get("remote_command_favorites", []))
     if remote_favorites:
         toolbar_texts["remote_command_favorites"] = remote_favorites
-    for key in ("session_filters", "session_filter_views"):
+    for key in ("session_filters", "session_filter_views", "restart_templates"):
         value = app._initial_toolbar_search_texts.get(key)
         if isinstance(value, dict):
             toolbar_texts[key] = deepcopy(value)

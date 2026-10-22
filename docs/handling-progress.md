@@ -1,5 +1,44 @@
 # Handling-Verbesserungen – Auftrag vom 07.10.2026
 
+## Neustart-Vorlagen und Ergebnisse – 22.10.2026, 0.2.75
+
+Kai hat nach der Anforderungsklärung die Umsetzung und anschließend Entwurf 2
+„Direkt in der Tabelle“ ausgewählt. Aktionen → Massen-Neustarts ist ein eigener
+Einstieg, mit oder ohne aktuelle Auswahl. Vorlagen speichern eindeutige
+Verbindungsreferenzen, explizite Benutzer und mehrere Service-Sollzustände je
+Host, Reihenfolge, Parallelität, Fehlerstrategie und getrennte Fristen.
+Quick-Access-User füllen ausschließlich leere Felder. Der Hostbrowser liest
+genau den jeweiligen Host und unterstützt Mehrfachauswahl. Fehlende/mehrdeutige
+Referenzen müssen ersetzt oder entfernt werden. Benutzer gelten für die Vorlage,
+auch bei SSH-Aliasen; externe Quellen werden nicht beschrieben.
+
+Geänderte Vorlagen explizit kopieren oder überschreiben, dann genaue Startvorschau
+prüfen. Passwörter bleiben auf den Lauf begrenzt. Vorlagen werden über die
+bestehende Storage-Schicht im UI-State gespeichert und in Backup/Restore
+validiert. Die bisherige direkte Neustartaktion bleibt verfügbar.
+
+Vorprüfung aller Units je Host, danach Neustartnachweis/SSH, anschließend separate
+Servicefrist. Aktiv/inaktiv sind exakte Sollzustände; failed ist niemals sauber
+inaktiv. Keine Dienste starten/stoppen, kein automatischer Reboot-Retry. Zentrale
+Startsperre für Pause und Stop; bereits laufende Ziele bleiben überwacht. Details
+zeigen Soll/Ist und Neustartnachweis, bei Boot-ID-Ersatz dessen schwächere Aussage.
+
+Ergebnistabelle: Alle Fehler/alles/Auswahl als TSV mit vollständigen Werten und
+Überschriften kopieren. Mehrfachauswahl, Textdetails, Doppelklick-Detailfenster,
+Horizontal-Scroll und themeabhängiger Zeilenhover. Mehrzeilige Meldungen werden
+in der Tabelle als einzeilige Vorschau dargestellt und bleiben in Details sowie
+Kopierdaten vollständig erhalten.
+
+Verifikation vor Abschluss: simulierte SSH-/systemd-Antworten, Scheduler-Gates,
+Datei-/Backup-Roundtrips sowie echte Windows-Tk-Dialogtests für Benutzer,
+Speicherwahl, Dienste, Kopieren/Textauswahl und Pausen. Unabhängiger Prüfer fand
+verspätete SSH-Proben und uneindeutige Browserziele; beides korrigiert und mit
+Regressionstests belegt. Keine echten Serverzugriffe/Neustarts zum Testen.
+Abschlussprüfung: **702 Tests bestanden**, 20 bestehende Pillow-Deprecation-
+Warnungen. Syntax und Versionskonsistenz geprüft; unabhängige Nachprüfung ohne
+weitere Befunde (47 Tests separat durch den Prüfer). Fallow ist ohne package.json
+nicht anwendbar. Commit und Packaging-Ergebnis stehen in der Vault-Notiz.
+
 Kai hat alle 16 Punkte aus der Vault-Notiz „SSH-Manager Feature Ideas“, Abschnitt
 07.10.2026, autorisiert. Je Punkt eigener Commit, ein Patch-Versionssprung,
 Syntaxprüfung, relevante Tests und Push auf main. Keine echten Remote-Aktionen

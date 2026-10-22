@@ -20,6 +20,8 @@ def ssh_argv(session: Session, user: str | None = None, options: list[str] | Non
     args = ["ssh", *(options or [])]
     if session.is_ssh_config_session:
         target = connection_value(session.display_name, "SSH-Alias")
+        if session.ssh_user_override:
+            args.extend(["-l", connection_value(session.ssh_user_override, "Benutzer")])
     else:
         host = connection_value(session.hostname, "Hostname")
         effective_user = (user or session.username).strip()
