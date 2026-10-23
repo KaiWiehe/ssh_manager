@@ -1,2 +1,4 @@
 ttkbootstrap==2.2.2
 Pillow==12.3.0
+prompt_toolkit==3.0.52
+wcwidth==0.9.3

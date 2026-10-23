@@ -12,7 +12,7 @@ Unterstützte Quellen:
 
 - Windows 10/11
 - Python 3.10+ empfohlen; getestet wird aktuell mit Python 3.14.2 auf Windows
-- Python-Pakete aus `requirements.txt` (`ttkbootstrap` und `Pillow`)
+- Python-Pakete aus `requirements.txt` (GUI: `ttkbootstrap` und `Pillow`; CLI: `prompt_toolkit` und `wcwidth`)
 - [Windows Terminal](https://aka.ms/terminal) installiert
 - Git Bash-Profil in Windows Terminal vorhanden (Standard bei Git for Windows)
 - optional: [Herdr](https://herdr.dev/) für persistente SSH-Tabs; Windows Terminal bleibt der Standard
@@ -32,6 +32,90 @@ Alternativ mit bereits installierten Abhängigkeiten:
 ```bat
 python ssh_manager.py
 ```
+
+## CLI: Verbindungen im aktuellen Terminal öffnen
+
+Der portable Build erzeugt zusätzlich **`dist\sshm.exe`**. Er benötigt kein
+installiertes Python und öffnet SSH im aktuellen Tab/Pane. PowerShell und Git Bash
+sind die vorgesehenen Shells, in Windows Terminal oder Herdr. Die CLI verwendet
+dieselben App-Daten wie die GUI unter `%APPDATA%\SSH-Manager`.
+
+```powershell
+# Portable Verwendung
+.\dist\sshm.exe
+.\dist\sshm.exe web produktion
+
+# Optional: in den persönlichen Programmordner kopieren und Benutzer-PATH ergänzen
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_cli.ps1 -AddToPath
+# Danach ein neues Terminal öffnen (bestehenden Terminalhost ggf. vollständig neu starten):
+sshm
+sshm web
+```
+
+Ohne `-AddToPath` kopiert das Installationsskript nur die EXE. Es verändert weder
+Shell-Profile noch den Maschinen-PATH und bricht bei einer erkannten Namenskollision
+ab. Portable Nutzung in Git Bash: `./dist/sshm.exe web`. Für die Entwicklung:
+`.venv\Scripts\python.exe sshm.py web`.
+
+Die Suche berücksichtigt Name, ursprünglichen Ordnerpfad, Host/IP, Benutzer,
+Quelle und Notizen. Alle vier Quellen werden durchsucht, auch wenn sie in der GUI
+ausgeblendet sind. Treffer erscheinen im gefilterten Originalbaum mit sichtbaren
+Elternordnern. Rechts stehen Verbindungsdetails und die vollständige Notiz; in
+schmalen Fenstern darunter. Gleichnamige Datensätze behalten ihre eigene Identität.
+
+| Taste | Aktion |
+|---|---|
+| Tippen im Suchfeld | Fuzzy-Suche; mehrere Wörter dürfen verschiedene Felder treffen |
+| ↑ / ↓ im Suchfeld oder Baum | Markierte Baumzeile wechseln |
+| Tab / Umschalt+Tab | Zwischen Suchfeld, Baum und Details wechseln |
+| ← / → im Baum | Ordner ein-/ausklappen bzw. zu Eltern/Kindern wechseln |
+| Enter im Suchfeld oder Baum | Markierte Verbindung starten; Ordner nur umklappen |
+| ↑ / ↓, Bild ↑ / ↓ in Details | Vollständige Notizen lesen/scrollen |
+| F2 | Quellen, Ordner einschließlich Unterordnern und Ansicht auswählen |
+| F3 | Alle Filter zurücksetzen |
+| Esc | Filterdialog schließen, sonst Suche beenden |
+| Strg+C | Suche abbrechen; während SSH erhält SSH die Eingabe |
+
+Im Filterdialog mit Tab zwischen Bereichen wechseln, mit Pfeilen wählen und mit
+Leertaste Quellen an-/abwählen. Quellen wirken untereinander als ODER; Quellen,
+Ordner und Ansicht (`Alle`, `Favoriten`, `Zuletzt verwendet`) gemeinsam als UND.
+Bei aktiver Suche bleiben Trefferordner automatisch offen; das verändert keinen
+gespeicherten GUI-Ordnerzustand. Die GUI bleibt für das Bearbeiten von Favoriten
+zuständig. CLI-Starts aktualisieren den gemeinsamen Verlauf (maximal zehn).
+
+Die CLI verwendet die erste ausführbare `ssh`-Datei im geerbten PATH und erhält
+deren SSH-Agent-Umgebung. PowerShell und Git Bash können unterschiedliche Clients
+verwenden. SSH-Aliase behalten die Konfiguration des Clients, einschließlich
+ProxyJump/Include; im Detailbereich werden unaufgelöste Angaben entsprechend
+gekennzeichnet. Andere Verbindungen verwenden den festen Benutzer, dann den
+konfigurierten Standard. Fehlt dieser, erfolgt eine Terminalabfrage mit
+Quick-User-Vervollständigung per Tab; Esc/Strg+C brechen ab.
+
+Bei Git-/MSYS-SSH stellt ein konstanter Bash-`exec`-Aufruf den Vordergrundprozess
+für korrekte Terminaleingaben einschließlich Strg+C her. Der gewählte SSH-Client
+bleibt derselbe; Verbindungswerte werden als separate Argumente übergeben.
+
+Nach SSH-Ende kehrst du zur Shell zurück. Der SSH-Exitcode wird weitergegeben;
+Auswahlabbruch liefert 130, fehlendes interaktives Terminal 2, Lade-/Startfehler 1.
+Ein Verlaufseintrag belegt den lokalen Start, keine erfolgreiche Remote-Anmeldung.
+Es erfolgen keine automatischen Netzwerkprüfungen beim Suchen. Externe Quellen,
+Schlüssel und SSH-Konfigurationen werden nicht geschrieben.
+
+Zur Entfernung die installierte `sshm.exe` löschen und den hinzugefügten Eintrag
+`%LOCALAPPDATA%\Programs\SSH-Manager` aus dem persönlichen PATH entfernen; App-Daten
+bleiben erhalten. Der normale GUI-Start über `ssh_manager.py` bzw. `SSH Manager.exe`
+ist weiterhin verfügbar.
+
+Optionale lokale SSH-/ConPTY-Prüfung der paketierten EXE:
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements-terminal-test.txt
+.venv\Scripts\python.exe scripts\verify_cli_terminal.py
+```
+
+Sie verwendet eine lokale Testgegenstelle und isolierte SSH-Dateien. Ergebnisse
+stehen unter `.tmp/terminal-qa`. Die ConPTY-Prüfung ersetzt keine zusätzliche
+Bedienabnahme direkt in Windows Terminal und Herdr.
 
 ## Versionierung
 

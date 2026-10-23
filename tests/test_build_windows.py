@@ -53,7 +53,9 @@ if step == "pyinstaller":
     if mode != "missing":
         (root / "dist").mkdir()
         (root / "dist" / "SSH Manager.exe").write_bytes(
-            b"new exe" if mode == "valid" else b"")
+            b"new exe" if mode == "valid" or mode.startswith("cli_") else b"")
+        if mode != "cli_missing":
+            (root / "dist" / "sshm.exe").write_bytes(b"" if mode == "cli_empty" else b"new cli")
 print("fake " + step)
 sys.exit(23 if os.environ.get("FAIL_STEP") == step else 0)
 ''',
@@ -84,6 +86,16 @@ def run_build(root, env):
 
 def calls(root):
     return [json.loads(line) for line in (root / "calls.jsonl").read_text().splitlines()]
+
+
+@pytest.mark.parametrize("mode", ["cli_missing", "cli_empty"])
+def test_invalid_cli_artifact_fails_build(build_sandbox, mode):
+    root, env = build_sandbox
+    env["EXE_MODE"] = mode
+    result = run_build(root, env)
+    assert result.returncode != 0
+    assert "sshm.exe" in result.stderr
+    assert "Fertig:" not in result.stdout
 
 
 @pytest.mark.parametrize("step,index", [("python", 0), ("version", 1), ("pip", 2)])

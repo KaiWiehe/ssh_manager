@@ -53,5 +53,14 @@ if ((Get-Item -LiteralPath $Exe).Length -eq 0) {
     throw "Build failed: $Exe is empty."
 }
 
+$CliExe = Join-Path $RepoRoot "dist\sshm.exe"
+if (!(Test-Path -LiteralPath $CliExe -PathType Leaf)) {
+    throw "Build failed: $CliExe was not created."
+}
+if ((Get-Item -LiteralPath $CliExe).Length -eq 0) {
+    throw "Build failed: $CliExe is empty."
+}
+
 Write-Host "" 
 Write-Host "Fertig: $Exe" -ForegroundColor Green
+Write-Host "CLI:    $CliExe" -ForegroundColor Green

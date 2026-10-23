@@ -6,6 +6,7 @@ import os
 import tempfile
 import shutil
 import time
+from functools import wraps
 from .ssh_utils import valid_color, read_port
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -25,6 +26,66 @@ from .constants import (
 from .models import AppSettings, AppearanceSettings, ImportSettings, Session, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, WinSCPSettings, default_settings, settings_to_dict
 from .shortcuts import merge_with_defaults as _merge_shortcuts
 from .source_status import source_load
+from .state_lock import state_transaction
+
+
+def _state_locked(function):
+    @wraps(function)
+    def locked(*args, **kwargs):
+        with state_transaction(_STATE_FILE):
+            return function(*args, **kwargs)
+    return locked
+
+
+_recent_baselines: dict[Path, list[str]] = {}
+
+
+def _merge_recent_payload(payload: dict) -> dict:
+    """Preserve CLI changes when an already open GUI saves its old snapshot."""
+    incoming = list(payload.get("recent_sessions", []))
+    previous = _recent_baselines.get(_STATE_FILE)
+    if previous is not None and _STATE_FILE.exists():
+        try:
+            current = _read_json(_STATE_FILE).get("recent_sessions", [])
+        except (OSError, ValueError):
+            # load_ui_state already preserves broken input; retain the existing
+            # recovery contract rather than making every subsequent save fail.
+            _preserve_invalid(_STATE_FILE)
+            if _STATE_FILE in _blocked_paths:
+                raise OSError("Originaldaten konnten nicht gesichert werden.")
+            return payload
+        if not isinstance(current, list):
+            current = []  # Same normalization as load_ui_state.
+        current = [str(key) for key in current if str(key).strip()]
+        if incoming == previous:
+            merged = current
+        else:
+            removed = set(previous) - set(incoming)
+            # Disk order is authoritative: another process may have restarted
+            # an existing entry, not only introduced an unknown key. Apply GUI
+            # removals and restore missing undo keys near their old anchors.
+            merged = [key for key in current if key not in removed]
+            for index, key in enumerate(incoming):
+                if key not in merged:
+                    anchor = next((following for following in incoming[index + 1:] if following in merged), None)
+                    merged.insert(merged.index(anchor) if anchor is not None else len(merged), key)
+        payload["recent_sessions"] = list(dict.fromkeys(merged))[:10]
+    return payload
+
+
+@_state_locked
+def record_recent_sessions(keys: list[str]) -> list[str]:
+    """Record local starts only; never interpret this as remote SSH success."""
+    _recover_app_restore()
+    _recover_session_transaction()
+    data = _read_json(_STATE_FILE) if _STATE_FILE.exists() else {}
+    current = data.get("recent_sessions", [])
+    if not isinstance(current, list) or not all(isinstance(key, str) for key in current):
+        raise ValueError("Ungültiger Verlauf.")
+    recent = list(dict.fromkeys([*keys, *current]))[:10]
+    data["recent_sessions"] = recent
+    _atomic_write_json(_STATE_FILE, data)
+    return recent
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -150,6 +211,7 @@ def read_app_backup(path: Path) -> dict:
     return payload
 
 
+@_state_locked
 def create_app_backup(path: Path) -> None:
     _recover_app_restore()
     _recover_session_transaction()
@@ -163,6 +225,7 @@ def create_app_backup(path: Path) -> None:
     _atomic_write_json(path, payload)
 
 
+@_state_locked
 def _recover_app_restore() -> None:
     journal = _STATE_FILE.with_name("app-restore-pending.json")
     if not journal.exists():
@@ -176,6 +239,7 @@ def _recover_app_restore() -> None:
     journal.unlink()
 
 
+@_state_locked
 def restore_app_backup(payload: dict) -> Path:
     validate_app_backup(payload)
     _recover_app_restore()
@@ -189,6 +253,7 @@ def restore_app_backup(payload: dict) -> Path:
     return safety
 
 
+@_state_locked
 def _recover_session_transaction() -> None:
     journal = _APP_SESSIONS_FILE.with_name("session-notes-pending.json")
     if not journal.exists():
@@ -213,6 +278,7 @@ def _recover_session_transaction() -> None:
     journal.unlink()
 
 
+@_state_locked
 def save_sessions_and_notes(sessions: list[Session], notes: dict[str, str]) -> None:
     _recover_session_transaction()
     if _APP_SESSIONS_FILE in _blocked_paths or _NOTES_FILE in _blocked_paths:
@@ -222,14 +288,17 @@ def save_sessions_and_notes(sessions: list[Session], notes: dict[str, str]) -> N
     _recover_session_transaction()
 
 
+@_state_locked
 def save_local_undo_state(sessions, notes, expanded, colors, toolbar):
     _recover_session_transaction()
     if {_APP_SESSIONS_FILE, _NOTES_FILE, _STATE_FILE} & _blocked_paths:
         raise OSError("Lokale Daten sind gegen Überschreiben gesperrt.")
     payload = {"sessions": _session_payload(sessions), "notes": {"notes": notes},
-               "ui_state": _ui_state_payload(expanded, colors, toolbar)}
+               "ui_state": _merge_recent_payload(_ui_state_payload(expanded, colors, toolbar))}
     _atomic_write_json(_APP_SESSIONS_FILE.with_name("session-notes-pending.json"), payload)
     _recover_session_transaction()
+
+    _recent_baselines[_STATE_FILE] = list((toolbar or {}).get("recent_sessions", []))
 
 
 def load_settings() -> AppSettings:
@@ -437,6 +506,7 @@ def load_settings_from_path(path: Path, *, require_settings: bool = False) -> Ap
     )
 
 
+@_state_locked
 def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
     _recover_app_restore()
     _recover_session_transaction()
@@ -477,11 +547,13 @@ def load_ui_state() -> tuple[set[str], dict[str, str], dict[str, str]]:
         if not isinstance(recent, list):
             recent = []
         recent_sessions = [str(item) for item in recent if str(item).strip()]
+        _recent_baselines[_STATE_FILE] = list(recent_sessions)
         if recent_sessions:
             toolbar_texts["recent_sessions"] = recent_sessions
         return set(expanded_raw), {str(k): v for k, v in colors_raw.items() if valid_color(v)}, toolbar_texts
     except (OSError, TypeError, ValueError):
         _preserve_invalid(_STATE_FILE)
+        _recent_baselines[_STATE_FILE] = []
         return set(), {}, {}
 
 
@@ -504,6 +576,7 @@ def _ui_state_payload(expanded_folders, session_colors, toolbar_search_texts):
     return payload
 
 
+@_state_locked
 def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], toolbar_search_texts: dict[str, str] | None = None) -> None:
     _recover_session_transaction()
     if toolbar_search_texts and "restart_templates" in toolbar_search_texts:
@@ -513,7 +586,8 @@ def save_ui_state(expanded_folders: set[str], session_colors: dict[str, str], to
         from .port_checks import validate_library as validate_port_library
         toolbar_search_texts = dict(toolbar_search_texts)
         toolbar_search_texts["port_check_templates"] = validate_port_library(toolbar_search_texts["port_check_templates"])
-    _atomic_write_json(_STATE_FILE, _ui_state_payload(expanded_folders, session_colors, toolbar_search_texts))
+    _atomic_write_json(_STATE_FILE, _merge_recent_payload(_ui_state_payload(expanded_folders, session_colors, toolbar_search_texts)))
+    _recent_baselines[_STATE_FILE] = list((toolbar_search_texts or {}).get("recent_sessions", []))
 
 
 def load_notes() -> dict[str, str]:

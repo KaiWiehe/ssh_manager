@@ -1,0 +1,4 @@
+# Optional, local loopback SSH/ConPTY verification; not shipped in the app.
+paramiko==4.0.0
+pywinpty==3.0.3
+pyte==0.8.2

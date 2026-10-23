@@ -271,14 +271,8 @@ def collapse_all(app) -> None:
 
 
 def _with_effective_username(app, session: Session) -> Session:
-    override = getattr(app, "_session_user_overrides", {}).get(session.key)
-    if override is not None:
-        return replace(session, username=override)
-    if session.source == "winscp" and not app.settings.import_settings.winscp_include_username:
-        return replace(session, username="")
-    if session.source == "filezilla_config" and not app.settings.import_settings.filezilla_include_username:
-        return replace(session, username="")
-    return session
+    from .session_catalog import effective_session
+    return effective_session(session, app.settings, getattr(app, "_session_user_overrides", {}))
 
 
 def build_visible_sessions(app) -> list[Session]:
@@ -378,11 +372,8 @@ def add_recent_session(app, session: Session) -> None:
 
 
 def add_recent_sessions(app, sessions: list[Session]) -> None:
-    recent = list(getattr(app, "_recent_sessions", []))
-    for session in reversed(sessions):
-        recent = [key for key in recent if key != session.key]
-        recent.insert(0, session.key)
-    app._recent_sessions = recent[:10]
+    from .storage import record_recent_sessions
+    app._recent_sessions = record_recent_sessions([session.key for session in sessions])
     app._sessions = build_visible_sessions(app)
     app._tree.refresh(app._sessions)
     persist_ui_state(app)
