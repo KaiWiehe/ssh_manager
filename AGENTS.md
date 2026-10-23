@@ -347,6 +347,7 @@ Wenn weiter refactort wird, zuerst die Testbasis ausbauen und erst danach weiter
 - `cli_launch.py`: aktuelles Terminal und geerbte Handles/Agent-Umgebung erhalten, kein WT-/Herdr-Neustart. MSYS-SSH benötigt Bash mit konstantem `exec "$@"` und separaten Argumenten für korrekte Strg+C-Weitergabe. Konsolenmodi und Signalhandler restaurieren.
 - `storage.record_recent_sessions()` und `state_lock.py`: kurze prozessübergreifende Transaktionen; aktuelle Disk-Reihenfolge bei GUI-Delete/Undo erhalten. Auch späteres Speichern eines alten GUI-Snapshots darf neue CLI-Starts nicht verdrängen. Kein Dateilock während SSH.
 - `ssh_manager.spec` baut GUI und `sshm.exe`; beide Artefakte prüfen. `scripts/install_cli.ps1` bietet persönliche Installation/PATH mit Environment-Broadcast, keine Profiländerung.
+- Einrichtung vom Git-/ZIP-Download über EXE-Build bis GUI-/CLI-Installation und Update in README und interner Hilfe (`help.py`) konsistent beschreiben. Die Hilfe enthält die Themen Installation/EXE-Build, CLI und Update/Einrichtungsprobleme; Git-Pull oder Build allein aktualisieren keine separat installierten EXEs.
 - `scripts/verify_cli_terminal.py` mit optionalen `requirements-terminal-test.txt` prüft paketierte CLI gegen Loopback-SSH in ConPTY. Testergebnisse müssen ausgelassene Prüfungen kennzeichnen; ConPTY ist keine vollständige WT-/Herdr-Bedienabnahme.
 
 ### Handling-Module (ab 0.2.60)

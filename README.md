@@ -11,27 +11,177 @@ Unterstützte Quellen:
 ## Voraussetzungen
 
 - Windows 10/11
-- Python 3.10+ empfohlen; getestet wird aktuell mit Python 3.14.2 auf Windows
-- Python-Pakete aus `requirements.txt` (GUI: `ttkbootstrap` und `Pillow`; CLI: `prompt_toolkit` und `wcwidth`)
+- Für Quellcode-Start und EXE-Build: Python mit `venv`/`pip`, hier mit Python 3.14 (64-Bit) geprüft, sowie die Pakete aus `requirements.txt`
+- Für fertige EXEs: kein separat installiertes Python und keine Python-Pakete nötig
 - [Windows Terminal](https://aka.ms/terminal) installiert
 - Git Bash-Profil in Windows Terminal vorhanden (Standard bei Git for Windows)
 - optional: [Herdr](https://herdr.dev/) für persistente SSH-Tabs; Windows Terminal bleibt der Standard
 - optional: WinSCP mit gespeicherten Sessions
 - optional: FileZilla mit gespeicherten Sites
 
-## Starten
+## Vom Git-Download zur fertigen Installation
 
-```bat
+Ein Klonen oder ZIP-Download liefert den **Quellcode**. Dabei werden keine EXEs
+gebaut und kein `sshm`-Befehl eingerichtet. Du kannst den Quellcode mit Python
+starten oder daraus die beiden portablen Windows-Programme bauen.
+
+### 1. Werkzeuge und Repository vorbereiten
+
+Für einen neuen Windows-x64-Build [Python für Windows](https://www.python.org/downloads/windows/)
+in der **64-Bit-Ausführung** installieren; hier ist die Python-3.14-Reihe geprüft.
+Für `git clone` wird [Git für Windows](https://git-scm.com/downloads/win) benötigt;
+es bringt Git Bash und einen SSH-Client mit. Die folgenden Befehle in **PowerShell**
+ausführen, nicht in der Python-Eingabeaufforderung (`>>>`).
+
+```powershell
+git clone https://github.com/KaiWiehe/ssh_manager.git SSH-Manager
+Set-Location SSH-Manager
+python --version
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python ssh_manager.py
 ```
 
-Alternativ mit bereits installierten Abhängigkeiten:
+Bei einem ZIP-Download stattdessen das ZIP vollständig entpacken und PowerShell
+im entpackten Repository-Ordner öffnen. Dort müssen `ssh_manager.py`, `sshm.py`,
+`requirements.txt` und der Ordner `scripts` liegen. Die letzten beiden Befehle
+oben auch bei einem ZIP-Download ausführen. Ist nur der Python-Launcher `py`
+verfügbar, kann `py -3.14 -m venv .venv` die Umgebung anlegen. Die Umgebung muss
+nicht aktiviert werden; die Befehle unten verwenden ihren Interpreter direkt.
 
-```bat
-python ssh_manager.py
+### 2. Beide EXEs bauen
+
+```powershell
+.\.venv\Scripts\python.exe -c "import struct; print(struct.calcsize('P') * 8)"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 ```
+
+Die erste Zeile muss für den beschriebenen x64-Build **64** ausgeben. Der Build
+läuft unter Windows und übernimmt die Architektur des verwendeten Python;
+andere Architekturen sind damit nicht automatisch geprüft. Das Buildskript
+verwendet bevorzugt `.venv\Scripts\python.exe`, prüft die Versionsmetadaten und
+installiert die festgelegten Laufzeit-/Build-Abhängigkeiten aus
+`requirements-dev.txt` einschließlich `requirements.txt`. Eine manuelle
+PyInstaller-Installation oder Versionsanhebung ist zum normalen Bauen nicht nötig.
+
+Nach erfolgreichem Build liegen **zwei** eigenständige Programme vor:
+
+| Datei | Zweck und Start |
+|---|---|
+| `dist\SSH Manager.exe` | Grafische App; per Doppelklick öffnen |
+| `dist\sshm.exe` | Terminalsuche; in PowerShell/Git Bash aufrufen |
+
+Beide enthalten ihre Python-Laufzeit. Externe Werkzeuge wie SSH, Windows Terminal
+und Git Bash für die jeweiligen Verbindungsaktionen müssen weiterhin vorhanden
+sein. Der Build ersetzt `build` und `dist`; eigene Dateien dort nicht ablegen.
+Die Benutzerdaten unter `%APPDATA%\SSH-Manager` werden dadurch nicht ersetzt.
+
+### 3. Grafische App portabel nutzen oder ablegen
+
+Direkt aus dem Build starten:
+
+```powershell
+& '.\dist\SSH Manager.exe'
+```
+
+Oder die EXE in einen festen persönlichen Programmordner kopieren, damit sie
+unabhängig vom Repository und dessen nächsten Build erhalten bleibt:
+
+```powershell
+$installDir = Join-Path $env:LOCALAPPDATA 'Programs\SSH-Manager'
+New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+Copy-Item -LiteralPath '.\dist\SSH Manager.exe' -Destination $installDir -Force
+& (Join-Path $installDir 'SSH Manager.exe')
+```
+
+Das ist eine portable Ablage ohne klassischen Setup-Assistenten. Bei Bedarf
+über Windows eine Verknüpfung auf diese EXE erstellen. Einstellungen, eigene
+Verbindungen und Notizen bleiben unter `%APPDATA%\SSH-Manager`, nicht neben der EXE.
+
+### 4. CLI als Befehl `sshm` einrichten
+
+Nach dem Build **im Repository-Ordner** ausführen:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_cli.ps1 -AddToPath
+```
+
+Das Skript kopiert **nur die CLI** nach
+`%LOCALAPPDATA%\Programs\SSH-Manager\sshm.exe` und ergänzt diesen Ordner im
+persönlichen Benutzer-PATH. `sshm` ist die EXE, kein Alias. Ohne `-AddToPath`
+wird nur die EXE kopiert. Die GUI-EXE wird durch dieses Skript nicht installiert.
+Shell-Profile und Maschinen-PATH bleiben unverändert; Administratorrechte sind
+für die beschriebene persönliche Ablage nicht erforderlich.
+
+Danach ein neues Terminal öffnen. Bereits laufende Terminalhosts oder persistente
+Herdr-Sitzungen haben möglicherweise noch den alten PATH; diese bei Bedarf
+nach Ende laufender Arbeiten vollständig neu starten. In PowerShell prüfen:
+
+```powershell
+Get-Command sshm -All
+sshm --version
+sshm
+```
+
+In Git Bash zeigt `command -v sshm` den gefundenen Starter. Profilbasierte Aliase
+oder Funktionen können `sshm` überschatten; der mit `-NoProfile` gestartete Installer
+kennt diese Definitionen der aufrufenden Shell nicht. Deshalb nach der Installation
+prüfen, ob tatsächlich die gewünschte EXE gefunden wird. Sofortiger Aufruf ohne
+PATH-Aktualisierung in PowerShell:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\SSH-Manager\sshm.exe"
+```
+
+### Alternative: direkt mit Python starten
+
+Wenn du keine EXEs bauen möchtest, genügen die Laufzeit-Abhängigkeiten:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe ssh_manager.py
+# CLI stattdessen in einem Terminal starten:
+.\.venv\Scripts\python.exe sshm.py web
+```
+
+Der Python-Start erzeugt keine EXE und richtet keinen kurzen `sshm`-Befehl ein.
+
+### Nach `git pull` aktualisieren
+
+Die grafische App schließen und laufende CLI-/SSH-Aufträge beenden, bevor ihre
+EXEs ersetzt werden. Im vorhandenen Repository mit bestehender `.venv`:
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_cli.ps1 -AddToPath
+$installDir = Join-Path $env:LOCALAPPDATA 'Programs\SSH-Manager'
+Copy-Item -LiteralPath '.\dist\SSH Manager.exe' -Destination $installDir -Force
+```
+
+**Jeden Schritt nur fortsetzen, wenn der vorherige erfolgreich war.** Bei lokalen
+Git-Änderungen den Pull-Konflikt zuerst klären. `git pull` allein aktualisiert weder
+die gebauten noch die installierten EXEs. Das Buildskript installiert auch
+geänderte Abhängigkeiten; anschließend die Programme neu starten. Die installierte
+CLI-Version kontrollierst du mit `sshm --version`, die grafische App zeigt ihre
+Version im Fenster. Installation und Update überschreiben keine App-Benutzerdaten.
+
+### Häufige Einrichtungsprobleme
+
+- **`python` fehlt oder öffnet den Store:** Python-Installation/PATH prüfen;
+  falls vorhanden, `py -3.14 -m venv .venv` verwenden.
+- **`dist\sshm.exe` fehlt:** Erst den vollständigen Build erfolgreich abschließen.
+- **`sshm` wird nicht gefunden:** Benutzer-PATH und gefundenen Pfad prüfen;
+  bestehenden Terminalhost gegebenenfalls vollständig neu starten oder den
+  vollständigen EXE-Pfad verwenden. Bei einer Namenskollision bricht das
+  Installationsskript ab, statt ein anderes gefundenes Programm zu ersetzen.
+- **SSH wird nicht gefunden:** `ssh -V` und in PowerShell `Get-Command ssh`, in
+  Git Bash `command -v ssh` prüfen. Python ist in der EXE enthalten, SSH nicht.
+- **Kopieren scheitert:** Laufende Instanz der zu ersetzenden EXE zuerst schließen.
+- **Build schlägt fehl:** Den ersten Fehler beheben und danach neu bauen; eine
+  alte EXE ist kein Nachweis eines erfolgreichen neuen Builds.
+
+Diese Anleitung ist auch offline in der App über **F1 → Installation und EXE-Build**,
+**CLI: sshm einrichten und verwenden** und **Aktualisierung und Einrichtungsprobleme**
+verfügbar. Die Hilfe führt die angezeigten Befehle nicht selbst aus.
 
 ## CLI: Verbindungen im aktuellen Terminal öffnen
 
@@ -333,7 +483,7 @@ Dort liegen z. B.:
 
 ## Abhängigkeiten
 
-Die App nutzt neben der Python-Standardbibliothek `ttkbootstrap` und `Pillow` für Themes, Icons und skalierbare Widget-Grafiken. Die festgelegten Laufzeitversionen stehen in `requirements.txt`; Test- und Build-Werkzeuge in `requirements-dev.txt`.
+Die App nutzt neben der Python-Standardbibliothek `ttkbootstrap` und `Pillow` für Themes, Icons und skalierbare Widget-Grafiken; die CLI verwendet `prompt_toolkit` und `wcwidth`. Die festgelegten Laufzeitversionen stehen in `requirements.txt`; Test- und Build-Werkzeuge in `requirements-dev.txt`.
 
 Ein direkter Start mit `python ssh_manager.py` bleibt auch ohne installiertes `ttkbootstrap` möglich. In diesem Fall verwendet die App das integrierte ttk-Theme mit der SSH-Manager-Farbpalette; für das vollständige Design einschließlich Bootstrap-Icons wird die Projektumgebung aus den Installationsschritten oben empfohlen.
 
@@ -382,25 +532,24 @@ weitere Aktionen ausführen. Nur Eingaben und Startbestätigungen sperren vorüb
 
 ## Portable Windows-EXE bauen
 
-Die Python-Variante bleibt weiterhin nutzbar:
-
-```bat
-python ssh_manager.py
-```
-
-Für eine richtige Windows-App als portable Einzel-EXE:
+Den vollständigen Weg vom Klonen bis zur persönlichen GUI-/CLI-Installation
+beschreibt [Vom Git-Download zur fertigen Installation](#vom-git-download-zur-fertigen-installation).
+Im vorbereiteten Windows-Repository mit `.venv` genügt:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 ```
 
 Das Script nutzt bevorzugt `.venv\Scripts\python.exe`, sonst `python` aus dem PATH, installiert die festgelegten Build-Abhängigkeiten und erzeugt:
 
 ```text
 dist\SSH Manager.exe
+dist\sshm.exe
 ```
 
-Jeder fehlgeschlagene externe Schritt stoppt den Build mit einem Fehlerexit. Alte Buildausgaben werden erst nach erfolgreicher Python-, Versions- und Abhängigkeitsprüfung entfernt; auch Bereinigungsfehler brechen ab. Die Erfolgsmeldung erscheint nur nach erfolgreichem PyInstaller-Lauf mit einer neu erzeugten, nicht leeren EXE.
+Jeder fehlgeschlagene externe Schritt stoppt den Build mit einem Fehlerexit. Alte Buildausgaben werden erst nach erfolgreicher Python-, Versions- und Abhängigkeitsprüfung entfernt; auch Bereinigungsfehler brechen ab. Die Erfolgsmeldung erscheint nur nach erfolgreichem PyInstaller-Lauf mit beiden neu erzeugten, nicht leeren EXEs.
 
-Die EXE läuft ohne Terminalfenster, nutzt das App-Icon aus `assets/ssh-manager.ico` und speichert Daten weiterhin unter `%APPDATA%\SSH-Manager\`.
-Die Paket-Metadaten einschließlich der Lizenzdateien von ttkbootstrap und Pillow werden in die portable Anwendung aufgenommen.
+Die GUI-EXE läuft ohne zusätzliches Konsolenfenster; die CLI nutzt das aufrufende
+Terminal. Beide verwenden das App-Icon und Daten unter `%APPDATA%\SSH-Manager\`.
+Die Paket-Metadaten einschließlich der Lizenzdateien werden in die jeweiligen
+portablen Anwendungen aufgenommen. Die Python-Variante bleibt weiterhin nutzbar.
