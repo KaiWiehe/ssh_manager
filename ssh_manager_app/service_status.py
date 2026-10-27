@@ -30,7 +30,7 @@ def check_unit(session, user, check):
 
 
 class ServiceStatusDialog(tk.Toplevel):
-    def __init__(self, app, name, targets):
+    def __init__(self, app, name, targets, max_parallel=8):
         super().__init__(app)
         self.title("Massendienststatus · " + name)
         self.cancel = threading.Event()
@@ -43,7 +43,8 @@ class ServiceStatusDialog(tk.Toplevel):
         self.summary = tk.StringVar(value="Dienststatus wird geprüft …")
         summary_label = ttk.Label(header, textvariable=self.summary, style="DialogTitle.TLabel")
         summary_label.pack(anchor="w")
-        hint = ttk.Label(header, text="Einmalige lesende Abfrage · bis zu acht Server gleichzeitig · Dienste werden nicht verändert",
+        parallel_text = f"maximal {max_parallel} Server gleichzeitig" if max_parallel else "alle Server parallel"
+        hint = ttk.Label(header, text=f"Einmalige lesende Abfrage · {parallel_text} · Dienste werden nicht verändert",
                          style="Muted.TLabel")
         hint.pack(anchor="w", pady=5)
         def wrap_header(event):
@@ -119,9 +120,11 @@ class ServiceStatusDialog(tk.Toplevel):
         self.destroy()
 
 
-def run_service_status(app, name, targets):
+def run_service_status(app, name, targets, *, max_parallel=8):
     """No reboot or credential path: only systemctl show through probe_unit."""
-    window = ServiceStatusDialog(app, name, targets)
+    from .parallelism import worker_count
+    workers = worker_count(len(targets), max_parallel)
+    window = ServiceStatusDialog(app, name, targets, max_parallel)
     reports = queue.Queue()
     cancel = window.cancel
     jobs = list(window.jobs)
@@ -142,7 +145,7 @@ def run_service_status(app, name, targets):
             reports.put((row, result))
     def coordinate():
         try:
-            with ThreadPoolExecutor(max_workers=8, thread_name_prefix="service-status") as executor:
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="service-status") as executor:
                 futures = [executor.submit(work, job) for job in jobs]
                 for future in futures:
                     future.result()

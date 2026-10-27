@@ -55,8 +55,10 @@ def probe_port(address, port, timeout):
 
 def scan_address(address, cancel, report, *, ports=range(1, 65536), rate=50, timeout=1, workers=64):
     """Bound pending work and starts/sec globally; wait at most one probe on cancel."""
-    if not 1 <= rate <= 100 or not 0 < timeout <= 5 or not 1 <= workers <= 64:
+    if type(rate) is not int or rate < 0 or not 0 < timeout <= 5 or type(workers) is not int or workers < 0:
         raise ValueError("Ungültige Scan-Grenzen.")
+    from .parallelism import worker_count
+    workers = worker_count(len(ports), workers)
     counts = dict(open=0, refused=0, timeout=0, error=0)
     pending, iterator = {}, iter(ports)
     total, done, exhausted = len(ports), 0, False
@@ -76,7 +78,7 @@ def scan_address(address, cancel, report, *, ports=range(1, 65536), rate=50, tim
                 else:
                     pending[pool.submit(probe_port, address, port, timeout)] = port
                     # No catch-up burst after a slow poll or response.
-                    next_start = now + 1 / rate
+                    next_start = now + 1 / rate if rate else now
             completed, _ = wait(pending, timeout=0, return_when=FIRST_COMPLETED) if pending else (set(), set())
             for future in completed:
                 port = pending.pop(future)
@@ -88,7 +90,7 @@ def scan_address(address, cancel, report, *, ports=range(1, 65536), rate=50, tim
             if done and now - last_report >= .2:
                 report("progress", (done, total, dict(counts)))
                 last_report = now
-            if not completed:
+            if not completed and (rate or exhausted or len(pending) >= workers):
                 cancel.wait(min(.01, max(.001, next_start - time.monotonic())))
         # Let bounded in-flight probes finish, retaining any verified open ports.
         for future, port in pending.items():
@@ -117,20 +119,30 @@ class FullPortScanDialog(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(6, weight=1)
-        info = ttk.Label(frame, text=f"{len(sessions)} Ziel(e): alle TCP-Ports 1–65535 je aufgelöster IP, direkt von diesem Rechner.\nDauert sehr lange: mehrere zehn Minuten oder länger. Ziele/IPs werden nacheinander geprüft.\nKeine Anmeldung, keine Nutzdaten, keine UDP-Prüfung. Verbindungen können Logs, Sicherheitsalarme oder Sperren auslösen; empfindliche Dienste können beeinträchtigt werden.\nSSH-Proxys werden nicht benutzt. Nur scannen, wenn das im Zielnetz vorgesehen ist.", wraplength=880, justify="left")
+        info = ttk.Label(frame, text=f"{len(sessions)} Ziel(e): alle TCP-Ports 1–65535 je aufgelöster IP, direkt von diesem Rechner.\nDauert sehr lange: mehrere zehn Minuten oder länger. Ziel-IPs standardmäßig nacheinander, Parallelität unten wählbar.\nKeine Anmeldung, keine Nutzdaten, keine UDP-Prüfung. Verbindungen können Logs, Sicherheitsalarme oder Sperren auslösen; empfindliche Dienste können beeinträchtigt werden.\nSSH-Proxys werden nicht benutzt. Nur scannen, wenn das im Zielnetz vorgesehen ist.", wraplength=880, justify="left")
         info.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         settings = ttk.Frame(frame)
         settings.grid(row=1, column=0, sticky="ew")
-        ttk.Label(settings, text="Max. Verbindungsstarts pro Sekunde:").pack(side="left")
+        self.limit_rate = tk.BooleanVar(value=True)
+        self.rate_check = ttk.Checkbutton(settings, text="Starts/s je IP begrenzen", variable=self.limit_rate,
+                        command=lambda: self.rate_entry.configure(state="normal" if self.limit_rate.get() else "disabled"))
+        self.rate_check.pack(side="left")
         self.rate = tk.StringVar(value="50")
-        self.rate_entry = ttk.Spinbox(settings, from_=1, to=100, textvariable=self.rate, width=5)
+        self.rate_entry = ttk.Spinbox(settings, from_=1, to=1000000, textvariable=self.rate, width=5)
         self.rate_entry.pack(side="left", padx=8)
         ttk.Label(settings, text="Timeout je Port (Sekunden):").pack(side="left")
         self.timeout = tk.StringVar(value="1")
         self.timeout_entry = ttk.Spinbox(settings, from_=.5, to=5, increment=.5, textvariable=self.timeout, width=5)
         self.timeout_entry.pack(side="left", padx=8)
-        rate_hint = ttk.Label(frame, text="Höchstens 64 Verbindungen gleichzeitig. 50 Starts/s bedeuten mindestens ca. 22 Minuten je IP; Timeouts können die Dauer verlängern.", wraplength=860)
-        rate_hint.grid(row=2, column=0, sticky="ew", pady=8)
+        options = ttk.Frame(frame)
+        options.grid(row=2, column=0, sticky="ew", pady=8)
+        from .parallelism import ParallelismControl
+        self.parallelism = ParallelismControl(options, default=64, unit="Portprüfungen je IP")
+        self.parallelism.pack(fill="x")
+        self.target_parallelism = ParallelismControl(options, default=1, unit="Ziel-IPs")
+        self.target_parallelism.pack(fill="x", pady=4)
+        rate_hint = ttk.Label(options, text="50 Starts/s bedeuten mindestens ca. 22 Minuten je IP. Ohne jeweiliges Häkchen entfällt die Begrenzung für diesen Lauf.", wraplength=860)
+        rate_hint.pack(fill="x")
         self.status = tk.StringVar(value="Bereit. Ein Scan startet erst mit „Vollscan starten“.")
         status_label = ttk.Label(frame, textvariable=self.status, wraplength=860)
         status_label.grid(row=3, column=0, sticky="ew", pady=4)
@@ -164,11 +176,14 @@ class FullPortScanDialog(tk.Toplevel):
         if self.running:
             return
         try:
-            rate, timeout = int(self.rate.get()), float(self.timeout.get())
-            if not 1 <= rate <= 100 or not .5 <= timeout <= 5:
+            rate = int(self.rate.get()) if self.limit_rate.get() else 0
+            timeout = float(self.timeout.get())
+            workers = self.parallelism.get()
+            target_limit = self.target_parallelism.get()
+            if (self.limit_rate.get() and rate < 1) or not .5 <= timeout <= 5:
                 raise ValueError()
         except ValueError:
-            messagebox.showwarning("Scan-Grenzen", "1–100 Starts/s und 0,5–5 Sekunden Timeout wählen.", parent=self)
+            messagebox.showwarning("Scan-Grenzen", "Positive Parallelitäts-/Startsrate wählen oder Begrenzung ausschalten; Timeout 0,5–5 Sekunden.", parent=self)
             return
         self.events = queue.SimpleQueue()
         self.cancel_event.clear()
@@ -178,7 +193,10 @@ class FullPortScanDialog(tk.Toplevel):
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.rate_entry.configure(state="disabled")
+        self.rate_check.configure(state="disabled")
         self.timeout_entry.configure(state="disabled")
+        self.parallelism.set_running(True)
+        self.target_parallelism.set_running(True)
         self.status.set("Vollscan läuft … Zieladressen werden aufgelöst.")
         self.show_details("Noch kein Ziel vollständig geprüft.")
         events, cancel = self.events, self.cancel_event
@@ -188,28 +206,37 @@ class FullPortScanDialog(tk.Toplevel):
             incomplete = False
             summaries = []
             try:
-                for session in sessions:
+                def resolve_session(session):
+                    nonlocal incomplete
                     if cancel.is_set():
-                        break
+                        return []
                     try:
                         addresses = scan_addresses(session, session.username or user)
                     except (OSError, ValueError, subprocess.TimeoutExpired):
                         incomplete = True
                         summaries.append(f"{session.display_name}: Auflösung fehlgeschlagen, nicht gescannt")
                         events.put(("summary", "\n".join(summaries)))
-                        continue
-                    for address in addresses:
-                        if cancel.is_set():
-                            break
-                        host, ip = session.display_name, address[3][0]
-                        events.put(("target", (host, ip)))
+                        return []
+                    return [(session, address) for address in addresses]
 
-                        def report(kind, value):
-                            events.put((kind, (host, ip, value)))
+                def scan_ip(target):
+                    session, address = target
+                    if cancel.is_set():
+                        return
+                    host, ip = session.display_name, address[3][0]
+                    events.put(("target", (host, ip)))
 
-                        done, total, counts = scan_address(address, cancel, report, rate=rate, timeout=timeout)
-                        summaries.append(f"{host} ({ip}): {done}/{total} geprüft; {counts['open']} offen, {counts['refused']} abgelehnt, {counts['timeout']} ohne Antwort, {counts['error']} Fehler")
-                        events.put(("summary", "\n".join(summaries)))
+                    def report(kind, value):
+                        events.put((kind, (host, ip, value)))
+
+                    done, total, counts = scan_address(address, cancel, report, rate=rate, timeout=timeout, workers=workers)
+                    summaries.append(f"{host} ({ip}): {done}/{total} geprüft; {counts['open']} offen, {counts['refused']} abgelehnt, {counts['timeout']} ohne Antwort, {counts['error']} Fehler")
+                    events.put(("summary", "\n".join(summaries)))
+                from .parallelism import worker_count
+                with ThreadPoolExecutor(max_workers=worker_count(len(sessions), target_limit)) as pool:
+                    ip_targets = [target for batch in pool.map(resolve_session, sessions) for target in batch]
+                with ThreadPoolExecutor(max_workers=worker_count(len(ip_targets), target_limit)) as pool:
+                    list(pool.map(scan_ip, ip_targets))
                 events.put(("finished", "Abgebrochen – Teilergebnis" if cancel.is_set() else "Scan beendet – unvollständig (Zielauflösung fehlgeschlagen)" if incomplete else "Vollscan abgeschlossen"))
             except Exception:
                 events.put(("finished", "Scan fehlgeschlagen – Teilergebnis, kein vollständiger Nachweis"))
@@ -250,8 +277,11 @@ class FullPortScanDialog(tk.Toplevel):
                 self.status.set(value + ". Ergebnisse gelten für diesen Rechner und den Prüfzeitpunkt.")
                 self.start_button.configure(state="normal")
                 self.stop_button.configure(state="disabled")
-                self.rate_entry.configure(state="normal")
+                self.rate_entry.configure(state="normal" if self.limit_rate.get() else "disabled")
+                self.rate_check.configure(state="normal")
                 self.timeout_entry.configure(state="normal")
+                self.parallelism.set_running(False)
+                self.target_parallelism.set_running(False)
         if self.running:
             self.timer = self.after(100, self.poll)
 

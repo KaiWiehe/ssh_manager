@@ -265,8 +265,9 @@ def probe_target(session, destination, user, tcp_timeout, cancel):
 
 
 class PortCheckJob:
-    """Eight source workers; immutable input and no Tk calls in workers."""
-    def __init__(self, sessions, destinations, user, timeout, pairs=None, probe=probe_target):
+    """Per-run source concurrency; immutable input and no Tk calls in workers."""
+    def __init__(self, sessions, destinations, user, timeout, pairs=None, probe=probe_target, max_parallel=8):
+        self.max_parallel = max_parallel
         self.sessions = deepcopy(list(sessions))
         self.destinations = tuple(targets(destinations))
         self.user, self.timeout, self.probe = user, timeout, probe
@@ -295,7 +296,8 @@ class PortCheckJob:
 
     def _run(self):
         try:
-            with ThreadPoolExecutor(max_workers=8) as executor:
+            from .parallelism import worker_count
+            with ThreadPoolExecutor(max_workers=worker_count(len(self.sessions), self.max_parallel)) as executor:
                 list(executor.map(self._source, self.sessions))
         finally:
             self.events.put(("done", None, None, None))

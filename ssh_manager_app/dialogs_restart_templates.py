@@ -357,7 +357,7 @@ class RestartTemplatesDialog(tk.Toplevel):
         ttk.Entry(passwords, textvariable=self.common_password, show="•", width=22).pack(side="left", padx=8)
         self.fill_password_button = ttk.Button(passwords, text="Leere Passwörter füllen", command=self.fill_passwords)
         self.fill_password_button.pack(side="left")
-        hint = ("Dienststatus: einmalige lesende Prüfung mit bis zu acht Servern gleichzeitig. Keine sudo-Passwörter erforderlich."
+        hint = ("Dienststatus: einmalige lesende Prüfung mit wählbarer Parallelität. Keine sudo-Passwörter erforderlich."
                 if self.status_only else "Passwörter werden mit der Vorlage verschlüsselt für dein Windows-Konto gespeichert. Leere Felder: ohne sudo-Passwort.")
         ttk.Label(self.editor, text=hint, style="Muted.TLabel", wraplength=1000).pack(anchor="w", pady=(0, 6))
         if self.common_password._unreadable and not self.status_only:
@@ -449,6 +449,11 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.update_execution_mode()
         footer = ttk.Frame(self.editor)
         footer.pack(fill="x")
+        from .parallelism import ParallelismControl
+        status_options = ttk.LabelFrame(self.editor, text="Dienststatus-Prüfung", padding=6)
+        status_options.pack(fill="x", pady=6, before=footer)
+        self.status_parallelism = ParallelismControl(status_options)
+        self.status_parallelism.pack(fill="x")
         ttk.Button(footer, text="Speichern…", command=self.save).pack(side="right", padx=6)
         if not self.status_only:
             ttk.Button(footer, text="Vorschau und starten…", command=self.preview, style="Accent.TButton").pack(side="right")
@@ -546,13 +551,18 @@ class RestartTemplatesDialog(tk.Toplevel):
         return item
 
     def check_status(self):
+        try:
+            max_parallel = self.status_parallelism.get()
+        except ValueError as error:
+            messagebox.showwarning("Parallelität", str(error), parent=self)
+            return
         if not self.save():
             return
         try:
             template = validate_template(self.template, runnable=True)
             targets = resolve_targets(template, all_connections(self.app))
             from .service_status import run_service_status
-            run_service_status(self.app, template["name"], targets)
+            run_service_status(self.app, template["name"], targets, max_parallel=max_parallel)
         except ValueError as error:
             messagebox.showwarning("Dienststatus nicht gestartet", str(error), parent=self)
 

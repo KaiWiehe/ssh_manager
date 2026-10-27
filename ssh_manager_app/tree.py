@@ -11,8 +11,8 @@ from .core import check_host_reachable
 from .local_undo import local_undo
 from .ui_components import TooltipPopup
 
-def _create_host_probe_pool():
-    return ThreadPoolExecutor(max_workers=8, thread_name_prefix="ssh-host-check")
+def _create_host_probe_pool(workers=8):
+    return ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ssh-host-check")
 
 
 def _session_values_text(sessions: list[Session], attribute: str) -> str:
@@ -1639,7 +1639,7 @@ class SessionTree(ttk.Frame):
         if session.hostname:
             tools_menu.add_command(
                 label="Host prüfen",
-                command=lambda iid=item_id, s=session: self.check_hosts([(iid, s)]),
+                command=lambda iid=item_id, s=session: self.check_hosts([(iid, s)], prompt=True),
             )
         if selected_count >= 2:
             selected_pairs = [
@@ -1649,7 +1649,7 @@ class SessionTree(ttk.Frame):
             if selected_pairs:
                 tools_menu.add_command(
                     label=f"Auswahl-Hosts prüfen ({len(selected_pairs)})",
-                    command=lambda p=selected_pairs: self.check_hosts(p),
+                    command=lambda p=selected_pairs: self.check_hosts(p, prompt=True),
                 )
 
         # SSH-Key-Verwaltung.
@@ -1895,16 +1895,26 @@ class SessionTree(ttk.Frame):
         if session:
             self._tv.item(item_id, text=self._session_label(session, status))
 
-    def check_hosts(self, item_session_pairs: list[tuple[str, Session]], timeout: int = 3) -> None:
-        """Bounded probes; only this thread accesses widgets or tree mappings."""
+    def check_hosts(self, item_session_pairs: list[tuple[str, Session]], timeout: int = 3, *, max_parallel=8, prompt=False) -> None:
+        """Per-run concurrency; only this thread accesses widgets or tree mappings."""
+        from .parallelism import choose_parallelism, worker_count
+        if prompt and len(item_session_pairs) > 1:
+            max_parallel = choose_parallelism(self.winfo_toplevel(), len(item_session_pairs), title="Hosts prüfen")
+            if max_parallel is None:
+                return
         if not hasattr(self, "_host_pending"):
             self._host_executor = _create_host_probe_pool()
+            self._host_executors = [self._host_executor]
             self._host_check_timer = None
             self.bind("<Destroy>", lambda event: self._close_host_checks(event), add="+")
             self._host_pending = set()
             self._host_results = queue.SimpleQueue()
             self._host_pumping = False
         generation = getattr(self, "_populate_generation", 0)
+        executor = self._host_executor
+        if max_parallel != 8:
+            executor = _create_host_probe_pool(worker_count(len(item_session_pairs), max_parallel))
+            self._host_executors.append(executor)
 
         def completed(future, item_id, session):
             try:
@@ -1921,17 +1931,20 @@ class SessionTree(ttk.Frame):
             self._host_pending.add(session.key)
             self._set_item_status(item_id, "checking")
             try:
-                future = self._host_executor.submit(check_host_reachable, session.hostname, session.port, timeout=timeout)
+                future = executor.submit(check_host_reachable, session.hostname, session.port, timeout=timeout)
                 future.add_done_callback(lambda result, iid=item_id, value=session: completed(result, iid, value))
             except RuntimeError:
                 self._host_results.put((generation, item_id, session, False))
+        if executor is not self._host_executor:
+            executor.shutdown(wait=False)
         if self._host_pending and not self._host_pumping:
             self._host_pumping = True
             self._host_check_timer = self.after(50, self._pump_host_checks)
 
     def _close_host_checks(self, event) -> None:
         if event.widget is self:
-            self._host_executor.shutdown(wait=False, cancel_futures=True)
+            for executor in self._host_executors:
+                executor.shutdown(wait=False, cancel_futures=True)
             if self._host_check_timer is not None:
                 self.after_cancel(self._host_check_timer)
 
@@ -1956,13 +1969,13 @@ class SessionTree(ttk.Frame):
         pairs = [(iid, session) for iid, session in self._item_to_session.items()
                  if self._checked.get(iid) and session.hostname]
         if pairs:
-            self.check_hosts(pairs, timeout=timeout)
+            self.check_hosts(pairs, timeout=timeout, prompt=True)
 
     def check_folder_hosts(self, folder_item_id: str) -> None:
         pairs = [(iid, session) for iid, session in self._item_to_session.items()
                  if session.hostname and self._is_in_folder(iid, folder_item_id)]
         if pairs:
-            self.check_hosts(pairs)
+            self.check_hosts(pairs, prompt=True)
 
     def _is_in_folder(self, item_id: str, folder_item_id: str) -> bool:
         """Prüft rekursiv ob item_id unter folder_item_id liegt."""

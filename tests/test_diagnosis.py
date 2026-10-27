@@ -47,7 +47,7 @@ def test_parallel_checks_cap_worker_count_and_keep_effective_user():
     with patch("ssh_manager_app.diagnosis.ThreadPoolExecutor") as executor, patch("ssh_manager_app.diagnosis.diagnose_session", return_value=[]) as diagnose:
         executor.return_value.__enter__.return_value.map.side_effect = lambda fn, items: map(fn, items)
         assert diagnose_many([target()], "fallback", False)[0][0].key == "id"
-    executor.assert_called_once_with(max_workers=8)
+    executor.assert_called_once_with(max_workers=1)
     diagnose.assert_called_once_with(target(), "ops", authenticate=False)
 
 

@@ -169,10 +169,12 @@ class DnsServerDialog(tk.Toplevel):
         )
         combo.grid(row=1, column=0, sticky="ew", pady=(0, 14))
         combo.focus_set()
-
+        from .parallelism import ParallelismControl
+        self.parallelism = ParallelismControl(frame, default=4, unit="Auflösungen")
+        self.parallelism.grid(row=2, column=0, sticky="ew", pady=6)
         build_dialog_actions(
             frame,
-            row=2,
+            row=3,
             primary_text="Auflösen",
             primary_command=self._on_ok,
             cancel_command=self._on_cancel,
@@ -181,6 +183,7 @@ class DnsServerDialog(tk.Toplevel):
     def _on_ok(self) -> None:
         try:
             dns_server = resolve_dns_server_selection(self._dns_server_var.get())
+            self.max_parallel = self.parallelism.get()
         except ValueError as exc:
             messagebox.showwarning("Ungültiger DNS-Server", str(exc), parent=self)
             return

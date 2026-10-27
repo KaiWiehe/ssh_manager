@@ -183,7 +183,10 @@ class PortCheckDialog(tk.Toplevel):
         self.quick_users.pack(fill="x", pady=(2, 4))
         self.edit_widgets.extend(self.quick_users.winfo_children())
         self.user.trace_add("write", self.schedule_preview)
-        ttk.Label(frame, text="Feste Benutzer und SSH-Konfiguration haben Vorrang · Schlüssel/Agent · maximal 8 Quellserver parallel",
+        from .parallelism import ParallelismControl
+        self.parallelism = ParallelismControl(frame, unit="Quellserver")
+        self.parallelism.pack(fill="x", pady=4)
+        ttk.Label(frame, text="Feste Benutzer und SSH-Konfiguration haben Vorrang · Schlüssel/Agent",
                   style="Muted.TLabel").pack(anchor="w")
         actions = ttk.Frame(frame)
         actions.pack(fill="x", pady=8)
@@ -408,6 +411,7 @@ class PortCheckDialog(tk.Toplevel):
                 messagebox.showerror("Prüfvorlage", str(error), parent=self)
 
     def set_running(self, running):
+        self.parallelism.set_running(running)
         for widget in self.edit_widgets:
             widget.configure(state="disabled" if running else "normal")
         for row, _, _ in self.fields:
@@ -424,6 +428,7 @@ class PortCheckDialog(tk.Toplevel):
         try:
             destinations = self.destinations_from_fields()
             timeout = int(self.timeout.get())
+            max_parallel = self.parallelism.get()
             if not 1 <= timeout <= 30:
                 raise ValueError("TCP-Timeout: 1 bis 30 Sekunden.")
         except ValueError as error:
@@ -437,6 +442,7 @@ class PortCheckDialog(tk.Toplevel):
         self.destinations = tuple(destinations)
         self.run_sources = {s.key: deepcopy(s) for s in self.sources}
         self.run_timeout, self.run_user = timeout, self.user.get().strip()
+        self.run_parallel = max_parallel
         self.values = {(s.key, t): ProbeResult("pending", "Noch nicht geprüft.") for s in self.sources for t in destinations}
         self.launch()
 
@@ -456,7 +462,8 @@ class PortCheckDialog(tk.Toplevel):
         self.set_running(True)
         self.progress.configure(maximum=max(1, len(self.values)), value=0)
         self.status.set("Prüft von den Quellservern aus. Ein Timeout beweist keine fehlende Firewallfreigabe.")
-        self.job = PortCheckJob(list(self.run_sources.values()), self.destinations, self.run_user, self.run_timeout, pairs=pairs).start()
+        self.job = PortCheckJob(list(self.run_sources.values()), self.destinations, self.run_user, self.run_timeout,
+                                pairs=pairs, max_parallel=self.run_parallel).start()
         self.render_results()
         self.timer = self.after(60, self.pump)
 

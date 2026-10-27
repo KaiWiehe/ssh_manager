@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+from concurrent.futures import ThreadPoolExecutor
 from .workers import run_worker
 from dataclasses import replace
 from tkinter import messagebox
@@ -29,7 +30,10 @@ def resolve_dns_for_sessions(app, sessions: list[Session]) -> None:
     if not values:
         messagebox.showwarning("Keine Hosts", "Für die Auswahl sind keine Hostnamen oder IP-Adressen hinterlegt.", parent=app)
         return
-    _resolve_values_async(app, values)
+    from .parallelism import choose_parallelism
+    limit = choose_parallelism(app, len(values), default=4, title="DNS/IP auflösen") if len(values) > 1 else 4
+    if limit is not None:
+        _resolve_values_async(app, values, max_parallel=limit)
 
 
 def resolve_dns_for_sessions_with_server_selection(app, sessions: list[Session]) -> None:
@@ -41,7 +45,7 @@ def resolve_dns_for_sessions_with_server_selection(app, sessions: list[Session])
     app.wait_window(dialog)
     if dialog.result is None:
         return
-    _resolve_values_async(app, values, dns_server=dialog.result or None)
+    _resolve_values_async(app, values, dns_server=dialog.result or None, max_parallel=dialog.max_parallel)
 
 
 def _session_lookup_values(sessions: list[Session]) -> list[tuple[str, str, str]]:
@@ -63,23 +67,36 @@ def _resolve_values_async(
     *,
     dns_server: str | None = None,
     match_sessions: list[Session] | None = None,
+    max_parallel: int = 4,
 ) -> None:
     progress = DnsLookupProgressDialog(app, len(values))
 
     def worker() -> None:
         results: list[DnsLookupResult] = []
-        cache: dict[tuple[str, str, str | None], DnsLookupResult] = {}
+        unique = {(value.lower(), mode, dns_server): (value, mode) for value, mode, _ in values}
+        def resolve(entry):
+            key, (value, mode) = entry
+            if progress.cancelled:
+                return key, None
+            from .dns_lookup import socket_lookup_executor
+            token = socket_lookup_executor.set(socket_pool)
+            try:
+                result = resolve_dns_value(value, mode=mode, **({"dns_server": dns_server} if dns_server else {}))
+            finally:
+                socket_lookup_executor.reset(token)
+            return key, result
+        from .parallelism import worker_count
+        count = worker_count(len(unique), max_parallel)
+        socket_pool = ThreadPoolExecutor(max_workers=count, thread_name_prefix="dns-socket")
+        try:
+            with ThreadPoolExecutor(max_workers=count, thread_name_prefix="dns-batch") as pool:
+                cache = dict(pool.map(resolve, unique.items()))
+        finally:
+            socket_pool.shutdown(wait=False, cancel_futures=True)
         for value, mode, connection_name in values:
             if progress.cancelled:
                 return
-            cache_key = (value.lower(), mode, dns_server)
-            result = cache.get(cache_key)
-            if result is None:
-                if dns_server:
-                    result = resolve_dns_value(value, mode=mode, dns_server=dns_server)
-                else:
-                    result = resolve_dns_value(value, mode=mode)
-                cache[cache_key] = result
+            result = cache[(value.lower(), mode, dns_server)]
             matched_name = connection_name
             if not matched_name and match_sessions:
                 matched_name = _matching_connection_names(result, match_sessions)

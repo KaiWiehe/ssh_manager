@@ -155,7 +155,7 @@ def test_status_manager_reuses_templates_without_password_decryption(app, monkey
     window = RestartTemplatesDialog(app, [], status_only=True)
     window.load(item)
     called = []
-    monkeypatch.setattr("ssh_manager_app.service_status.run_service_status", lambda *a: called.append(a))
+    monkeypatch.setattr("ssh_manager_app.service_status.run_service_status", lambda *a, **k: called.append(a))
     window.check_status()
     assert len(called) == 1 and called[0][1] == item["name"]
     assert window.template["targets"][0]["password_protected"] == item["targets"][0]["password_protected"]

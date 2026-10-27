@@ -162,7 +162,7 @@ def test_controller_scans_all_ips_serially_and_marks_unresolved_host_incomplete(
     dialog.close()
 
 
-@pytest.mark.parametrize("rate, timeout", [("101", "1"), ("0", "1"), ("50", "nan"), ("50", "0"), ("x", "1")])
+@pytest.mark.parametrize("rate, timeout", [("-1", "1"), ("0", "1"), ("50", "nan"), ("50", "0"), ("x", "1")])
 def test_invalid_limits_do_not_start_any_network_work(root, rate, timeout):
     dialog = FullPortScanDialog(root, [])
     dialog.rate.set(rate)

@@ -467,7 +467,7 @@ def test_session_dns_lookup_keeps_connection_names_for_shared_hostname():
         Session("b", "Server B", [], "shared.example.com"),
     ]
 
-    with patch("ssh_manager_app.actions_dns._resolve_values_async") as resolve_async:
+    with patch("ssh_manager_app.actions_dns._resolve_values_async") as resolve_async, patch("ssh_manager_app.parallelism.choose_parallelism", return_value=4):
         resolve_dns_for_sessions(app, sessions)
 
     resolve_async.assert_called_once_with(
@@ -476,6 +476,7 @@ def test_session_dns_lookup_keeps_connection_names_for_shared_hostname():
             ("shared.example.com", "auto", "Server A"),
             ("shared.example.com", "auto", "Server B"),
         ],
+        max_parallel=4,
     )
 
 
@@ -514,6 +515,7 @@ def test_selection_dns_server_action_keeps_existing_lookup_separate():
     ]
     dialog = MagicMock()
     dialog.result = "1.1.1.1"
+    dialog.max_parallel = 4
 
     with patch("ssh_manager_app.actions_dns.DnsServerDialog", return_value=dialog) as dialog_cls, \
          patch("ssh_manager_app.actions_dns._resolve_values_async") as resolve_async:
@@ -527,6 +529,7 @@ def test_selection_dns_server_action_keeps_existing_lookup_separate():
             ("server-b.example.com", "auto", "Server B"),
         ],
         dns_server="1.1.1.1",
+        max_parallel=4,
     )
 
 

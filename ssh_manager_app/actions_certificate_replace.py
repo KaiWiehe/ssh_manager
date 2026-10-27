@@ -183,7 +183,8 @@ def replace_certificates(app, sessions: list[Session]) -> None:
                 if progress.cancelled:
                     return None
                 return session, user, _scan_host(session, user, spec["roots"], names, spec["sudo_password"], spec["keystore_password"])
-            with ThreadPoolExecutor(max_workers=min(8, len(users)), thread_name_prefix="certificate-scan") as pool:
+            from .parallelism import worker_count
+            with ThreadPoolExecutor(max_workers=worker_count(len(users), spec.get("max_parallel", 8)), thread_name_prefix="certificate-scan") as pool:
                 scanned = list(pool.map(scan, users))
             if progress.cancelled:
                 return None

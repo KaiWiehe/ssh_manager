@@ -85,7 +85,7 @@ def check_context_hosts(app, sessions):
     else:
         keys = {session.key for session in sessions}
         pairs = [(iid, session) for iid, session in app._tree._item_to_session.items() if session.key in keys]
-        app._tree.check_hosts(pairs, timeout=app.settings.host_check_timeout_seconds)
+        app._tree.check_hosts(pairs, timeout=app.settings.host_check_timeout_seconds, prompt=True)
 
 
 def add_scoped_exports(app, menu, sessions, prefix="Verbindungen"):

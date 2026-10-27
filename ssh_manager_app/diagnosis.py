@@ -123,8 +123,9 @@ def diagnose_session(session, user="", *, authenticate=False, ports=()):
     return results
 
 
-def diagnose_many(sessions, user, authenticate, ports=()):
-    with ThreadPoolExecutor(max_workers=8) as pool:
+def diagnose_many(sessions, user, authenticate, ports=(), max_parallel=8):
+    from .parallelism import worker_count
+    with ThreadPoolExecutor(max_workers=worker_count(len(sessions), max_parallel)) as pool:
         return list(pool.map(lambda session: (session, diagnose_session(session, session.username or user, authenticate=authenticate, **({"ports": ports} if ports else {}))), sessions))
 
 
@@ -141,6 +142,9 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text=f"{len(sessions)} Ziel(e). DNS und TCP prüfen keine Anmeldung. Quellen werden nicht verändert.", wraplength=660).pack(anchor="w")
         self.authenticate = tk.BooleanVar(value=False)
+        from .parallelism import ParallelismControl
+        self.parallelism = ParallelismControl(frame)
+        self.parallelism.pack(fill="x", pady=6)
         ttk.Checkbutton(frame, text="Zusätzlich SSH-Anmeldung mit vorhandenem Schlüssel prüfen (true)", variable=self.authenticate).pack(anchor="w", pady=8)
         userrow = ttk.Frame(frame)
         userrow.pack(fill="x")
@@ -217,17 +221,20 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
     def start(self):
         try:
             ports = parse_ports(self.ports.get())
+            max_parallel = self.parallelism.get()
         except ValueError as exc:
             messagebox.showwarning("Prüfports", str(exc), parent=self)
             return
         self.save_ports()
         self.start_button.configure(state="disabled")
         self.output.delete(*self.output.get_children())
-        self.status.set("Diagnose läuft … maximal acht parallele Ziele.")
+        self.status.set("Diagnose läuft … " + (f"maximal {max_parallel} parallele Ziele." if max_parallel else "alle Ziele parallel."))
+        self.parallelism.set_running(True)
         user, authenticate = self.user.get().strip(), self.authenticate.get()
-        run_worker(self, lambda: diagnose_many(self.sessions, user, authenticate, ports), self.show_results, self.failed)
+        run_worker(self, lambda: diagnose_many(self.sessions, user, authenticate, ports, max_parallel), self.show_results, self.failed)
 
     def show_results(self, results):
+        self.parallelism.set_running(False)
         for session, checks in results:
             item = self.output.insert("", "end", text=f"{session.display_name} ({session.hostname})", open=True)
             for step, status, detail in checks:
@@ -236,6 +243,7 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         self.start_button.configure(state="normal")
 
     def failed(self, _error):
+        self.parallelism.set_running(False)
         self.status.set("Diagnose konnte nicht vollständig abgeschlossen werden.")
         self.start_button.configure(state="normal")
 

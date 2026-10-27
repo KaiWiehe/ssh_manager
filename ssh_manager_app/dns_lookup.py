@@ -6,6 +6,7 @@ import json
 import re
 import socket
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from contextvars import ContextVar
 import subprocess
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -243,7 +244,7 @@ def parse_nslookup_output(output: str, mode: str) -> list[str]:
     return _dedupe(values)
 
 
-_SOCKET_LOOKUPS = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ssh-dns")
+socket_lookup_executor = ContextVar("socket_lookup_executor", default=None)
 
 
 def _socket_lookup(query: str, mode: str) -> list[str]:
@@ -255,9 +256,18 @@ def _socket_lookup(query: str, mode: str) -> list[str]:
 
 
 def _resolve_with_socket(query: str, mode: str, timeout: int, _dns_server: str | None = None) -> list[str]:
-    future = _SOCKET_LOOKUPS.submit(_socket_lookup, query, mode)
+    # A timed-out OS lookup can continue. Keep it in the selected per-run pool,
+    # so subsequent jobs cannot silently exceed the user's limit.
+    executor = socket_lookup_executor.get()
+    owned = executor is None
+    if owned:
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dns-single")
+    future = executor.submit(_socket_lookup, query, mode)
     try:
         return future.result(timeout=timeout)
     except FutureTimeout as error:
         future.cancel()
         raise socket.timeout("DNS-Auflösung hat das Zeitlimit überschritten.") from error
+    finally:
+        if owned:
+            executor.shutdown(wait=False, cancel_futures=True)

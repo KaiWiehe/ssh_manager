@@ -34,6 +34,9 @@ class CertificateReplaceDialog(tk.Toplevel):
     def _build(self, target_count, whitelist):
         root = ttk.Frame(self, padding=14); root.pack(fill="both", expand=True)
         root.columnconfigure(0, weight=1)
+        from .parallelism import ParallelismControl
+        self.parallelism = ParallelismControl(root)
+        self.parallelism.pack(fill="x", pady=6)
         ttk.Label(root, text=f"Zertifikate auf {target_count} Host(s) ersetzen", font=("Segoe UI", 11, "bold")).pack(anchor="w")
         ttk.Label(root, text="Es werden nur reguläre Dateien mit exakt gleichem Namen innerhalb der Whitelist ersetzt.", style="Muted.TLabel").pack(anchor="w", pady=(2, 10))
         files = ttk.LabelFrame(root, text="Neue Zertifikatsdateien", padding=8); files.pack(fill="both", expand=True)
@@ -100,6 +103,7 @@ class CertificateReplaceDialog(tk.Toplevel):
 
     def _ok(self):
         try:
+            max_parallel = self.parallelism.get()
             roots = certificate_paths(self._roots_value())
         except ValueError as exc:
             messagebox.showwarning("Ungültiger Pfad", str(exc), parent=self); return
@@ -116,6 +120,7 @@ class CertificateReplaceDialog(tk.Toplevel):
             return
         self._on_whitelist_changed(roots)
         self.result = {"files": list(self._files), "roots": roots, "sudo_password": self._sudo_password.get(), "keystore_password": self._keystore_password.get(), "post_command": self._post.get("1.0", "end").strip(), "close_on_success": self._close_on_success.get()}
+        self.result["max_parallel"] = max_parallel
         clear_password_fields(self)
         self.destroy()
 

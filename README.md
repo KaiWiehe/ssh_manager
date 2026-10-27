@@ -327,7 +327,7 @@ Standardmäßig werden alle ausgewählten Hosts gleichzeitig gestartet. Mit **Gl
 
 Bei **Dateien verteilen** wählt **Dateibesitzer und Rechte…** einen Dienstbenutzer für alle Hosts oder je Host, mit konfigurierten Quick-Users und freier Eingabe. Der Dateibesitzer ist unabhängig vom SSH-Anmeldebenutzer; seine primäre Gruppe wird verwendet. Neue Dateien bekommen standardmäßig **0600**. Je Datei sind auch Gruppenrechte oder öffentliche Leserechte wählbar; **0644 nur für öffentliche Zertifikate** verwenden. Vorhandene Besitzer/Rechte bleiben erhalten, außer die Änderung wird ausdrücklich aktiviert. Die Installation bereitet Metadaten vor und ersetzt die Zieldatei atomar; bestehende Symlinks bleiben erhalten.
 
-Zertifikat-Such- und Zielpfade werden normalisiert; Steuerzeichen und `..`-Segmente sind unzulässig. Breite Pfade wie `/etc` bleiben nach einer Warnung erlaubt. Die reine Zertifikatssuche arbeitet mit höchstens acht parallelen Hosts. Übertragungs- und Neustartformulare sind bei kleinen Fenstern scrollbar, die Aktionsbuttons bleiben sichtbar.
+Zertifikat-Such- und Zielpfade werden normalisiert; Steuerzeichen und `..`-Segmente sind unzulässig. Breite Pfade wie `/etc` bleiben nach einer Warnung erlaubt. Die reine Zertifikatssuche arbeitet standardmäßig mit acht parallelen Hosts; die Begrenzung ist je Lauf änderbar oder abschaltbar. Übertragungs- und Neustartformulare sind bei kleinen Fenstern scrollbar, die Aktionsbuttons bleiben sichtbar.
 
 Der CSV-Export ist standardmäßig **Excel-sicher**: Mögliche Formeln in Zellen und Ordnerüberschriften erhalten ein vorangestelltes Apostroph. Für unveränderte Rohdaten kann die Option deaktiviert werden; beim Öffnen solcher Dateien in Excel können Formeln ausgeführt werden. XLSX verwendet Textzellen.
 
@@ -417,6 +417,22 @@ Favoriten speichern komplette Runbooks inkl. Modus, Pfaden, Interpreter, Argumen
   App-Datendateien, einschließlich Notizen und UI-State, mit Restore-Vorschau
   und vorherigem Sicherheitsbackup. Externe Quellen und SSH-Schlüssel sind
   separat zu sichern; nach Restore ist ein App-Neustart nötig.
+
+## Parallelität je Lauf
+
+Bei Prüfungen lässt sich **Parallelität begrenzen** direkt je Funktion/Lauf ändern
+oder ausschalten. Ohne Häkchen werden alle Ziele dieses Laufs parallel bearbeitet.
+Die bisherigen Werte bleiben nur Defaults: Hosts prüfen, Diagnose, Quellserver-Portprüfung,
+Zertifikatssuche und Dienststatus jeweils 8, DNS-Auflösung 4. Bei Hosts prüfen und
+DNS-Auswahl erscheint die Wahl vor dem Start; die anderen Werkzeuge haben sie im Dialog.
+Beim Dienststatus gilt die Auswahl unter **Dienststatus-Prüfung**, unabhängig vom
+Neustart-Ablauf der Vorlage. Einstellungen des aktuellen Laufs ändern keine anderen Läufe.
+
+Der TCP-Vollscan trennt **Ziel-IP-Parallelität** (Standard 1), **Portparallelität je IP**
+(Standard 64) und **Starts/s je IP** (Standard 50). Jede Begrenzung ist separat
+abschaltbar; dann gibt es an dieser Stelle keine künstliche Warte-/Workergrenze.
+Timeouts und Abbruch bleiben erhalten. Portprüfungs-Wiederholungen verwenden die
+Parallelitätswahl des ursprünglichen Laufs.
 
 ## Einstellungen
 
@@ -546,8 +562,8 @@ Massen-Neustart-Editor. Beide Aktionen verwenden dieselbe Vorlagenbibliothek;
 es gibt keinen automatischen Zeitplan. Bei Konflikten zwischen geöffneten Fenstern
 die inzwischen geänderte Vorlage erneut öffnen. Änderungen anderer Vorlagen bleiben erhalten.
 
-Der Check liest einmalig `systemctl show` für die eingetragenen Dienste, mit bis zu
-acht Servern gleichzeitig. Er führt keinen Neustart oder Dienststart/-stopp aus
+Der Check liest einmalig `systemctl show` für die eingetragenen Dienste, mit
+standardmäßig acht Servern gleichzeitig; die Begrenzung ist je Lauf änderbar oder abschaltbar. Er führt keinen Neustart oder Dienststart/-stopp aus
 und benötigt keine sudo-Passwörter. Die nichtmodale Ergebnistabelle enthält Server,
 Benutzer, Dienst, Soll, Ist und Ergebnis. Fehlende Dienste, SSH-/Abfragefehler und
 Sollabweichungen werden unterschieden. Server ohne Dienste werden ausdrücklich als
