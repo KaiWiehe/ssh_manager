@@ -515,6 +515,11 @@ Neustartnachweis, SSH-Rückkehr und alle Sollzustände. Inaktiv heißt vorhanden
 sauber gestoppt; `failed` zählt nicht als inaktiv. Dienste werden nur geprüft.
 Fehlende Units verhindern den Reboot dieses Ziels bereits in der Vorprüfung.
 
+Mit **Alle parallel durchstarten** werden alle Zielserver ohne Parallelitätsgrenze
+und ohne Fehlerpause angestoßen. „Max. gleichzeitig“ und „Bei Fehlern“ sind in diesem
+Modus deaktiviert; beim Wechsel zurück bleiben die Werte erhalten. Die SSH-Anmeldung
+und Vorprüfung bleiben pro Server erhalten, daher sind die Reboots nicht exakt synchron.
+
 Die Vorschau zeigt alle Ziele und Prüfungen; erst „Server jetzt neu starten“ löst
 Neustarts aus. Stoppen verhindert weitere Starts, nimmt ausgelöste Reboots aber
 nicht zurück.
@@ -532,6 +537,23 @@ etwas eingeben und wieder löschen). Unlesbare gespeicherte Werte bleiben erhalt
 und blockieren den Start im betroffenen Modus. Änderungen am gemeinsamen Passwort
 in der Startvorschau gelten nur für diesen Lauf. Diese Felder dienen sudo;
 die SSH-Anmeldung verwendet weiterhin Schlüssel/Agent.
+
+### Massendienststatus mit denselben Vorlagen
+
+**Aktionen → Massendienststatus…** öffnen, vorhandene Neustart-Vorlage auswählen
+und öffnen, dann **Dienststatus prüfen** drücken. Derselbe Button steht auch im
+Massen-Neustart-Editor. Beide Aktionen verwenden dieselbe Vorlagenbibliothek;
+es gibt keinen automatischen Zeitplan. Bei Konflikten zwischen geöffneten Fenstern
+die inzwischen geänderte Vorlage erneut öffnen. Änderungen anderer Vorlagen bleiben erhalten.
+
+Der Check liest einmalig `systemctl show` für die eingetragenen Dienste, mit bis zu
+acht Servern gleichzeitig. Er führt keinen Neustart oder Dienststart/-stopp aus
+und benötigt keine sudo-Passwörter. Die nichtmodale Ergebnistabelle enthält Server,
+Benutzer, Dienst, Soll, Ist und Ergebnis. Fehlende Dienste, SSH-/Abfragefehler und
+Sollabweichungen werden unterschieden. Server ohne Dienste werden ausdrücklich als
+nicht geprüft angezeigt. Abbrechen überspringt wartende Abfragen; laufende Abfragen
+kehren spätestens nach ihrem SSH-Timeout zurück. Alles, Fehler/Abweichungen und
+ausgewählte Ergebnisse sind als Tabelle kopierbar.
 
 Im Ergebnisfenster kopiert „Alle Fehler kopieren“ Fehler und Zeitüberschreitungen,
 „Alles kopieren“ alle Tabellenzeilen samt Überschriften. Strg/Umschalt markiert

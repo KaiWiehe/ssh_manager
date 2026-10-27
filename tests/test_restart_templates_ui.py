@@ -21,6 +21,8 @@ from ssh_manager_app.ui import _apply_palette_styles
 
 @pytest.fixture
 def app(monkeypatch):
+    import gc
+    gc.collect()  # Dispose previous Tk interpreters on their creating thread, before workers start.
     root = tk.Tk()
     root.geometry("1200x850+20+20")
     root.settings = default_settings()
@@ -39,6 +41,7 @@ def app(monkeypatch):
     root.update()
     yield root
     root.destroy()
+    gc.collect()
 
 
 def screenshot(window, name):

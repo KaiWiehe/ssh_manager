@@ -25,8 +25,9 @@ def populate_actions_menu(app, actions_menu, sessions=None):
     from .operation_results import show_last_results
     actions_menu.add_command(label="Letzte Sammelergebnisse…", command=lambda: show_last_results(self))
     actions_menu.add_command(label="Server neu starten…", command=lambda: ui.restart_servers_callback(self, targets()))
-    from .actions_restart_templates import open_restart_templates
+    from .actions_restart_templates import open_restart_templates, open_service_status_templates
     actions_menu.add_command(label="Massen-Neustarts…", command=lambda: open_restart_templates(self, targets()))
+    actions_menu.add_command(label="Massendienststatus…", command=lambda: open_service_status_templates(self, targets()))
     actions_menu.add_command(label="Tunnel öffnen", command=lambda: ui.open_tunnel_callback(self, targets()[0] if sessions is not None and len(targets()) == 1 else None))
     actions_menu.add_command(label="Remote-Befehl ausführen", command=lambda: ui.run_remote_command_callback(self, targets()))
     actions_menu.add_command(label="Lokales Skript ausführen…", command=lambda: ui.run_remote_command_callback(self, targets(), "local_script"))

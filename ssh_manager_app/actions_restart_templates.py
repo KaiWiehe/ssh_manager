@@ -9,7 +9,7 @@ from tkinter import ttk
 
 from .actions_restart import RestartResult, _run_ssh, monitor_server_restart
 from .dialogs_restart import ServerRestartProgressDialog
-from .restart_templates import RestartScheduler, validate_template
+from .restart_templates import RestartScheduler, validate_template, execution_policy
 
 
 def probe_unit(session, user, unit, timeout=8):
@@ -83,7 +83,8 @@ def run_template(app, template, targets, password):
         return monitor_template_restart(session, user, passwords.get(session.key, ""), checks, template["reboot_timeout"],
             template["service_timeout"], cancel,
             lambda state, detail: reports.put((session.key, state, detail)))
-    scheduler = RestartScheduler(targets, 1 if template["mode"] == "serial" else template["max_parallel"], template["on_error"], work)
+    limit, error_policy = execution_policy(template)
+    scheduler = RestartScheduler(targets, limit, error_policy, work)
     gate = ttk.Frame(progress, padding=(14, 4))
     gate.grid(row=3, column=0, sticky="ew")
     message = ttk.Label(gate, text="", wraplength=650, style="Warning.TLabel")
@@ -142,3 +143,8 @@ def open_restart_templates(app, sessions=None):
     from .dialogs_restart_templates import RestartTemplatesDialog
     window = RestartTemplatesDialog(app, sessions or [])
     return window
+
+
+def open_service_status_templates(app, sessions=None):
+    from .dialogs_restart_templates import RestartTemplatesDialog
+    return RestartTemplatesDialog(app, sessions or [], status_only=True)

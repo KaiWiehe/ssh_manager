@@ -12,6 +12,13 @@ from .models import Session
 from .ssh_utils import connection_value
 
 UNIT = re.compile(r"(?!-)[A-Za-z0-9_.:@-]{1,200}\.service\Z")
+MODE_LABELS = {"parallel": "parallel", "serial": "nacheinander", "all_parallel": "Alle parallel durchstarten"}
+
+
+def execution_policy(template):
+    if template["mode"] == "all_parallel":
+        return len(template["targets"]), "continue"
+    return (1 if template["mode"] == "serial" else template["max_parallel"]), template["on_error"]
 
 
 def service_check(name, expected="active"):
@@ -53,7 +60,7 @@ def validate_template(item, *, runnable=False):
         if not isinstance(value, str) or not value.strip() or len(value) > 200 or any(c in value for c in "\r\n\x00"):
             raise ValueError("Vorlagen-ID und Name müssen ausgefüllt sein (maximal 200 Zeichen).")
         result[field] = value.strip()
-    for field, allowed in (("mode", ("parallel", "serial")), ("on_error", ("continue", "stop", "pause"))):
+    for field, allowed in (("mode", tuple(MODE_LABELS)), ("on_error", ("continue", "stop", "pause"))):
         if item.get(field) not in allowed:
             raise ValueError("Ungültiger Ablauf oder Fehlerverhalten.")
         result[field] = item[field]

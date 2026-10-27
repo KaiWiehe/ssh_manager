@@ -288,7 +288,7 @@ Standardmäßig starten alle Hosts gleichzeitig. Optional die Anzahl gleichzeiti
 
 Einzelhost, Auswahl und Ordner
 Die Beschriftung des Kontextmenüs nennt den Geltungsbereich. Im Menü Aktionen und in der Toolbar werden die angehakten Sessions übergeben. Vor dem Start die endgültige Hostliste im jeweiligen Dialog prüfen. Die Hilfe selbst führt keine Serveraktion aus."""),
-    HelpTopic("restart_templates", "Massen-Neustarts und Vorlagen", """Vorlagen erstellen
+    HelpTopic("restart_templates", "Massen-Neustarts, Dienststatus und Vorlagen", """Vorlagen erstellen
 Server links anhaken und Aktionen → Massen-Neustarts öffnen. „Aus Auswahl erstellen“ übernimmt die Server in eine direkt editierbare Tabelle. Benutzer werden aus den aktuellen Verbindungen vorbelegt. Quick-Access-User und „Leere Benutzer füllen“ ergänzen nur fehlende Angaben. Benutzeränderungen gelten ausschließlich für die Vorlage, auch bei SSH-Aliasen.
 
 Serviceprüfungen je Server
@@ -302,6 +302,14 @@ Ohne „Passwort je Verbindung“ gilt das obere sudo-Passwort für alle Server.
 Passwörter werden beim Speichern der Vorlage mit Windows-DPAPI für dein Windows-Benutzerkonto verschlüsselt. Auch im App-Backup stehen nur verschlüsselte Werte. Auf einem anderen Rechner oder unter einem anderen Konto können die Werte unlesbar sein: betroffene Felder neu eingeben (zum Leeren kurz etwas eingeben und wieder löschen). Unlesbare Werte bleiben beim Laden/Speichern erhalten und blockieren den Start, solange sie im gewählten Modus benötigt werden. Im gemeinsamen Modus kann das Passwort in der Startvorschau nur für diesen Lauf geändert werden. SSH verwendet weiterhin Schlüssel/Agent; die Felder dienen ausschließlich sudo.
 
 Parallel oder nacheinander, mit getrennter Wartezeit für Neustart/SSH und anschließend alle Services eines Servers. Bei Fehlern weiterlaufen, weitere Neustarts stoppen oder pausieren und nachfragen. Eine Pause verhindert weitere Starts; laufende Server werden weiter überwacht. Fehlende Units verhindern bereits vor dem Reboot diesen Server. Nach dem Reboot werden vorübergehend abweichende Zustände bis zum Servicezeitlimit beobachtet.
+
+Alle parallel durchstarten
+Die dritte Ablauf-Auswahl startet alle Zielserver ohne Parallelitätsgrenze und ohne Fehlerpause. „Max. gleichzeitig“ und „Bei Fehlern“ sind dabei ausgegraut; ihre Werte bleiben für einen späteren Wechsel erhalten. Die Startvorschau nennt diesen Modus ausdrücklich. Gleichzeitiges Anstoßen bedeutet keine zeitlich exakt synchronen Reboots: SSH-Anmeldung und Vorprüfung benötigen je Server unterschiedlich lange.
+
+Massendienststatus ohne Neustart
+Aktionen → Massendienststatus öffnet dieselben gespeicherten Vorlagen mit Servern, Benutzern und Diensten. Alternativ in Massen-Neustarts „Dienststatus prüfen“ drücken. Vorlage auswählen/öffnen, bei Bedarf bearbeiten und speichern, dann per Klick prüfen; es gibt keinen automatischen Zeitplan. Diese Aktion fragt einmalig ausschließlich systemctl show ab. Kein Neustart, kein Dienststart/-stopp, keine sudo-Passwörter und keine Wartephase auf den Sollzustand. Neustartoptionen sind im Statusmanager ausgeblendet.
+Die nichtmodale Ergebnistabelle zeigt je Server und Dienst Soll, Ist, Ergebnis und Details. active/inactive/failed und Übergangszustände bleiben unterscheidbar. Abweichungen, fehlende Units und SSH-/Abfragefehler sind gesonderte Ergebnisse. Server ohne Dienste erscheinen als „Keine Dienste hinterlegt“, nicht als erfolgreich geprüft. Bis zu acht Server werden gleichzeitig abgefragt; pro Server laufen die Dienste nacheinander. „Prüfung abbrechen“ überspringt wartende Abfragen; laufende SSH-Abfragen kehren spätestens nach ihrem Timeout zurück. Ergebnisse bleiben kopierbar offen.
+Beide Fenster verwenden dieselbe Vorlagenbibliothek. Änderungen an anderen Vorlagen bleiben erhalten. Wurde die geöffnete Vorlage inzwischen in einem anderen Fenster verändert oder gelöscht, wird Speichern/Prüfen/Neustarten blockiert; unter „Vorlagen“ erneut öffnen. Lokale Änderungen vorher bei Bedarf separat übernehmen.
 
 Ergebnisse
 Fortschritts-/Ergebnisfenster und Vorlagenverwaltung sperren das Hauptfenster nicht. Während der Überwachung und nach Abschluss kannst du im SSH-Manager andere Verbindungen oder Fehler-Server auswählen und weitere Aktionen ausführen. Die Ergebnisfenster bleiben dabei offen. Nur konkrete Eingaben und Startbestätigungen sind vorübergehend modal.

@@ -8,7 +8,7 @@ from tkinter import ttk, messagebox
 import uuid
 
 from .restart_templates import (all_connections, new_template, resolve_targets, service_check,
-                                target_fingerprint, validate_library, validate_template)
+                                target_fingerprint, validate_library, validate_template, MODE_LABELS)
 from .ui_components import fit_window_to_parent, install_context_help
 from .workers import run_worker
 from .restart_passwords import seal, unseal, passwords_for_run
@@ -184,9 +184,11 @@ class RestartPreview(tk.Toplevel):
         frame = ttk.Frame(self, padding=16)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text=template["name"], style="DialogTitle.TLabel").pack(anchor="w")
-        mode = "nacheinander" if template["mode"] == "serial" else f"maximal {template['max_parallel']} gleichzeitig"
+        mode = (MODE_LABELS[template["mode"]] if template["mode"] != "parallel"
+                else f"maximal {template['max_parallel']} gleichzeitig")
         policy = {"pause": "pausieren und nachfragen", "stop": "weitere Neustarts stoppen", "continue": "weiterlaufen"}[template["on_error"]]
-        ttk.Label(frame, text=f"{len(targets)} Server · {mode} · Bei Fehlern: {policy}\n"
+        admission = f"{len(targets)} Server · {mode}" + (" · ohne Fehlerpause" if template["mode"] == "all_parallel" else f" · Bei Fehlern: {policy}")
+        ttk.Label(frame, text=admission + "\n"
                   f"Neustart/SSH: {template['reboot_timeout']} s · danach Services: {template['service_timeout']} s", wraplength=780).pack(anchor="w", pady=8)
         from tkinter.scrolledtext import ScrolledText
         text = ScrolledText(frame, wrap="word", height=15)
@@ -220,8 +222,9 @@ class RestartPreview(tk.Toplevel):
 
 
 class RestartTemplatesDialog(tk.Toplevel):
-    def __init__(self, app, selection):
+    def __init__(self, app, selection, *, status_only=False):
         super().__init__(app)
+        self.status_only = status_only
         self.app, self.selection = app, list(selection)
         self.template = None
         self.original = None
@@ -246,14 +249,14 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", lambda _: self.close())
         self.refresh_library()
-        modal(self, app, "Massen-Neustarts", 1150, 800, blocking=False)
+        modal(self, app, "Massendienststatus" if status_only else "Massen-Neustarts", 1150, 800, blocking=False)
         if selection:
             self.create(selection)
         else:
             ttk.Label(self.editor, text="Eine Vorlage öffnen oder aus ausgewählten Servern erstellen.").pack(pady=30)
 
     def _build_library(self):
-        ttk.Label(self.library_frame, text="Gespeicherte Neustarts öffnen, prüfen und starten.", style="DialogTitle.TLabel").pack(anchor="w", pady=(0, 10))
+        ttk.Label(self.library_frame, text="Gemeinsame Vorlagen für Neustarts und Dienststatus öffnen.", style="DialogTitle.TLabel").pack(anchor="w", pady=(0, 10))
         self.list = ttk.Treeview(self.library_frame, columns=("count", "mode"), selectmode="browse")
         for col, label in (("#0", "Vorlage"), ("count", "Server"), ("mode", "Ablauf")):
             self.list.heading(col, text=label)
@@ -269,7 +272,7 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.list.delete(*self.list.get_children())
         for item in self.library["items"]:
             self.list.insert("", "end", iid=item["id"], text=item["name"],
-                values=(len(item["targets"]), "parallel" if item["mode"] == "parallel" else "nacheinander"))
+                values=(len(item["targets"]), MODE_LABELS[item["mode"]]))
 
     def discard_ok(self):
         if self.template is None:
@@ -308,7 +311,15 @@ class RestartTemplatesDialog(tk.Toplevel):
     def open_selected(self):
         selected = self.list.selection()
         if selected and self.discard_ok():
-            self.load(next(i for i in self.library["items"] if i["id"] == selected[0]))
+            try:
+                self.library = self.current_library()
+                current = next((i for i in self.library["items"] if i["id"] == selected[0]), None)
+                self.refresh_library()
+                if current is None:
+                    raise ValueError("Vorlage wurde in einem anderen Fenster gelöscht.")
+                self.load(current)
+            except ValueError as error:
+                messagebox.showwarning("Vorlage neu öffnen", str(error), parent=self)
 
     def load(self, template, existing=True):
         self.template = deepcopy(template)
@@ -336,7 +347,8 @@ class RestartTemplatesDialog(tk.Toplevel):
         ttk.Button(toolbar, text="Leere Benutzer füllen", command=self.fill_users).pack(side="left")
         ttk.Button(toolbar, text="Server hinzufügen…", command=self.add_targets).pack(side="right")
         passwords = ttk.Frame(self.editor)
-        passwords.pack(fill="x", pady=(0, 10))
+        if not self.status_only:
+            passwords.pack(fill="x", pady=(0, 10))
         self.password_per_connection = tk.BooleanVar(value=self.template.get("password_per_connection", False))
         ttk.Checkbutton(passwords, text="Passwort je Verbindung", variable=self.password_per_connection,
                         command=self.toggle_password_mode).pack(side="left", padx=(0, 12))
@@ -345,9 +357,10 @@ class RestartTemplatesDialog(tk.Toplevel):
         ttk.Entry(passwords, textvariable=self.common_password, show="•", width=22).pack(side="left", padx=8)
         self.fill_password_button = ttk.Button(passwords, text="Leere Passwörter füllen", command=self.fill_passwords)
         self.fill_password_button.pack(side="left")
-        ttk.Label(self.editor, text="Passwörter werden mit der Vorlage verschlüsselt für dein Windows-Konto gespeichert. Leere Felder: ohne sudo-Passwort.",
-                  style="Muted.TLabel", wraplength=1000).pack(anchor="w", pady=(0, 6))
-        if self.common_password._unreadable:
+        hint = ("Dienststatus: einmalige lesende Prüfung mit bis zu acht Servern gleichzeitig. Keine sudo-Passwörter erforderlich."
+                if self.status_only else "Passwörter werden mit der Vorlage verschlüsselt für dein Windows-Konto gespeichert. Leere Felder: ohne sudo-Passwort.")
+        ttk.Label(self.editor, text=hint, style="Muted.TLabel", wraplength=1000).pack(anchor="w", pady=(0, 6))
+        if self.common_password._unreadable and not self.status_only:
             ttk.Label(self.editor, text="Gemeinsames Passwort nicht lesbar – neu eingeben oder Feld bearbeiten, um es zu leeren.",
                       style="Error.TLabel").pack(anchor="w")
         ttk.Label(self.editor, text="Service frei eingeben und + drücken · Sollzustand je Dienst wählen · Durchsuchen liest nur diesen Server",
@@ -409,9 +422,11 @@ class RestartTemplatesDialog(tk.Toplevel):
         self._bind_scroll(table)
         self.toggle_password_mode()
         options = ttk.LabelFrame(self.editor, text="Ablauf", padding=8)
-        options.pack(fill="x", pady=10)
+        if not self.status_only:
+            options.pack(fill="x", pady=10)
         self.options = {}
-        fields = (("mode", "Ablauf", ("parallel", "nacheinander")), ("max_parallel", "Max. gleichzeitig", None),
+        self.option_widgets = {}
+        fields = (("mode", "Ablauf", tuple(MODE_LABELS.values())), ("max_parallel", "Max. gleichzeitig", None),
                   ("on_error", "Bei Fehlern", ("pausieren und nachfragen", "weitere stoppen", "weiterlaufen")),
                   ("reboot_timeout", "Neustart / SSH (s)", None), ("service_timeout", "Danach Services (s)", None))
         for col, (key, title, values) in enumerate(fields):
@@ -419,20 +434,31 @@ class RestartTemplatesDialog(tk.Toplevel):
             ttk.Label(options, text=title).grid(row=0, column=col, sticky="w", padx=4)
             value = self.template[key]
             if key == "mode":
-                value = "parallel" if value == "parallel" else "nacheinander"
+                value = MODE_LABELS[value]
             if key == "on_error":
                 value = {"pause": "pausieren und nachfragen", "stop": "weitere stoppen", "continue": "weiterlaufen"}[value]
             var = tk.StringVar(value=str(value))
             self.options[key] = var
             if values:
-                widget = ttk.Combobox(options, textvariable=var, values=values, state="readonly", width=23 if key == "on_error" else 14)
+                widget = ttk.Combobox(options, textvariable=var, values=values, state="readonly", width=23 if key == "on_error" else 27)
             else:
                 widget = ttk.Spinbox(options, textvariable=var, from_=1, to=128 if key == "max_parallel" else 3600, width=7)
             widget.grid(row=1, column=col, sticky="ew", padx=4, pady=4)
+            self.option_widgets[key] = widget
+        self.options["mode"].trace_add("write", lambda *_: self.update_execution_mode())
+        self.update_execution_mode()
         footer = ttk.Frame(self.editor)
         footer.pack(fill="x")
         ttk.Button(footer, text="Speichern…", command=self.save).pack(side="right", padx=6)
-        ttk.Button(footer, text="Vorschau und starten…", command=self.preview, style="Accent.TButton").pack(side="right")
+        if not self.status_only:
+            ttk.Button(footer, text="Vorschau und starten…", command=self.preview, style="Accent.TButton").pack(side="right")
+        ttk.Button(footer, text="Dienststatus prüfen", command=self.check_status,
+                   style="Accent.TButton" if self.status_only else "TButton").pack(side="left")
+
+    def update_execution_mode(self):
+        mode = self.options["mode"].get()
+        self.option_widgets["max_parallel"].configure(state="normal" if mode == MODE_LABELS["parallel"] else "disabled")
+        self.option_widgets["on_error"].configure(state="disabled" if mode == MODE_LABELS["all_parallel"] else "readonly")
 
     def _bind_scroll(self, widget):
         if not isinstance(widget, (ttk.Combobox, ttk.Spinbox)):
@@ -454,16 +480,19 @@ class RestartTemplatesDialog(tk.Toplevel):
 
     def password_variable(self, protected):
         try:
-            value, unreadable = unseal(protected), False
+            value, unreadable = ("" if self.status_only else unseal(protected)), False
         except ValueError:
             value, unreadable = "", True
         variable = tk.StringVar(self, value=value)
         variable._sealed, variable._unreadable, variable._edited = protected, unreadable, False
+        variable._readonly = self.status_only
         variable.trace_add("write", lambda *_: setattr(variable, "_edited", True))
         return variable
 
     @staticmethod
     def collect_password(variable):
+        if variable._readonly:
+            return variable._sealed
         if variable._unreadable and not variable._edited:
             return variable._sealed  # Never silently erase an unreadable imported credential.
         variable._sealed = seal(variable.get(), variable._sealed)
@@ -471,7 +500,7 @@ class RestartTemplatesDialog(tk.Toplevel):
         return variable._sealed
 
     def toggle_password_mode(self):
-        enabled = self.password_per_connection.get()
+        enabled = self.password_per_connection.get() and not self.status_only
         for widget in self.password_widgets:
             if enabled:
                 widget.pack(fill="x", pady=(6, 0))
@@ -499,14 +528,33 @@ class RestartTemplatesDialog(tk.Toplevel):
             target["password_protected"] = self.collect_password(password)
         for target, (user, checks) in zip(item["targets"], self.rows):
             target["user"], target["checks"] = user.get().strip(), checks.values()
-        item["mode"] = "parallel" if self.options["mode"].get() == "parallel" else "serial"
+        item["mode"] = next(key for key, label in MODE_LABELS.items() if label == self.options["mode"].get())
         item["on_error"] = {"pausieren und nachfragen": "pause", "weitere stoppen": "stop", "weiterlaufen": "continue"}[self.options["on_error"].get()]
         for key in ("max_parallel", "reboot_timeout", "service_timeout"):
+            if key == "max_parallel" and item["mode"] != "parallel":
+                try:
+                    value = int(self.options[key].get())
+                    if 1 <= value <= 128:
+                        item[key] = value
+                except ValueError:
+                    pass  # Disabled fields do not block the selected mode.
+                continue
             try:
                 item[key] = int(self.options[key].get())
             except ValueError as error:
                 raise ValueError("Parallelität und Wartezeiten müssen ganze Zahlen sein.") from error
         return item
+
+    def check_status(self):
+        if not self.save():
+            return
+        try:
+            template = validate_template(self.template, runnable=True)
+            targets = resolve_targets(template, all_connections(self.app))
+            from .service_status import run_service_status
+            run_service_status(self.app, template["name"], targets)
+        except ValueError as error:
+            messagebox.showwarning("Dienststatus nicht gestartet", str(error), parent=self)
 
     def mutate(self, callback):
         try:
@@ -583,8 +631,16 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.library = library
         self.refresh_library()
 
+    def current_library(self):
+        return validate_library(deepcopy(self.app._initial_toolbar_search_texts.get("restart_templates", {"schema": 1, "items": []})))
+
     def save(self):
         try:
+            library = self.current_library()
+            if self.original is not None:
+                current = next((i for i in library["items"] if i["id"] == self.original["id"]), None)
+                if current != self.original:
+                    raise ValueError("Vorlage wurde in einem anderen Fenster geändert oder gelöscht. Bitte unter Vorlagen erneut öffnen; lokale Änderungen zuvor bei Bedarf separat übernehmen.")
             item = validate_template(self.collect())
             if item == self.original:
                 return True
@@ -596,7 +652,6 @@ class RestartTemplatesDialog(tk.Toplevel):
                 mode, name = choice.result
                 if mode == "new":
                     item["id"], item["name"] = uuid.uuid4().hex, name
-            library = deepcopy(self.library)
             library["items"] = [i for i in library["items"] if i["id"] != item["id"]] + [item]
             self.persist(library)
             self.template = deepcopy(next(i for i in self.library["items"] if i["id"] == item["id"]))
@@ -613,7 +668,7 @@ class RestartTemplatesDialog(tk.Toplevel):
         if not selected or not messagebox.askyesno("Vorlage löschen", "Diese Neustart-Vorlage wirklich löschen?", parent=self):
             return
         try:
-            library = deepcopy(self.library)
+            library = self.current_library()
             library["items"] = [i for i in library["items"] if i["id"] != selected[0]]
             self.persist(library)
             if self.template and self.template["id"] == selected[0]:
