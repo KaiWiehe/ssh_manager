@@ -517,7 +517,21 @@ Fehlende Units verhindern den Reboot dieses Ziels bereits in der Vorprüfung.
 
 Die Vorschau zeigt alle Ziele und Prüfungen; erst „Server jetzt neu starten“ löst
 Neustarts aus. Stoppen verhindert weitere Starts, nimmt ausgelöste Reboots aber
-nicht zurück. Das optionale sudo-Passwort gilt nur für diesen Lauf.
+nicht zurück.
+
+Ohne **Passwort je Verbindung** gilt das obere sudo-Passwort für alle Server.
+Mit der Checkbox erscheinen verdeckte Passwortfelder je Server unter dem Benutzer.
+**Leere Passwörter füllen** übernimmt das obere Passwort nur in leere Felder;
+vorhandene Werte bleiben erhalten. Leere Einzelpasswörter bedeuten sudo ohne Passwort,
+ohne automatischen Rückgriff auf das gemeinsame Passwort. Der Moduswechsel erhält
+die Eingaben; Ersetzen einer Verbindung entfernt deren altes Passwort.
+Beim Speichern der Vorlage werden Passwörter mit Windows-DPAPI an dein
+Windows-Benutzerkonto gebunden verschlüsselt, auch im App-Backup. Auf einem anderen
+Rechner/Konto müssen unlesbare Passwörter neu eingegeben werden (zum Leeren kurz
+etwas eingeben und wieder löschen). Unlesbare gespeicherte Werte bleiben erhalten
+und blockieren den Start im betroffenen Modus. Änderungen am gemeinsamen Passwort
+in der Startvorschau gelten nur für diesen Lauf. Diese Felder dienen sudo;
+die SSH-Anmeldung verwendet weiterhin Schlüssel/Agent.
 
 Im Ergebnisfenster kopiert „Alle Fehler kopieren“ Fehler und Zeitüberschreitungen,
 „Alles kopieren“ alle Tabellenzeilen samt Überschriften. Strg/Umschalt markiert

@@ -69,6 +69,9 @@ def monitor_template_restart(session, user, password, checks, reboot_timeout, se
 
 def run_template(app, template, targets, password):
     template = validate_template(template, runnable=True)
+    from .restart_passwords import passwords_for_run
+    passwords = passwords_for_run(template, targets, password)
+    password = ""
     progress = ServerRestartProgressDialog(app, [(s, u) for s, u, _ in targets], "")
     progress.title("Massen-Neustart · " + template["name"])
     reports = queue.Queue()
@@ -77,7 +80,7 @@ def run_template(app, template, targets, password):
         session, user, checks = target
         if cancel.is_set():
             return RestartResult("not_started", "Neustart wurde nicht ausgelöst")
-        return monitor_template_restart(session, user, password, checks, template["reboot_timeout"],
+        return monitor_template_restart(session, user, passwords.get(session.key, ""), checks, template["reboot_timeout"],
             template["service_timeout"], cancel,
             lambda state, detail: reports.put((session.key, state, detail)))
     scheduler = RestartScheduler(targets, 1 if template["mode"] == "serial" else template["max_parallel"], template["on_error"], work)
@@ -95,11 +98,10 @@ def run_template(app, template, targets, password):
     gate.grid_remove()
     completed = set()
     def pump():
-        nonlocal password
         if not progress.winfo_exists():
             cancel.set()
             scheduler.decide(False)
-            password = ""
+            passwords.clear()
             return
         if cancel.is_set():
             scheduler.decide(False)
@@ -128,7 +130,7 @@ def run_template(app, template, targets, password):
         else:
             gate.grid_remove()
         if scheduler.done and len(completed) == len(targets):
-            password = ""
+            passwords.clear()
             progress.finish()
             return
         progress.after(80, pump)

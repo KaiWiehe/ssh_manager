@@ -39,8 +39,15 @@ def new_template(sessions):
 def validate_template(item, *, runnable=False):
     if not isinstance(item, dict):
         raise ValueError("Ungültige Neustart-Vorlage.")
-    # Rebuild a whitelist; passwords and other unexpected payloads are never saved.
+    # Rebuild a whitelist; plaintext passwords and unexpected payloads are never saved.
     result = {}
+    from .restart_passwords import validate_sealed
+    if "password_per_connection" in item:
+        if type(item["password_per_connection"]) is not bool:
+            raise ValueError("Ungültiger Passwortmodus.")
+        result["password_per_connection"] = item["password_per_connection"]
+    if "password_protected" in item:
+        result["password_protected"] = validate_sealed(item["password_protected"])
     for field in ("id", "name"):
         value = item.get(field)
         if not isinstance(value, str) or not value.strip() or len(value) > 200 or any(c in value for c in "\r\n\x00"):
@@ -87,6 +94,8 @@ def validate_template(item, *, runnable=False):
             normalized.append(value)
         seen.add(key)
         result["targets"].append({"key": key, "label": label, "user": user.strip(), "checks": normalized})
+        if "password_protected" in target:
+            result["targets"][-1]["password_protected"] = validate_sealed(target["password_protected"])
     return result
 
 

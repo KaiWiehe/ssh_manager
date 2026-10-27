@@ -263,3 +263,102 @@ def test_modeless_manager_creates_from_current_main_selection(app):
     manager.create()
     assert [t["key"] for t in manager.template["targets"]] == ["two"]
     manager.destroy()
+
+
+def test_password_fill_save_reopen_modes_and_reorder(app):
+    from ssh_manager_app.restart_passwords import unseal
+    window = RestartTemplatesDialog(app, app._app_sessions)
+    window.quick.set("admin")
+    window.fill_users()
+    window.password_per_connection.set(True)
+    window.toggle_password_mode()
+    window.password_fields[0].set("exception")
+    window.password_fields[2].set(" ")  # A space is a real password, never an empty field.
+    window.common_password.set("shared")
+    window.fill_passwords()
+    assert [v.get() for v in window.password_fields] == ["exception", "shared", " "]
+    window.password_fields[2].set("")
+    assert window.save()
+    saved = deepcopy(window.template)
+    assert window.collect() == saved  # Randomized encryption must not create false edits.
+    assert "exception" not in str(app._initial_toolbar_search_texts)
+    old_fields = list(window.password_fields)
+    old_common = window.common_password
+    window.load(saved)
+    assert old_common.get() == "" and all(not v.get() for v in old_fields)
+    assert [v.get() for v in window.password_fields] == ["exception", "shared", ""]
+    window.password_per_connection.set(False)
+    window.toggle_password_mode()
+    assert all(not w.winfo_manager() for w in window.password_widgets)
+    assert window.common_password.get() == "shared"
+    window.password_per_connection.set(True)
+    window.toggle_password_mode()
+    assert [v.get() for v in window.password_fields] == ["exception", "shared", ""]
+    window.move(0, 1)
+    assert [t["key"] for t in window.template["targets"]] == ["two", "one", "three"]
+    assert [v.get() for v in window.password_fields] == ["shared", "exception", ""]
+    assert unseal(window.collect()["targets"][1]["password_protected"]) == "exception"
+    for theme in ("default", "dark_neutral", "midnight"):
+        _apply_palette_styles(app, palette_for_theme(theme))
+        app.update()
+        assert all(w.winfo_ismapped() for w in window.password_widgets)
+        screenshot(window, f"restart-passwords-{theme}.png")
+    variable = window.common_password
+    fields = list(window.password_fields)
+    window.destroy()
+    assert variable.get() == "" and all(not v.get() for v in fields)
+
+
+def test_unreadable_password_preserved_until_explicit_edit(app):
+    from ssh_manager_app.restart_templates import new_template
+    from ssh_manager_app.restart_passwords import unseal
+    item = new_template(app._app_sessions)
+    item["password_per_connection"] = True
+    item["targets"][0]["password_protected"] = "dpapi-user-v1:YWJj"
+    window = RestartTemplatesDialog(app, [])
+    window.load(item)
+    window.common_password.set("shared")
+    window.fill_passwords()
+    assert window.password_fields[0].get() == ""
+    assert window.collect()["targets"][0]["password_protected"] == "dpapi-user-v1:YWJj"
+    window.password_fields[0].set("replacement")
+    assert unseal(window.collect()["targets"][0]["password_protected"]) == "replacement"
+    window.destroy()
+
+
+def test_password_assignment_reaches_each_restart_worker(app, monkeypatch):
+    from ssh_manager_app.actions_restart import RestartResult
+    from ssh_manager_app.actions_restart_templates import run_template
+    from ssh_manager_app.restart_templates import new_template
+    from ssh_manager_app.restart_passwords import seal
+    item = new_template(app._app_sessions)
+    item["password_per_connection"] = True
+    expected = {"one": "exception", "two": "shared", "three": ""}
+    for target in item["targets"]:
+        target.update(user="admin", password_protected=seal(expected[target["key"]]))
+    seen = {}
+    def monitor(session, user, password, *args, **kwargs):
+        seen[session.key] = password
+        return RestartResult("online", "simulated")
+    monkeypatch.setattr("ssh_manager_app.actions_restart_templates.monitor_template_restart", monitor)
+    progress = run_template(app, item, resolve_targets(item, app._app_sessions)[::-1], "ignored")
+    def finish():
+        if progress._finished:
+            progress.destroy()
+        else:
+            app.after(20, finish)
+    app.after(20, finish)
+    watchdog = app.after(5000, progress.destroy)
+    app.wait_window(progress)
+    app.after_cancel(watchdog)
+    assert seen == expected
+
+
+def test_replace_connection_removes_previous_password(app, monkeypatch):
+    window = RestartTemplatesDialog(app, app._app_sessions[:1])
+    window.password_fields[0].set("old-host-secret")
+    monkeypatch.setattr(window, "pick", lambda: [app._app_sessions[1]])
+    window.replace_target(0)
+    assert window.template["targets"][0]["key"] == "two"
+    assert window.password_fields[0].get() == ""
+    window.destroy()

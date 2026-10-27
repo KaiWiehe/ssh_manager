@@ -11,6 +11,7 @@ from .restart_templates import (all_connections, new_template, resolve_targets, 
                                 target_fingerprint, validate_library, validate_template)
 from .ui_components import fit_window_to_parent, install_context_help
 from .workers import run_worker
+from .restart_passwords import seal, unseal, passwords_for_run
 
 
 def modal(window, parent, title, width=820, height=520, *, blocking=True):
@@ -177,7 +178,8 @@ class RestartPreview(tk.Toplevel):
     def __init__(self, parent, template, targets):
         super().__init__(parent)
         self.result = None
-        self.password = tk.StringVar()
+        per_connection = template.get("password_per_connection", False)
+        self.password = tk.StringVar(value="" if per_connection else unseal(template.get("password_protected", "")))
         self._password_var = self.password
         frame = ttk.Frame(self, padding=16)
         frame.pack(fill="both", expand=True)
@@ -191,11 +193,18 @@ class RestartPreview(tk.Toplevel):
         text.pack(fill="both", expand=True)
         for i, (session, user, checks) in enumerate(targets, 1):
             text.insert("end", f"{i}. {session.display_name} · {session.hostname}:{session.port} · Benutzer: {user}\n")
+            if per_connection:
+                stored = next(t for t in template["targets"] if t["key"] == session.key)
+                text.insert("end", "    sudo-Passwort: " + ("hinterlegt" if stored.get("password_protected") else "leer (ohne Passwort)") + "\n")
             text.insert("end", "\n".join(f"    {c['unit']} → {'aktiv' if c['expected'] == 'active' else 'inaktiv'}" for c in checks) or "    Nur Neustartbestätigung und SSH")
             text.insert("end", "\n\n")
         text.configure(state="disabled")
-        ttk.Label(frame, text="sudo-Passwort (optional, nur dieser Lauf):").pack(anchor="w", pady=(12, 4))
-        ttk.Entry(frame, textvariable=self.password, show="•").pack(fill="x")
+        if per_connection:
+            ttk.Label(frame, text="sudo-Passwörter je Verbindung aus der Vorlage · Leere Felder: ohne Passwort",
+                      wraplength=780).pack(anchor="w", pady=(12, 4))
+        else:
+            ttk.Label(frame, text="Gemeinsames sudo-Passwort (Änderung hier nur für diesen Lauf):").pack(anchor="w", pady=(12, 4))
+            ttk.Entry(frame, textvariable=self.password, show="•").pack(fill="x")
         ttk.Label(frame, text="Bereits ausgelöste Neustarts lassen sich nicht zurücknehmen. Dienste werden nur geprüft, nicht verändert.",
                   style="Warning.TLabel", wraplength=780).pack(anchor="w", pady=10)
         buttons = ttk.Frame(frame)
@@ -217,6 +226,7 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.template = None
         self.original = None
         self.rows = []
+        self.password_fields = []
         try:
             self.library = validate_library(deepcopy(app._initial_toolbar_search_texts.get("restart_templates", {"schema": 1, "items": []})))
         except ValueError as error:
@@ -277,6 +287,16 @@ class RestartTemplatesDialog(tk.Toplevel):
         if self.discard_ok():
             self.destroy()
 
+    def clear_passwords(self):
+        for variable in getattr(self, "password_fields", []):
+            variable.set("")
+        if hasattr(self, "common_password"):
+            self.common_password.set("")
+
+    def destroy(self):
+        self.clear_passwords()
+        super().destroy()
+
     def create(self, selection=None):
         selected = list(selection) if selection is not None else self.app._tree.get_selected_sessions()
         if not selected:
@@ -297,9 +317,12 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.notebook.select(self.editor)
 
     def build_editor(self):
+        self.clear_passwords()
         for child in self.editor.winfo_children():
             child.destroy()
         self.rows = []
+        self.password_fields = []
+        self.password_widgets = []
         header = ttk.Frame(self.editor)
         header.pack(fill="x", pady=(0, 10))
         ttk.Label(header, text="Vorlagenname").pack(side="left", padx=(0, 8))
@@ -312,6 +335,21 @@ class RestartTemplatesDialog(tk.Toplevel):
         ttk.Combobox(toolbar, textvariable=self.quick, values=list(self.app.settings.quick_users), width=16).pack(side="left", padx=8)
         ttk.Button(toolbar, text="Leere Benutzer füllen", command=self.fill_users).pack(side="left")
         ttk.Button(toolbar, text="Server hinzufügen…", command=self.add_targets).pack(side="right")
+        passwords = ttk.Frame(self.editor)
+        passwords.pack(fill="x", pady=(0, 10))
+        self.password_per_connection = tk.BooleanVar(value=self.template.get("password_per_connection", False))
+        ttk.Checkbutton(passwords, text="Passwort je Verbindung", variable=self.password_per_connection,
+                        command=self.toggle_password_mode).pack(side="left", padx=(0, 12))
+        ttk.Label(passwords, text="sudo-Passwort:").pack(side="left")
+        self.common_password = self.password_variable(self.template.get("password_protected", ""))
+        ttk.Entry(passwords, textvariable=self.common_password, show="•", width=22).pack(side="left", padx=8)
+        self.fill_password_button = ttk.Button(passwords, text="Leere Passwörter füllen", command=self.fill_passwords)
+        self.fill_password_button.pack(side="left")
+        ttk.Label(self.editor, text="Passwörter werden mit der Vorlage verschlüsselt für dein Windows-Konto gespeichert. Leere Felder: ohne sudo-Passwort.",
+                  style="Muted.TLabel", wraplength=1000).pack(anchor="w", pady=(0, 6))
+        if self.common_password._unreadable:
+            ttk.Label(self.editor, text="Gemeinsames Passwort nicht lesbar – neu eingeben oder Feld bearbeiten, um es zu leeren.",
+                      style="Error.TLabel").pack(anchor="w")
         ttk.Label(self.editor, text="Service frei eingeben und + drücken · Sollzustand je Dienst wählen · Durchsuchen liest nur diesen Server",
                   style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
         scroll = ttk.Frame(self.editor)
@@ -347,7 +385,17 @@ class RestartTemplatesDialog(tk.Toplevel):
             ttk.Label(server, text=f"{i+1}. {label}").pack(anchor="w")
             ttk.Label(server, text=details, wraplength=220, style="Muted.TLabel" if session else "Error.TLabel").pack(anchor="w")
             user = tk.StringVar(value=target["user"])
-            ttk.Combobox(table, textvariable=user, values=list(self.app.settings.quick_users), width=15).grid(row=i+1, column=1, sticky="new", padx=6, pady=8)
+            credentials = ttk.Frame(table)
+            credentials.grid(row=i+1, column=1, sticky="new", padx=6, pady=8)
+            ttk.Combobox(credentials, textvariable=user, values=list(self.app.settings.quick_users), width=18).pack(fill="x")
+            password = self.password_variable(target.get("password_protected", ""))
+            self.password_fields.append(password)
+            password_frame = ttk.Frame(credentials)
+            password_frame.pack(fill="x", pady=(6, 0))
+            ttk.Label(password_frame, text="sudo-Passwort" + (" · nicht lesbar" if password._unreadable else ""),
+                      style="Error.TLabel" if password._unreadable else "Muted.TLabel").pack(anchor="w")
+            ttk.Entry(password_frame, textvariable=password, show="•", width=18).pack(fill="x")
+            self.password_widgets.append(password_frame)
             checks = ServiceChecks(table, target["checks"])
             checks.grid(row=i+1, column=2, sticky="new", padx=6, pady=6)
             actions = ttk.Frame(table, padding=4)
@@ -359,6 +407,7 @@ class RestartTemplatesDialog(tk.Toplevel):
             ttk.Button(actions, text="Entfernen", command=lambda index=i: self.remove_target(index)).grid(row=3, column=0, columnspan=2, sticky="ew", pady=3)
             self.rows.append((user, checks))
         self._bind_scroll(table)
+        self.toggle_password_mode()
         options = ttk.LabelFrame(self.editor, text="Ablauf", padding=8)
         options.pack(fill="x", pady=10)
         self.options = {}
@@ -403,9 +452,51 @@ class RestartTemplatesDialog(tk.Toplevel):
             if not variable.get().strip():
                 variable.set(user)
 
+    def password_variable(self, protected):
+        try:
+            value, unreadable = unseal(protected), False
+        except ValueError:
+            value, unreadable = "", True
+        variable = tk.StringVar(self, value=value)
+        variable._sealed, variable._unreadable, variable._edited = protected, unreadable, False
+        variable.trace_add("write", lambda *_: setattr(variable, "_edited", True))
+        return variable
+
+    @staticmethod
+    def collect_password(variable):
+        if variable._unreadable and not variable._edited:
+            return variable._sealed  # Never silently erase an unreadable imported credential.
+        variable._sealed = seal(variable.get(), variable._sealed)
+        variable._unreadable = False
+        return variable._sealed
+
+    def toggle_password_mode(self):
+        enabled = self.password_per_connection.get()
+        for widget in self.password_widgets:
+            if enabled:
+                widget.pack(fill="x", pady=(6, 0))
+            else:
+                widget.pack_forget()
+        self.fill_password_button.configure(state="normal" if enabled else "disabled")
+
+    def fill_passwords(self):
+        if not self.password_per_connection.get():
+            return
+        if self.common_password._unreadable and not self.common_password._edited:
+            messagebox.showwarning("Passwort", "Gemeinsames Passwort nicht lesbar. Bitte neu eingeben.", parent=self)
+            return
+        password = self.common_password.get()
+        for variable in self.password_fields:
+            if not variable.get() and not (variable._unreadable and not variable._edited):
+                variable.set(password)
+
     def collect(self):
         item = deepcopy(self.template)
         item["name"] = self.name.get().strip()
+        item["password_per_connection"] = self.password_per_connection.get()
+        item["password_protected"] = self.collect_password(self.common_password)
+        for target, password in zip(item["targets"], self.password_fields):
+            target["password_protected"] = self.collect_password(password)
         for target, (user, checks) in zip(item["targets"], self.rows):
             target["user"], target["checks"] = user.get().strip(), checks.values()
         item["mode"] = "parallel" if self.options["mode"].get() == "parallel" else "serial"
@@ -447,6 +538,7 @@ class RestartTemplatesDialog(tk.Toplevel):
         if selected:
             def change():
                 self.template["targets"][index].update(key=selected[0].key, label=selected[0].display_name)
+                self.template["targets"][index].pop("password_protected", None)
             self.mutate(change)
 
     def add_targets(self):
@@ -526,6 +618,7 @@ class RestartTemplatesDialog(tk.Toplevel):
             self.persist(library)
             if self.template and self.template["id"] == selected[0]:
                 self.template = self.original = None
+                self.clear_passwords()
                 for child in self.editor.winfo_children():
                     child.destroy()
         except (ValueError, OSError) as error:
@@ -537,6 +630,8 @@ class RestartTemplatesDialog(tk.Toplevel):
         try:
             template = validate_template(self.template, runnable=True)
             targets = resolve_targets(template, all_connections(self.app))
+            passwords_for_run(template, targets, unseal(template.get("password_protected", ""))
+                              if not template.get("password_per_connection", False) else "")
             fingerprint = target_fingerprint(targets)
         except ValueError as error:
             messagebox.showwarning("Vorlage prüfen", str(error), parent=self)
