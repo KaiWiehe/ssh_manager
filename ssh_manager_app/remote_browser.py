@@ -9,6 +9,7 @@ from tkinter import ttk
 
 from .ssh_utils import ssh_argv
 from .workers import run_worker
+from .ssh_failures import SshQueryError, ssh_failure_message
 
 
 def list_services(session, user):
@@ -18,7 +19,8 @@ def list_services(session, user):
     result = subprocess.run(args + [command], capture_output=True, text=True, timeout=20,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if result.returncode:
-        raise ValueError("Dienste konnten nicht gelesen werden. SSH-Zugang und systemd auf dem Referenzhost prüfen.")
+        raise SshQueryError(ssh_failure_message(result.returncode, getattr(result, "stderr", ""),
+            "Dienste konnten nicht gelesen werden. SSH-Zugang und systemd auf dem Referenzhost prüfen."))
     units = set()
     for line in result.stdout.splitlines():
         fields = line.split()
@@ -141,7 +143,8 @@ class ReferenceBrowser(ttk.Frame):
 
         def failed(_error):
             if generation == self.generation:
-                self.status.set("Abfrage fehlgeschlagen. SSH-Zugang, Pfad, Rechte bzw. systemd auf dem Referenzhost prüfen.")
+                self.status.set(str(_error) if isinstance(_error, SshQueryError) else
+                    "Abfrage fehlgeschlagen. SSH-Zugang, Pfad, Rechte bzw. systemd auf dem Referenzhost prüfen.")
 
         run_worker(self, work, success, failed)
 

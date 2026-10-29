@@ -30,7 +30,7 @@ def check_unit(session, user, check):
 
 
 class ServiceStatusDialog(tk.Toplevel):
-    def __init__(self, app, name, targets, max_parallel=8):
+    def __init__(self, app, name, targets, max_parallel=0):
         super().__init__(app)
         self.title("Massendienststatus · " + name)
         self.cancel = threading.Event()
@@ -120,14 +120,15 @@ class ServiceStatusDialog(tk.Toplevel):
         self.destroy()
 
 
-def run_service_status(app, name, targets, *, max_parallel=8):
+def run_service_status(app, name, targets, *, max_parallel=0):
     """No reboot or credential path: only systemctl show through probe_unit."""
     from .parallelism import worker_count
-    workers = worker_count(len(targets), max_parallel)
     window = ServiceStatusDialog(app, name, targets, max_parallel)
     reports = queue.Queue()
     cancel = window.cancel
-    jobs = list(window.jobs)
+    jobs = ([(session, user, [row]) for session, user, rows in window.jobs for row in rows]
+            if not max_parallel else list(window.jobs))
+    workers = worker_count(len(jobs), max_parallel)
     def work(job):
         session, user, rows = job
         for row, check in rows:

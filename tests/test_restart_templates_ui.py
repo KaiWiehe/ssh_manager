@@ -63,8 +63,7 @@ def test_actual_editor_save_copy_users_service_controls_and_preview(app, monkeyp
     window.fill_users()
     assert [user.get() for user, _ in window.rows] == ["admin", "deploy", "postgres"]
     checks = window.rows[0][1]
-    checks.new.set("wildfly")
-    checks.add_new()
+    checks.add("wildfly.service")
     checks.add("legacy.service", "inactive")
     window.name.set("Neubrandenburg Testfarm")
     assert window.save()
@@ -297,10 +296,9 @@ def test_password_fill_save_reopen_modes_and_reorder(app):
     window.password_per_connection.set(True)
     window.toggle_password_mode()
     assert [v.get() for v in window.password_fields] == ["exception", "shared", ""]
-    window.move(0, 1)
-    assert [t["key"] for t in window.template["targets"]] == ["two", "one", "three"]
-    assert [v.get() for v in window.password_fields] == ["shared", "exception", ""]
-    assert unseal(window.collect()["targets"][1]["password_protected"]) == "exception"
+    assert not hasattr(window, "move")
+    assert [t["key"] for t in window.template["targets"]] == ["one", "two", "three"]
+    assert unseal(window.collect()["targets"][0]["password_protected"]) == "exception"
     for theme in ("default", "dark_neutral", "midnight"):
         _apply_palette_styles(app, palette_for_theme(theme))
         app.update()
@@ -357,11 +355,79 @@ def test_password_assignment_reaches_each_restart_worker(app, monkeypatch):
     assert seen == expected
 
 
-def test_replace_connection_removes_previous_password(app, monkeypatch):
-    window = RestartTemplatesDialog(app, app._app_sessions[:1])
+def test_remove_and_add_server_does_not_reuse_password(app, monkeypatch):
+    window = RestartTemplatesDialog(app, app._app_sessions[:2])
     window.password_fields[0].set("old-host-secret")
-    monkeypatch.setattr(window, "pick", lambda: [app._app_sessions[1]])
-    window.replace_target(0)
-    assert window.template["targets"][0]["key"] == "two"
-    assert window.password_fields[0].get() == ""
+    window.remove_target(0)
+    assert [t["key"] for t in window.template["targets"]] == ["two"]
+    monkeypatch.setattr(window, "pick", lambda **kw: [app._app_sessions[0]])
+    window.add_targets()
+    assert window.password_fields[1].get() == ""
+    assert not hasattr(window, "replace_target")
     window.destroy()
+
+
+@pytest.mark.parametrize("status_only", [False, True])
+def test_27_server_scroll_and_browser_only_service_selection(app, monkeypatch, status_only):
+    import time
+    app._app_sessions = [Session(str(i), f"TEST-{i:02}", [], f"host{i}.invalid", "admin", source="app") for i in range(27)]
+    window = RestartTemplatesDialog(app, app._app_sessions, status_only=status_only)
+    app.update()
+    table = window.rows[0][1].master
+    assert len([w for w in table.winfo_children() if isinstance(w, ttk.Frame) and w.cget("style") == "RestartDivider.TFrame"]) == 26
+    checks = window.rows[0][1]
+    assert not hasattr(checks, "new")
+    assert not any(isinstance(w, ttk.Entry) for w in checks.winfo_children())
+    buttons = [w for frame in table.winfo_children() for w in frame.winfo_children() if isinstance(w, ttk.Button)]
+    assert not any(w.cget("text") in ("+", "↑", "↓", "Ersetzen…") for w in buttons)
+    calls = []
+    class Picker:
+        def __init__(self, parent, session, user, on_accept):
+            calls.append(session.key)
+            on_accept(["a.service", "b.service"])
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.ServicePicker", Picker)
+    monkeypatch.setattr(window, "wait_window", lambda _: None)
+    checks.addrow.invoke()
+    assert calls == ["0"]
+    assert [c["unit"] for c in checks.values()] == ["a.service", "b.service"]
+    checks.fields[0][2].set("inaktiv")
+    checks.fields[0][0].winfo_children()[0].event_generate("<Button-1>")
+    assert calls == ["0", "0"] and len(checks.fields) == 2
+    assert checks.values()[0]["expected"] == "inactive"
+    window._bind_scroll(checks)
+    window._bind_scroll(checks)
+    user_combo = next(w for w in table.winfo_children() if isinstance(w, ttk.Frame) and w.grid_info().get("column") == 1).winfo_children()[0]
+    before_user = window.rows[0][0].get()
+    user_combo.event_generate("<MouseWheel>", delta=-120)
+    app.update()
+    time.sleep(.025)
+    app.update()
+    assert window.canvas.canvasy(0) == pytest.approx(48, abs=2)
+    assert window.rows[0][0].get() == before_user
+    window.canvas.yview_moveto(.5)
+    app.update()
+    position = window.canvas.yview()[0]
+    window.remove_target(1)
+    app.update()
+    assert window.canvas.yview()[0] == pytest.approx(position, abs=.02)
+    window.canvas.yview_moveto(0)
+    app.update()
+    for theme in ("default", "dark_neutral", "midnight"):
+        _apply_palette_styles(app, palette_for_theme(theme))
+        app.update()
+        style = ttk.Style(app)
+        assert tuple(map(int, style.lookup("Restart.TNotebook.Tab", "padding", ("selected",)))) == (20, 10)
+        screenshot(window, f"smooth-{'status' if status_only else 'restart'}-{theme}.png")
+    window.destroy()
+    app.update()
+
+
+def test_service_picker_shows_safe_key_error(app, monkeypatch):
+    from ssh_manager_app.ssh_failures import SshQueryError, SSH_AUTHENTICATION_HELP
+    shown = []
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.run_worker", lambda owner, work, ok, error: error(SshQueryError(SSH_AUTHENTICATION_HELP)))
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.messagebox.showerror", lambda title, text, **kw: shown.append(text))
+    picker = ServicePicker(app, app._app_sessions[0], "admin", lambda _: None)
+    assert shown == [SSH_AUTHENTICATION_HELP]
+    assert picker.status.get() == SSH_AUTHENTICATION_HELP
+    picker.destroy()

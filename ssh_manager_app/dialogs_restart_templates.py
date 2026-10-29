@@ -97,7 +97,13 @@ class ServicePicker(tk.Toplevel):
         session = replace(session, ssh_user_override=user if session.is_ssh_config_session else "")
         from .remote_browser import list_services
         run_worker(self, lambda: list_services(session, user), self.loaded,
-                   lambda _: self.status.set("Dienste konnten nicht gelesen werden. SSH-Benutzer, Zugang und systemd prüfen. Bisherige Eingaben bleiben erhalten."))
+                   self.load_failed)
+
+    def load_failed(self, error):
+        from .ssh_failures import SshQueryError
+        detail = str(error) if isinstance(error, SshQueryError) else "Dienste konnten nicht gelesen werden. SSH-Benutzer, Zugang und systemd prüfen."
+        self.status.set(detail)
+        messagebox.showerror("Dienste nicht gelesen", detail, parent=self)
 
     def loaded(self, entries):
         self.entries = [name for _, name in entries]
@@ -125,52 +131,39 @@ class ServicePicker(tk.Toplevel):
 
 
 class ServiceChecks(ttk.Frame):
-    def __init__(self, parent, checks):
+    """Service names come exclusively from the server browser."""
+    def __init__(self, parent, checks, on_browse):
         super().__init__(parent)
         self.fields = []
+        self.on_browse = on_browse
         self.columnconfigure(0, weight=1)
+        self.addrow = ttk.Button(self, text="Dienste auswählen…", command=on_browse)
+        self.addrow.grid(row=0, column=0, sticky="ew", pady=3)
         for check in checks:
             self.add(check["unit"], check["expected"])
-        self.addrow = ttk.Frame(self)
-        self.addrow.grid(row=100, column=0, sticky="ew", pady=3)
-        self.new = tk.StringVar()
-        ttk.Entry(self.addrow, textvariable=self.new, width=22).pack(side="left", fill="x", expand=True)
-        ttk.Button(self.addrow, text="+", width=3, command=self.add_new).pack(side="left", padx=(4, 0))
-        self.bind("<Return>", lambda _: self.add_new())
 
-    def add(self, name="", expected="active"):
+    def add(self, name, expected="active"):
         row = ttk.Frame(self)
         row.grid(row=len(self.fields), column=0, sticky="ew", pady=2)
         row.columnconfigure(0, weight=1)
         unit, want = tk.StringVar(value=name), tk.StringVar(value="aktiv" if expected == "active" else "inaktiv")
-        ttk.Entry(row, textvariable=unit, width=25).grid(row=0, column=0, sticky="ew")
+        label = ttk.Label(row, textvariable=unit, width=25, cursor="hand2", padding=(4, 5))
+        label.grid(row=0, column=0, sticky="ew")
+        label.bind("<Button-1>", lambda _: self.on_browse())
         ttk.Combobox(row, textvariable=want, values=("aktiv", "inaktiv"), state="readonly", width=7).grid(row=0, column=1, padx=4)
         field = (row, unit, want)
         ttk.Button(row, text="×", width=3, command=lambda: self.remove(field)).grid(row=0, column=2)
         self.fields.append(field)
+        self.addrow.grid_configure(row=len(self.fields))
 
     def remove(self, field):
         self.fields.remove(field)
         field[0].destroy()
         for i, (row, _, _) in enumerate(self.fields):
             row.grid_configure(row=i)
-
-    def add_new(self):
-        if not self.new.get().strip():
-            return
-        try:
-            check = service_check(self.new.get())
-        except ValueError as error:
-            messagebox.showwarning("Service", str(error), parent=self.winfo_toplevel())
-            return
-        if check["unit"] not in [u.get() for _, u, _ in self.fields]:
-            self.add(check["unit"])
-        self.new.set("")
+        self.addrow.grid_configure(row=len(self.fields))
 
     def values(self):
-        self.add_new()
-        if self.new.get().strip():
-            raise ValueError("Ungültigen Service korrigieren oder entfernen.")
         return [service_check(unit.get(), "active" if want.get() == "aktiv" else "inactive") for _, unit, want in self.fields]
 
 
@@ -237,7 +230,7 @@ class RestartTemplatesDialog(tk.Toplevel):
             self.destroy()
             return
         install_context_help(self, "restart_templates")
-        self.notebook = ttk.Notebook(self)
+        self.notebook = ttk.Notebook(self, style="Restart.TNotebook")
         self.notebook.pack(fill="both", expand=True, padx=14, pady=10)
         self.library_frame = ttk.Frame(self.notebook, padding=10)
         self.editor = ttk.Frame(self.notebook, padding=10)
@@ -357,17 +350,17 @@ class RestartTemplatesDialog(tk.Toplevel):
         ttk.Entry(passwords, textvariable=self.common_password, show="•", width=22).pack(side="left", padx=8)
         self.fill_password_button = ttk.Button(passwords, text="Leere Passwörter füllen", command=self.fill_passwords)
         self.fill_password_button.pack(side="left")
-        hint = ("Dienststatus: einmalige lesende Prüfung mit wählbarer Parallelität. Keine sudo-Passwörter erforderlich."
+        hint = ("Dienststatus: einmalige lesende Prüfung aller Dienste parallel. Keine sudo-Passwörter erforderlich."
                 if self.status_only else "Passwörter werden mit der Vorlage verschlüsselt für dein Windows-Konto gespeichert. Leere Felder: ohne sudo-Passwort.")
         ttk.Label(self.editor, text=hint, style="Muted.TLabel", wraplength=1000).pack(anchor="w", pady=(0, 6))
         if self.common_password._unreadable and not self.status_only:
             ttk.Label(self.editor, text="Gemeinsames Passwort nicht lesbar – neu eingeben oder Feld bearbeiten, um es zu leeren.",
                       style="Error.TLabel").pack(anchor="w")
-        ttk.Label(self.editor, text="Service frei eingeben und + drücken · Sollzustand je Dienst wählen · Durchsuchen liest nur diesen Server",
+        ttk.Label(self.editor, text="Dienste per Klick auswählen · Sollzustand je Dienst wählen · Durchsuchen liest nur diesen Server",
                   style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
         scroll = ttk.Frame(self.editor)
         scroll.pack(fill="both", expand=True)
-        self.canvas = tk.Canvas(scroll, highlightthickness=0)
+        self.canvas = tk.Canvas(scroll, highlightthickness=0, yscrollincrement=1)
         vertical = ttk.Scrollbar(scroll, orient="vertical", command=self.canvas.yview)
         horizontal = ttk.Scrollbar(scroll, orient="horizontal", command=self.canvas.xview)
         vertical.pack(side="right", fill="y")
@@ -376,11 +369,26 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.canvas.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
         table = ttk.Frame(self.canvas)
         window = self.canvas.create_window((0, 0), window=table, anchor="nw")
-        def fit_table(_event=None):
-            self.canvas.itemconfigure(window, width=max(self.canvas.winfo_width(), table.winfo_reqwidth()))
-            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        table.bind("<Configure>", fit_table)
-        self.canvas.bind("<Configure>", fit_table)
+        # Coalesce geometry bursts and avoid configuring an unchanged window width.
+        canvas = self.canvas
+        pending_fit = None
+        def fit_table():
+            nonlocal pending_fit
+            pending_fit = None
+            width = max(canvas.winfo_width(), table.winfo_reqwidth())
+            if int(float(canvas.itemcget(window, "width"))) != width:
+                canvas.itemconfigure(window, width=width)
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        def schedule_fit(_event=None):
+            nonlocal pending_fit
+            if pending_fit is None:
+                pending_fit = canvas.after_idle(fit_table)
+        def cleanup_fit(event):
+            if event.widget is canvas and pending_fit is not None:
+                canvas.after_cancel(pending_fit)
+        canvas.bind("<Destroy>", cleanup_fit)
+        table.bind("<Configure>", schedule_fit)
+        canvas.bind("<Configure>", schedule_fit)
         self.canvas.configure(background=ttk.Style(self).lookup("TFrame", "background"))
         table.columnconfigure(2, weight=1)
         for i, text in enumerate(("Server / aktuelles Ziel", "Benutzer", "Service / Sollzustand", "Serveraktionen")):
@@ -392,14 +400,14 @@ class RestartTemplatesDialog(tk.Toplevel):
             matches = connections.get(target["key"], [])
             session = matches[0] if len(matches) == 1 else None
             label = session.display_name if session else target["label"]
-            details = f"{session.hostname}:{session.port}" if session else "Verbindung mehrdeutig – ersetzen oder entfernen" if matches else "Verbindung fehlt – ersetzen oder entfernen"
+            details = f"{session.hostname}:{session.port}" if session else "Verbindung mehrdeutig – entfernen und neu hinzufügen" if matches else "Verbindung fehlt – entfernen und neu hinzufügen"
             server = ttk.Frame(table, padding=(6, 8))
-            server.grid(row=i+1, column=0, sticky="nw")
+            server.grid(row=i*2+1, column=0, sticky="nw")
             ttk.Label(server, text=f"{i+1}. {label}").pack(anchor="w")
             ttk.Label(server, text=details, wraplength=220, style="Muted.TLabel" if session else "Error.TLabel").pack(anchor="w")
             user = tk.StringVar(value=target["user"])
             credentials = ttk.Frame(table)
-            credentials.grid(row=i+1, column=1, sticky="new", padx=6, pady=8)
+            credentials.grid(row=i*2+1, column=1, sticky="new", padx=6, pady=8)
             ttk.Combobox(credentials, textvariable=user, values=list(self.app.settings.quick_users), width=18).pack(fill="x")
             password = self.password_variable(target.get("password_protected", ""))
             self.password_fields.append(password)
@@ -409,17 +417,15 @@ class RestartTemplatesDialog(tk.Toplevel):
                       style="Error.TLabel" if password._unreadable else "Muted.TLabel").pack(anchor="w")
             ttk.Entry(password_frame, textvariable=password, show="•", width=18).pack(fill="x")
             self.password_widgets.append(password_frame)
-            checks = ServiceChecks(table, target["checks"])
-            checks.grid(row=i+1, column=2, sticky="new", padx=6, pady=6)
+            checks = ServiceChecks(table, target["checks"], lambda index=i: self.browse(index))
+            checks.grid(row=i*2+1, column=2, sticky="new", padx=6, pady=6)
             actions = ttk.Frame(table, padding=4)
-            actions.grid(row=i+1, column=3, sticky="ne")
-            ttk.Button(actions, text="Durchsuchen…", command=lambda index=i: self.browse(index)).grid(row=0, column=0, columnspan=2, sticky="ew")
-            ttk.Button(actions, text="Ersetzen…", command=lambda index=i: self.replace_target(index)).grid(row=1, column=0, columnspan=2, sticky="ew", pady=3)
-            ttk.Button(actions, text="↑", width=3, command=lambda index=i: self.move(index, -1)).grid(row=2, column=0)
-            ttk.Button(actions, text="↓", width=3, command=lambda index=i: self.move(index, 1)).grid(row=2, column=1)
-            ttk.Button(actions, text="Entfernen", command=lambda index=i: self.remove_target(index)).grid(row=3, column=0, columnspan=2, sticky="ew", pady=3)
+            actions.grid(row=i*2+1, column=3, sticky="ne")
+            ttk.Button(actions, text="Server entfernen", command=lambda index=i: self.remove_target(index)).grid(row=0, column=0, sticky="ew", pady=3)
+            if i < len(self.template["targets"]) - 1:
+                ttk.Frame(table, height=1, style="RestartDivider.TFrame").grid(row=i*2+2, column=0, columnspan=4, sticky="ew", pady=5)
             self.rows.append((user, checks))
-        self._bind_scroll(table)
+        self._bind_scroll(self.canvas)
         self.toggle_password_mode()
         options = ttk.LabelFrame(self.editor, text="Ablauf", padding=8)
         if not self.status_only:
@@ -449,11 +455,6 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.update_execution_mode()
         footer = ttk.Frame(self.editor)
         footer.pack(fill="x")
-        from .parallelism import ParallelismControl
-        status_options = ttk.LabelFrame(self.editor, text="Dienststatus-Prüfung", padding=6)
-        status_options.pack(fill="x", pady=6, before=footer)
-        self.status_parallelism = ParallelismControl(status_options)
-        self.status_parallelism.pack(fill="x")
         ttk.Button(footer, text="Speichern…", command=self.save).pack(side="right", padx=6)
         if not self.status_only:
             ttk.Button(footer, text="Vorschau und starten…", command=self.preview, style="Accent.TButton").pack(side="right")
@@ -466,8 +467,35 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.option_widgets["on_error"].configure(state="disabled" if mode == MODE_LABELS["all_parallel"] else "readonly")
 
     def _bind_scroll(self, widget):
-        if not isinstance(widget, (ttk.Combobox, ttk.Spinbox)):
-            widget.bind("<MouseWheel>", lambda e: self.canvas.yview_scroll(-1 if e.delta > 0 else 1, "units"), add="+")
+        # One binding tag per canvas: adding services never duplicates callbacks.
+        tag = "RestartWheel" + str(self.canvas)
+        if not self.canvas.bind_class(tag, "<MouseWheel>"):
+            canvas = self.canvas
+            pending = None
+            pixels = 0.0
+            def flush():
+                nonlocal pending, pixels
+                pending = None
+                step = int(pixels)
+                pixels -= step
+                canvas.yview_scroll(step, "units")
+            def wheel(event):
+                nonlocal pending, pixels
+                pixels -= event.delta * 48 / 120
+                if pending is None:
+                    pending = canvas.after(16, flush)
+                return "break"
+            binding = canvas.bind_class(tag, "<MouseWheel>", wheel)
+            def cleanup(event):
+                if event.widget is canvas:
+                    if pending is not None:
+                        canvas.after_cancel(pending)
+                    canvas.unbind_class(tag, "<MouseWheel>")
+                    canvas._root().deletecommand(binding)
+            canvas.bind("<Destroy>", cleanup, add="+")
+        tags = widget.bindtags()
+        if tag not in tags:
+            widget.bindtags((tag,) + tags)
         for child in widget.winfo_children():
             self._bind_scroll(child)
 
@@ -551,18 +579,13 @@ class RestartTemplatesDialog(tk.Toplevel):
         return item
 
     def check_status(self):
-        try:
-            max_parallel = self.status_parallelism.get()
-        except ValueError as error:
-            messagebox.showwarning("Parallelität", str(error), parent=self)
-            return
         if not self.save():
             return
         try:
             template = validate_template(self.template, runnable=True)
             targets = resolve_targets(template, all_connections(self.app))
             from .service_status import run_service_status
-            run_service_status(self.app, template["name"], targets, max_parallel=max_parallel)
+            run_service_status(self.app, template["name"], targets, max_parallel=0)
         except ValueError as error:
             messagebox.showwarning("Dienststatus nicht gestartet", str(error), parent=self)
 
@@ -572,16 +595,11 @@ class RestartTemplatesDialog(tk.Toplevel):
         except ValueError as error:
             messagebox.showwarning("Vorlage", str(error), parent=self)
             return
+        position = self.canvas.yview()[0]
         callback()
         self.build_editor()
-
-    def move(self, index, direction):
-        other = index + direction
-        if 0 <= other < len(self.template["targets"]):
-            def swap():
-                targets = self.template["targets"]
-                targets[index], targets[other] = targets[other], targets[index]
-            self.mutate(swap)
+        self.canvas.update_idletasks()
+        self.canvas.yview_moveto(position)
 
     def remove_target(self, index):
         self.mutate(lambda: self.template["targets"].pop(index))
@@ -590,14 +608,6 @@ class RestartTemplatesDialog(tk.Toplevel):
         picker = ConnectionPicker(self, all_connections(self.app), multiple)
         self.wait_window(picker)
         return picker.result
-
-    def replace_target(self, index):
-        selected = self.pick()
-        if selected:
-            def change():
-                self.template["targets"][index].update(key=selected[0].key, label=selected[0].display_name)
-                self.template["targets"][index].pop("password_protected", None)
-            self.mutate(change)
 
     def add_targets(self):
         selected = self.pick(multiple=True)

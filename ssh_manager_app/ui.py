@@ -522,6 +522,9 @@ def _apply_palette_styles(app: tk.Tk, palette: ThemePalette) -> None:
     surface_alt = palette.surface_alt
     nav = palette.nav
     border = palette.border
+    style.configure("RestartDivider.TFrame", background=border)
+    style.configure("Restart.TNotebook.Tab", padding=(20, 10))
+    style.map("Restart.TNotebook.Tab", padding=[("selected", (20, 10)), ("!selected", (20, 10))])
     text = palette.text
     muted = palette.muted
     selected = palette.selected

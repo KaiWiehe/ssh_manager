@@ -10,6 +10,7 @@ from tkinter import ttk
 from .actions_restart import RestartResult, _run_ssh, monitor_server_restart
 from .dialogs_restart import ServerRestartProgressDialog
 from .restart_templates import RestartScheduler, validate_template, execution_policy
+from .ssh_failures import ssh_authentication_failed, SSH_AUTHENTICATION_HELP
 
 
 def probe_unit(session, user, unit, timeout=8):
@@ -19,6 +20,8 @@ def probe_unit(session, user, unit, timeout=8):
     except (subprocess.TimeoutExpired, OSError):
         return "connection", "SSH-Abfrage nicht erreichbar oder Zeitüberschreitung"
     if completed.returncode == 255:
+        if ssh_authentication_failed(completed.returncode, completed.stderr):
+            return "error", SSH_AUTHENTICATION_HELP
         return "connection", "SSH nicht erreichbar"
     props = dict(line.split("=", 1) for line in completed.stdout.splitlines() if "=" in line)
     if props.get("LoadState") == "not-found":

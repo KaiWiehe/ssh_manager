@@ -184,7 +184,7 @@ def test_cancel_limits_workers_to_eight_and_skips_waiting_hosts(app, monkeypatch
         release.wait(3)
         return "state", "active"
     monkeypatch.setattr("ssh_manager_app.service_status.probe_unit", probe)
-    window = run_service_status(app, "Cancel", [(s, "admin", deepcopy(checks)) for s in sessions])
+    window = run_service_status(app, "Cancel", [(s, "admin", deepcopy(checks)) for s in sessions], max_parallel=8)
     def cancel():
         window.stop_checks()
         release.set()
@@ -193,4 +193,21 @@ def test_cancel_limits_workers_to_eight_and_skips_waiting_hosts(app, monkeypatch
     assert 1 <= len(started) <= 8
     assert "Nicht geprüft" in window.outcomes.values()
     assert len(window.outcomes) == 24
+    window.close()
+
+
+def test_default_starts_all_27_hosts_and_all_services_without_limit(app, monkeypatch):
+    sessions = [Session(str(i), str(i), [], f"host{i}.invalid", "admin", source="app") for i in range(27)]
+    checks = [{"unit": "a.service", "expected": "active"}, {"unit": "b.service", "expected": "active"}]
+    barrier = threading.Barrier(54)
+    started = []
+    def probe(session, user, unit):
+        started.append((session.key, unit))
+        barrier.wait(5)
+        return "state", "active"
+    monkeypatch.setattr("ssh_manager_app.service_status.probe_unit", probe)
+    window = run_service_status(app, "27 servers", [(s, "admin", checks) for s in sessions])
+    finish_window(app, window)
+    assert len(started) == 54
+    assert set(window.outcomes.values()) == {"Soll erfüllt"}
     window.close()

@@ -13,6 +13,7 @@ from .actions_remote import resolve_users_for_sessions
 from .dialogs_restart import ServerRestartDialog, ServerRestartProgressDialog
 from .ssh_utils import connection_value
 from .models import Session
+from .ssh_failures import SSH_AUTHENTICATION_HELP, ssh_authentication_failed
 
 
 POLL_INTERVAL_SECONDS = 2.0
@@ -69,6 +70,8 @@ def _run_ssh(
 
 
 def _process_error(completed: subprocess.CompletedProcess[str], fallback: str) -> str:
+    if ssh_authentication_failed(completed.returncode, completed.stderr):
+        return SSH_AUTHENTICATION_HELP
     value = (completed.stderr or completed.stdout or fallback).strip()
     compact = " ".join(value.split())
     return compact if compact else fallback
@@ -142,7 +145,7 @@ def _issue_reboot(session: Session, user: str, sudo_password: str, *, timeout=SS
     if completed.returncode == 0:
         return True, False, ""
     if completed.returncode == 255:
-        return False, True, _process_error(completed, "SSH-Verbindung wurde während des Neustarts beendet.")
+        return False, not ssh_authentication_failed(completed.returncode, completed.stderr), _process_error(completed, "SSH-Verbindung wurde während des Neustarts beendet.")
     return False, False, _process_error(completed, "sudo reboot ist fehlgeschlagen.")
 
 
@@ -198,6 +201,8 @@ def monitor_server_restart(
             break
         last_connected = connected
         if not connected:
+            if _probe_error == SSH_AUTHENTICATION_HELP:
+                return RestartResult("error", _probe_error)
             saw_ssh_down = True
             online_streak = 0
             report("waiting_ssh", "SSH ist noch nicht wieder erreichbar")
@@ -218,6 +223,8 @@ def monitor_server_restart(
                 elif service:
                     service_connected, active, state = _service_active(session, user, service)
                     if not service_connected:
+                        if state == SSH_AUTHENTICATION_HELP:
+                            return RestartResult("error", state)
                         online_streak = 0
                         report("waiting_ssh", "SSH ist während der Service-Prüfung nicht erreichbar")
                     elif active:

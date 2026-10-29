@@ -89,7 +89,7 @@ def test_status_button_dispatches_all(app, monkeypatch):
     calls = []
     monkeypatch.setattr("ssh_manager_app.service_status.run_service_status", lambda *a, **k: calls.append(k))
     window = RestartTemplatesDialog(app, app._app_sessions[:1], status_only=True)
-    window.status_parallelism.limited.set(False)
+    assert not hasattr(window, "status_parallelism")
     window.check_status()
     assert calls == [{"max_parallel": 0}]
     window.destroy()
