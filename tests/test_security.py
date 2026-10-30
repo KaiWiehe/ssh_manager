@@ -205,8 +205,8 @@ def test_real_settings_cancel_restores_saved_toolbar(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     monkeypatch.setattr(RegistryReader, "load_sessions", lambda self: [])
     storage.take_load_warnings()
-    monkeypatch.setattr("tkinter.messagebox.showwarning", lambda *a, **k: None)
-    monkeypatch.setattr("tkinter.messagebox.showerror", lambda *a, **k: None)
+    monkeypatch.setattr("ssh_manager_app.window_policy.messagebox.showwarning", lambda *a, **k: None)
+    monkeypatch.setattr("ssh_manager_app.window_policy.messagebox.showerror", lambda *a, **k: None)
     app = SSHManagerApp()
     app.withdraw()
     try:
@@ -300,7 +300,7 @@ def test_invalid_whitelist_is_not_persisted():
     from types import SimpleNamespace
     from unittest.mock import Mock
     from ssh_manager_app.dialogs_certificate_replace import CertificateReplaceDialog
-    dialog = SimpleNamespace(_roots_value=lambda: ["relative/path"], _on_whitelist_changed=Mock())
+    dialog = SimpleNamespace(_roots_value=lambda: ["relative/path"], _on_whitelist_changed=Mock(), parallelism=Mock(get=Mock(return_value=0)))
     with patch("ssh_manager_app.dialogs_certificate_replace.messagebox.showwarning"):
         CertificateReplaceDialog._ok(dialog)
     dialog._on_whitelist_changed.assert_not_called()
@@ -310,7 +310,7 @@ def test_empty_multi_session_actions_do_not_open_dialogs():
     from ssh_manager_app.actions_sessions import move_sessions, set_sessions_username, clear_sessions_username
     from unittest.mock import Mock
     app = Mock()
-    with patch("ssh_manager_app.actions_sessions.MoveFolderDialog") as dialog, patch("ssh_manager_app.actions_sessions.tk.Toplevel") as window:
+    with patch("ssh_manager_app.actions_sessions.MoveFolderDialog") as dialog, patch("ssh_manager_app.actions_sessions.AppWindow") as window:
         move_sessions(app, [])
         set_sessions_username(app, [])
         clear_sessions_username(app, [])

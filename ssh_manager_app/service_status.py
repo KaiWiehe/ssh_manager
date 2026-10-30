@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import queue
 import threading
 import tkinter as tk
+from .window_policy import AppWindow
 from tkinter import ttk
 
 from .actions_restart_templates import probe_unit
@@ -29,7 +30,7 @@ def check_unit(session, user, check):
     return ServiceStatus(state, "Soll erfüllt" if matches else "Abweichung")
 
 
-class ServiceStatusDialog(tk.Toplevel):
+class ServiceStatusDialog(AppWindow):
     def __init__(self, app, name, targets, max_parallel=0):
         super().__init__(app)
         self.title("Massendienststatus · " + name)

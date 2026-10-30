@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import tkinter as tk
+from .window_policy import AppWindow
 from tkinter import ttk
 from .ui_components import fit_window_to_parent
 
@@ -86,9 +87,8 @@ class ResultTableTools:
         headers, rows = self.snapshot("selection")
         if not rows:
             return
-        window = tk.Toplevel(self.owner)
+        window = AppWindow(self.owner)
         window.title("Vollständige Ergebnisdetails")
-        window.transient(self.owner)
         from tkinter.scrolledtext import ScrolledText
         text = ScrolledText(window, wrap="word", padx=12, pady=12)
         text.pack(fill="both", expand=True)

@@ -4,15 +4,18 @@ from .certificate_paths import certificate_paths, confirm_broad_certificate_path
 
 import threading
 import tkinter as tk
+from .window_policy import AppWindow
 from pathlib import Path
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from . import file_picker as filedialog
+from tkinter import scrolledtext, ttk
+from .window_policy import messagebox
 
 from .dialogs_certificates import RemoteFolderBrowserDialog
 from .secret_scripts import clear_password_fields
 from .ui_components import install_context_help
 
 
-class CertificateReplaceDialog(tk.Toplevel):
+class CertificateReplaceDialog(AppWindow):
     """Collect certificate files and persistent remote search roots."""
 
     def __init__(self, parent, target_count: int, whitelist: list[str], favorites: list[dict], on_whitelist_changed, reference_sessions=None):
@@ -29,7 +32,7 @@ class CertificateReplaceDialog(tk.Toplevel):
         self._keystore_password = tk.StringVar()
         self._close_on_success = tk.BooleanVar(value=False)
         self._build(target_count, whitelist)
-        self.transient(parent); self.grab_set(); self.protocol("WM_DELETE_WINDOW", self._cancel)
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
 
     def _build(self, target_count, whitelist):
         root = ttk.Frame(self, padding=14); root.pack(fill="both", expand=True)
@@ -69,7 +72,10 @@ class CertificateReplaceDialog(tk.Toplevel):
         ttk.Button(buttons, text="Treffer suchen…", command=self._ok).pack(side="right", padx=8)
 
     def _choose(self):
-        for path in filedialog.askopenfilenames(parent=self, title="Neue Zertifikatsdateien auswählen"):
+        paths = filedialog.askopenfilenames(parent=self, title="Neue Zertifikatsdateien auswählen")
+        if not self.winfo_exists():
+            return
+        for path in paths:
             if path and path not in self._files: self._files.append(path)
         self._refresh()
 
@@ -127,7 +133,7 @@ class CertificateReplaceDialog(tk.Toplevel):
     def _cancel(self): self.result = None; clear_password_fields(self); self.destroy()
 
 
-class CertificateReplacePreviewDialog(tk.Toplevel):
+class CertificateReplacePreviewDialog(AppWindow):
     def __init__(self, parent, report: str, matches: list[tuple[int, str, str, str, str, str]], source_summary: list[tuple[str, str]]):
         super().__init__(parent); self.title("Zertifikate ersetzen – Vorschau"); self.geometry("850x600"); self.result = False
         install_context_help(self, "server")
@@ -176,7 +182,7 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
         buttons = ttk.Frame(frame); buttons.pack(anchor="e")
         ttk.Button(buttons, text="Abbrechen", command=self._cancel).pack(side="right")
         ttk.Button(buttons, text="Ersetzen", command=self._confirm).pack(side="right", padx=8)
-        self.transient(parent); self.grab_set(); self.protocol("WM_DELETE_WINDOW", self._cancel)
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
     def _set_all(self, selected: bool):
         for _key, value in self._choice_vars: value.set(selected)
 
@@ -238,11 +244,11 @@ class CertificateReplacePreviewDialog(tk.Toplevel):
         return None
 
 
-class CertificateReplaceScanProgressDialog(tk.Toplevel):
-    """Modal indeterminate progress indicator while remote certificate scans run."""
+class CertificateReplaceScanProgressDialog(AppWindow):
+    """Independent indeterminate progress indicator while remote certificate scans run."""
     def __init__(self, parent, target_count: int):
         super().__init__(parent); self.title("Zertifikate suchen"); self.resizable(False, False)
-        self._cancel_event = threading.Event(); self.transient(parent); self.grab_set(); self.protocol("WM_DELETE_WINDOW", self._cancel)
+        self._cancel_event = threading.Event(); self.protocol("WM_DELETE_WINDOW", self._cancel)
         frame = ttk.Frame(self, padding=18); frame.pack(fill="both", expand=True)
         count = "1 Host" if target_count == 1 else f"{target_count} Hosts"
         ttk.Label(frame, text=f"Zertifikate werden gesucht … ({count})").pack(anchor="w", pady=(0, 10))

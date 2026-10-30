@@ -211,3 +211,70 @@ def test_default_starts_all_27_hosts_and_all_services_without_limit(app, monkeyp
     assert len(started) == 54
     assert set(window.outcomes.values()) == {"Soll erfüllt"}
     window.close()
+
+
+@pytest.mark.parametrize("same_template,editor_change", [(False, False), (True, False), (False, True)])
+def test_save_choice_revalidates_library_and_editor(app, monkeypatch, same_template, editor_change):
+    first, second = new_template(app._app_sessions[:1]), new_template(app._app_sessions[1:2])
+    second["name"] = "Other"
+    app._initial_toolbar_search_texts["restart_templates"] = {"schema": 1, "items": [first, second]}
+    window = RestartTemplatesDialog(app, [])
+    window.load(first)
+    window.name.set("Local edit")
+    errors = []
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.messagebox.showerror", lambda *a, **kw: errors.append(a))
+    class Choice:
+        def __init__(self, *args):
+            self.result = ("overwrite", "")
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.SaveTemplateChoice", Choice)
+    def concurrent_edit(_choice):
+        if editor_change:
+            window.load(second)
+        else:
+            index = 0 if same_template else 1
+            app._initial_toolbar_search_texts["restart_templates"]["items"][index]["name"] = "Changed elsewhere"
+    monkeypatch.setattr(window, "wait_window", concurrent_edit)
+    saved = window.save()
+    library = app._initial_toolbar_search_texts["restart_templates"]["items"]
+    if same_template or editor_change:
+        assert not saved and errors
+        assert window.template["id"] == (second if editor_change else first)["id"]
+    else:
+        assert saved and not errors
+        assert next(i for i in library if i["id"] == second["id"])["name"] == "Changed elsewhere"
+        assert next(i for i in library if i["id"] == first["id"])["name"] == "Local edit"
+    window.destroy()
+
+
+def test_browser_result_after_editor_rebuild_is_discarded(app, monkeypatch):
+    window = RestartTemplatesDialog(app, app._app_sessions)
+    warnings = []
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.messagebox.showwarning", lambda *a, **kw: warnings.append(a))
+    class Picker:
+        def __init__(self, parent, session, user, on_accept):
+            self.apply = on_accept
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.ServicePicker", Picker)
+    def rebuild(picker):
+        window.remove_target(0)
+        picker.apply(["old.service"])
+    monkeypatch.setattr(window, "wait_window", rebuild)
+    window.browse(0)
+    assert warnings and all(not checks.values() for _, checks in window.rows)
+    window.destroy()
+
+
+def test_restart_template_delete_rejects_concurrent_change(app, monkeypatch):
+    item = new_template(app._app_sessions[:1])
+    app._initial_toolbar_search_texts["restart_templates"] = {"schema": 1, "items": [item]}
+    window = RestartTemplatesDialog(app, [])
+    window.list.selection_set(item["id"])
+    errors = []
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.messagebox.showerror", lambda *a, **kw: errors.append(a))
+    def mutate(*a, **kw):
+        app._initial_toolbar_search_texts["restart_templates"]["items"][0]["name"] = "Changed elsewhere"
+        return True
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.messagebox.askyesno", mutate)
+    window.delete_template()
+    assert errors
+    assert app._initial_toolbar_search_texts["restart_templates"]["items"][0]["name"] == "Changed elsewhere"
+    window.destroy()

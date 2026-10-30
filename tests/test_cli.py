@@ -22,11 +22,16 @@ def entry(key="one", name="web-01", folder=("Firma", "Produktion"), source="app"
 
 @pytest.fixture
 def isolated_storage(tmp_path, monkeypatch):
+    # Recovery warnings belong to this isolated test, never to the next GUI.
+    storage.take_load_warnings()
     for attr, filename in [("_STATE_FILE", "ui_state.json"), ("_APP_SESSIONS_FILE", "app_sessions.json"),
                            ("_NOTES_FILE", "notes.json"), ("_SETTINGS_FILE", "settings.json"),
                            ("_SSH_CONFIG_FILE", "config")]:
         monkeypatch.setattr(storage, attr, tmp_path / filename)
-    return tmp_path
+    try:
+        yield tmp_path
+    finally:
+        storage.take_load_warnings()
 
 
 def test_fuzzy_multiple_fields_and_preserved_ancestors():

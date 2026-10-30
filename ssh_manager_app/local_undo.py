@@ -3,13 +3,37 @@ from __future__ import annotations
 
 from copy import deepcopy
 from functools import wraps
-from tkinter import messagebox
+from .window_policy import messagebox
 
 
 def snapshot(app):
     return deepcopy({"sessions": {session.key: session for session in app._app_sessions}, "notes": app._notes,
                      "colors": app._tree.get_session_colors(), "favorites": app._favorite_sessions,
                      "overrides": app._session_user_overrides, "recent": app._recent_sessions})
+
+
+def _event_context():
+    """Identify the innermost Tk callback, including callbacks inside wait_window."""
+    import sys
+    frame = sys._getframe(1)
+    while frame is not None:
+        if frame.f_code.co_name == "__call__":
+            wrapper = frame.f_locals.get("self")
+            if isinstance(wrapper, __import__("tkinter").CallWrapper):
+                return frame
+        frame = frame.f_back
+    return None
+
+
+def _record_segment(app, context):
+    after = snapshot(app)
+    before = context["before"]
+    if before != after:
+        from .actions_ui import persist_ui_state
+        persist_ui_state(app)
+        app._undo_stack.append((context["label"], before, after))
+        app._undo_stack = app._undo_stack[-20:]
+    context["before"] = after
 
 
 def local_undo(label, *, tree=False):
@@ -19,19 +43,27 @@ def local_undo(label, *, tree=False):
             app = owner.__dict__.get("_undo_owner") if tree else owner
             if app is None or not app.__dict__.get("_local_undo_enabled") or app.__dict__.get("_undo_depth", 0):
                 return action(owner, *args, **kwargs)
-            before = snapshot(app)
-            app._undo_depth = 1
+            contexts = app.__dict__.setdefault("_undo_contexts", [])
+            event = _event_context()
+            if contexts and contexts[-1]["event"] is event:
+                return action(owner, *args, **kwargs)
+            # A new event may run while an earlier action awaits a nonmodal
+            # dialog. Commit its completed changes before the new action.
+            parent = contexts[-1] if contexts else None
+            if parent is not None:
+                _record_segment(app, parent)
+            context = {"event": event, "label": label, "before": snapshot(app)}
+            contexts.append(context)
             try:
                 result = action(owner, *args, **kwargs)
-                after = snapshot(app)
-                if before != after:
-                    from .actions_ui import persist_ui_state
-                    persist_ui_state(app)
-                    app._undo_stack.append((label, before, after))
-                    app._undo_stack = app._undo_stack[-20:]
+                _record_segment(app, context)
                 return result
             finally:
-                app._undo_depth = 0
+                contexts.pop()
+                if parent is not None:
+                    # Never attribute the independent event's delta to the
+                    # suspended action, including its cancellation path.
+                    parent["before"] = snapshot(app)
         return perform
     return decorate
 
@@ -68,6 +100,9 @@ def reverted_snapshot(current, before, after):
 
 
 def undo_last(app):
+    contexts = app.__dict__.get("_undo_contexts", [])
+    if contexts:
+        _record_segment(app, contexts[-1])
     stack = app.__dict__.get("_undo_stack", [])
     if not stack:
         messagebox.showinfo("Lokales Rückgängig", "Keine lokale Änderung in dieser App-Sitzung vorhanden. Remote-Aktionen sind nicht rückgängig machbar.", parent=app)
@@ -100,5 +135,7 @@ def undo_last(app):
         stack.pop()
     finally:
         app._undo_depth = 0
+        for context in contexts:
+            context["before"] = snapshot(app)
     from .dialogs_toast import ToastNotification
     ToastNotification(app, "Rückgängig: " + label)

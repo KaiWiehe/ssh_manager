@@ -4,7 +4,9 @@ from __future__ import annotations
 from copy import deepcopy
 import queue
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow, single_pending
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .port_checks import (NEGATIVE, STATE_KEY, STATUS, PortCheckJob, ProbeResult,
                           resolve_destination, targets, validate_library)
@@ -15,7 +17,7 @@ from .workers import run_worker
 from .dialogs_base import _build_quickselect_buttons
 
 
-class DestinationPicker(tk.Toplevel):
+class DestinationPicker(AppWindow):
     def __init__(self, owner, app, accept):
         super().__init__(owner)
         self.title("Zielserver suchen")
@@ -49,8 +51,6 @@ class DestinationPicker(tk.Toplevel):
         self.query.trace_add("write", self.refresh)
         self.refresh()
         # A picker is temporary input; the working window itself stays modeless.
-        self.transient(owner)
-        self.grab_set()
         fit_window_to_parent(self, owner, 820, 430)
         entry.focus_set()
 
@@ -111,7 +111,7 @@ class PortResultTools(ResultTableTools):
         return "break"
 
 
-class PortCheckDialog(tk.Toplevel):
+class PortCheckDialog(AppWindow):
     def __init__(self, app, sessions):
         super().__init__(app)
         self.app, self.sources = app, deepcopy(list(sessions))
@@ -228,7 +228,8 @@ class PortCheckDialog(tk.Toplevel):
         horizontal.grid(row=1, column=0, sticky="ew")
         self.results.configure(xscrollcommand=horizontal.set)
         tools_frame = ttk.Frame(frame)
-        tools_frame.pack(fill="x")
+        # Reserve copy/details controls before the expanding results table.
+        tools_frame.pack(side="bottom", fill="x", before=result_frame)
         self.tools = PortResultTools(self, tools_frame)
         self.tools.text.configure(height=3)
         self.bind("<Destroy>", self.on_destroy, add="+")
@@ -382,33 +383,49 @@ class PortCheckDialog(tk.Toplevel):
         self.library = library
         self.presets.configure(values=self.template_names())
 
+    @single_pending
     def save_template(self):
         try:
-            self.library = self.current_library()
+            library = self.current_library()
             item = {"name": self.name.get().strip(), "targets": self.destinations_from_fields()}
-            existing = next((i for i in self.library["items"] if i["name"].casefold() == item["name"].casefold()), None)
+            key = item["name"].casefold()
+            existing = next((i for i in library["items"] if i["name"].casefold() == key), None)
+            baseline = deepcopy(existing)
             validate_library({"schema": 1, "items": [item]})
             if existing and not messagebox.askyesno("Prüfvorlage überschreiben", f"„{existing['name']}“ überschreiben?", parent=self):
                 return
-            self.persist_library([i for i in self.library["items"] if i is not existing] + [item])
+            if not self.winfo_exists():
+                return
+            if item != {"name": self.name.get().strip(), "targets": self.destinations_from_fields()}:
+                raise ValueError("Die Zielliste wurde während der Rückfrage geändert. Bitte erneut speichern.")
+            library = self.current_library()
+            current = next((i for i in library["items"] if i["name"].casefold() == key), None)
+            if current != baseline:
+                raise ValueError("Prüfvorlage wurde in einem anderen Fenster geändert oder gelöscht. Bitte erneut laden.")
+            self.persist_library([i for i in library["items"] if i["name"].casefold() != key] + [item])
             self.status.set("Prüfvorlage gespeichert; enthält nur Ziele, keine Quellserver.")
         except (ValueError, OSError) as error:
             messagebox.showerror("Prüfvorlage", str(error), parent=self)
 
+    @single_pending
     def delete_template(self):
         try:
-            self.library = self.current_library()
-        except ValueError as error:
+            library = self.current_library()
+            selected_name = self.name.get()
+            selected = deepcopy(next((i for i in library["items"] if i["name"] == selected_name), None))
+            if not selected or not messagebox.askyesno("Prüfvorlage löschen", f"„{selected['name']}“ löschen?", parent=self):
+                return
+            if not self.winfo_exists():
+                return
+            library = self.current_library()
+            current = next((i for i in library["items"] if i["name"] == selected_name), None)
+            if self.name.get() != selected_name or current != selected:
+                raise ValueError("Auswahl oder Prüfvorlage wurde während der Rückfrage geändert. Bitte erneut laden.")
+            self.persist_library([i for i in library["items"] if i["name"] != selected_name])
+            self.name.set("")
+            self.status.set("Prüfvorlage gelöscht; aktuelle Zielliste bleibt erhalten.")
+        except (OSError, ValueError) as error:
             messagebox.showerror("Prüfvorlage", str(error), parent=self)
-            return
-        selected = next((i for i in self.library["items"] if i["name"] == self.name.get()), None)
-        if selected and messagebox.askyesno("Prüfvorlage löschen", f"„{selected['name']}“ löschen?", parent=self):
-            try:
-                self.persist_library([i for i in self.library["items"] if i is not selected])
-                self.name.set("")
-                self.status.set("Prüfvorlage gelöscht; aktuelle Zielliste bleibt erhalten.")
-            except (OSError, ValueError) as error:
-                messagebox.showerror("Prüfvorlage", str(error), parent=self)
 
     def set_running(self, running):
         self.parallelism.set_running(running)

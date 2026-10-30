@@ -852,6 +852,8 @@ def configure_app_styles(app: tk.Tk) -> None:
     app._bootstrap_style = style
     _apply_palette_styles(app, palette_for_theme(theme))
     _install_toplevel_theme_hook(app)
+    from .text_selection import install_text_selection
+    install_text_selection(app)
 
 def refresh_checkbox_images(app) -> None:
     """Rebuild tree checkbox icons from the active theme palette."""

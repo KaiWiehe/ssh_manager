@@ -9,7 +9,9 @@ import shlex
 import tempfile
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 import uuid
 
 from .ui_components import install_context_help, fit_window_to_parent
@@ -95,13 +97,12 @@ class OperationJob:
         return [session for session in self.sessions if self.states[session.key][0] == "failed"]
 
 
-class OperationResultsDialog(tk.Toplevel):
+class OperationResultsDialog(AppWindow):
     def __init__(self, parent, job):
         super().__init__(parent)
         install_context_help(self, "results")
         self.job, self.timer = job, None
         self.title("Sammelergebnisse – " + job.title)
-        self.transient(parent)
         frame = ttk.Frame(self, padding=14)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="Terminalstart ist kein Remote-Erfolg. Erfolg/Fehler wird nur aus einer Rückmeldung des ausgeführten Skripts abgeleitet. Ein fehlgeschlagener Ablauf kann bereits Teilschritte verändert haben.", wraplength=700).pack(anchor="w", pady=(0, 10))

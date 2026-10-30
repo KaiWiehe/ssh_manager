@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from .window_policy import single_pending
+
 import re
 import shlex
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .ui_components import install_context_help, fit_window_to_parent
 from .secret_scripts import clear_password_fields
@@ -33,14 +37,12 @@ def service_command(action, unit, lines=100, sudo=False):
     return preflight + f"{prefix}systemctl status --no-pager --lines=20 -- {quoted}\nstatus=$?\nif [ $status -eq 3 ]; then exit 0; fi\nexit $status"
 
 
-class ServiceActionDialog(tk.Toplevel):
+class ServiceActionDialog(AppWindow):
     def __init__(self, parent, action, target_count, initial=None, reference_sessions=None):
         super().__init__(parent)
         install_context_help(self, "services")
         self.action = action
         self.title(ACTION_LABELS[action])
-        self.transient(parent)
-        self.grab_set()
         self.result = None
         self._reference_sessions = list(reference_sessions or [])
         self._body = ttk.PanedWindow(self, orient="horizontal")
@@ -114,6 +116,7 @@ class ServiceActionDialog(tk.Toplevel):
         self.destroy()
 
 
+@single_pending
 def run_service_action(app, sessions, action, initial=None):
     from .actions_remote import resolve_users_for_sessions
     from .dialogs_remote import RemoteCommandConfirmDialog

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import queue
 import threading
-from tkinter import messagebox
+from .window_policy import messagebox
 
 
 def run_worker(owner, work, on_success, on_error=None):

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from tkinter import messagebox
+from .window_policy import single_pending
+
+from .window_policy import messagebox
 from pathlib import Path
 
 from .actions_remote import resolve_users_for_sessions
@@ -9,6 +11,7 @@ from .dialogs_certificates import CertificateDeployDialog
 from .models import Session
 
 
+@single_pending
 def deploy_certificate_files(app, sessions: list[Session], *, simple: bool = False) -> None:
     """Upload selected certificate files to each selected host."""
     runnable = [session for session in sessions if session.hostname]

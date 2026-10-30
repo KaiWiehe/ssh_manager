@@ -13,18 +13,13 @@ SPACE_XL = 24
 
 
 def install_context_help(dialog, topic, *, layout="pack", row=1):
-    """Expose task help and temporarily transfer a modal grab to the help."""
+    """Expose task help without restricting any other app window."""
     def show(_event=None):
         from .help import open_help
         app = dialog._root()
-        previous = dialog.grab_current()
         window = open_help(app, topic)
-        if previous is not None and previous is not window:
-            window._return_grab = previous
-            window.transient(previous)
-            window.grab_set()
         window.lift()
-        window.focus_force()
+        window.focus_set()
         return "break"
     bar = ttk.Frame(dialog, padding=(12, 4))
     if layout == "grid":
@@ -46,7 +41,7 @@ def build_dialog_header(
     row: int = 0,
     columnspan: int = 1,
 ) -> ttk.Frame:
-    """Create the shared title/subtitle block used by modal dialogs."""
+    """Create the shared title/subtitle block used by app dialogs."""
     header = ttk.Frame(parent, style="DialogHeader.TFrame")
     header.grid(row=row, column=0, columnspan=columnspan, sticky="ew", pady=(0, SPACE_LG))
     header.columnconfigure(0, weight=1)
@@ -72,7 +67,7 @@ def build_dialog_actions(
     columnspan: int = 1,
     primary_style: str = "Accent.TButton",
 ) -> ttk.Frame:
-    """Create the shared right-aligned modal footer."""
+    """Create the shared right-aligned dialog footer."""
     footer = ttk.Frame(parent, style="DialogActions.TFrame")
     footer.grid(row=row, column=0, columnspan=columnspan, sticky="ew", pady=(SPACE_LG, 0))
     footer.columnconfigure(0, weight=1)
@@ -173,10 +168,6 @@ class TooltipPopup:
     ) -> None:
         self._window = tk.Toplevel(master)
         self._window.wm_overrideredirect(True)
-        try:
-            self._window.attributes("-topmost", True)
-        except tk.TclError:
-            pass
         style = ttk.Style(master)
         background = style.lookup("TFrame", "background") or "SystemWindow"
         foreground = style.lookup("TLabel", "foreground") or "SystemWindowText"

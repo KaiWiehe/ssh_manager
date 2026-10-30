@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
+from .window_policy import AppWindow
+from . import file_picker as filedialog
+from tkinter import scrolledtext, ttk
+from .window_policy import messagebox, simpledialog
 from typing import Callable
 
 from .constants import DEFAULT_USER, QUICK_USERS, _SSH_CONFIG_FILE
@@ -18,7 +21,7 @@ def _resolve_jump_host_default_user(parent: tk.Tk) -> str:
     return default_user or DEFAULT_USER
 
 
-class JumpHostDialog(tk.Toplevel):
+class JumpHostDialog(AppWindow):
     """Dialog zum temporären Öffnen einer Session über ProxyJump."""
 
     def __init__(self, parent: tk.Tk, target_session: Session, sessions: list[Session], open_folders_getter: Callable[[], set[str]] | None = None):
@@ -33,8 +36,6 @@ class JumpHostDialog(tk.Toplevel):
         self._sessions = sessions
         self._open_folders_getter = open_folders_getter
 
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
@@ -227,7 +228,7 @@ class JumpHostDialog(tk.Toplevel):
 # ---------------------------------------------------------------------------
 
 
-class SshCopyIdDialog(tk.Toplevel):
+class SshCopyIdDialog(AppWindow):
     """
     Modaler Dialog zur Auswahl von SSH Public Key und Benutzername für ssh-copy-id.
     Nach Schließen: self.result = (key_filename, user) oder None (Abbrechen).
@@ -242,8 +243,6 @@ class SshCopyIdDialog(tk.Toplevel):
         self._target_count = target_count
         self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
 
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._build()
@@ -338,7 +337,7 @@ class SshCopyIdDialog(tk.Toplevel):
 # ---------------------------------------------------------------------------
 
 
-class SshRemoveKeyDialog(tk.Toplevel):
+class SshRemoveKeyDialog(AppWindow):
     """
     Modaler Dialog zur Auswahl von SSH Public Key und Benutzername zum Entfernen
     des Keys aus authorized_keys auf Remote-Hosts.
@@ -354,8 +353,6 @@ class SshRemoveKeyDialog(tk.Toplevel):
         self._target_count = target_count
         self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
 
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._build()
@@ -441,7 +438,7 @@ class SshRemoveKeyDialog(tk.Toplevel):
         self.geometry(f"+{x}+{y}")
 
 
-class RemoteFavoriteEditDialog(tk.Toplevel):
+class RemoteFavoriteEditDialog(AppWindow):
     """Aufgeräumter Dialog zum Anlegen/Bearbeiten eines Remote-Runner-Favoriten."""
 
     def __init__(self, parent: tk.Tk, item: dict, title: str = "Favorit bearbeiten"):
@@ -452,8 +449,6 @@ class RemoteFavoriteEditDialog(tk.Toplevel):
         self.minsize(500, 360)
         self.result: dict | None = None
         self._item = dict(item)
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build()
         self._center_on_parent(parent)
@@ -530,7 +525,7 @@ class RemoteFavoriteEditDialog(tk.Toplevel):
         fit_window_to_parent(self, parent, 560, 420, min_width=460, min_height=340)
 
 
-class RemoteCommandDialog(tk.Toplevel):
+class RemoteCommandDialog(AppWindow):
     """Dialog für Remote-Befehl, Skript-Runbooks, Verlauf und Favoriten."""
 
     def __init__(self, parent: tk.Tk, target_count: int, last_command: str = "", quick_users: list[str] | None = None, default_user: str = DEFAULT_USER, history: list[dict] | None = None, favorites: list[dict] | None = None, run_mode: str | None = None, editing: bool = False, reference_sessions: list[Session] | None = None):
@@ -549,8 +544,6 @@ class RemoteCommandDialog(tk.Toplevel):
         self._history = history or []
         self._favorites = favorites or []
         self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(target_count)
         self._center_on_parent(parent)
@@ -1037,7 +1030,7 @@ class RemoteCommandDialog(tk.Toplevel):
         fit_window_to_parent(self, parent, 980, 560 if compact else 760, min_width=720, min_height=520 if compact else 540)
 
 
-class RemoteCommandConfirmDialog(tk.Toplevel):
+class RemoteCommandConfirmDialog(AppWindow):
     """Bestätigungsdialog für Remote-Befehle."""
 
     def __init__(self, parent: tk.Tk, command: str | dict, session_users: list[tuple[Session, str]], close_on_success: bool):
@@ -1048,8 +1041,6 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
         self.minsize(680, 420)
         self.result = False
 
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(command, session_users, close_on_success)
         self._center_on_parent(parent)
@@ -1153,7 +1144,7 @@ class RemoteCommandConfirmDialog(tk.Toplevel):
 # ---------------------------------------------------------------------------
 
 
-class SshTunnelDialog(tk.Toplevel):
+class SshTunnelDialog(AppWindow):
     """
     Modaler Dialog für SSH Local Port Forwarding (-N -L).
     Nach Schließen: self.result = (ssh_server, local_port, remote_host, remote_port, user) oder None.
@@ -1169,8 +1160,6 @@ class SshTunnelDialog(tk.Toplevel):
         self._session = session
         self._quick_users, self._default_user = resolve_user_dialog_defaults(quick_users, default_user)
 
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build()
         self._center_on_parent(parent)

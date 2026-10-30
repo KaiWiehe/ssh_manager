@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .window_policy import single_pending
+
 import queue
 import re
 import shlex
@@ -7,7 +9,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
-from tkinter import messagebox
+from .window_policy import messagebox
 
 from .actions_remote import resolve_users_for_sessions
 from .dialogs_restart import ServerRestartDialog, ServerRestartProgressDialog
@@ -262,6 +264,7 @@ def _deduplicate_sessions(sessions: list[Session]) -> list[Session]:
     return result
 
 
+@single_pending
 def restart_servers(app, sessions: list[Session]) -> ServerRestartProgressDialog | None:
     """Run and monitor ``sudo reboot`` on all selected sessions in parallel."""
     runnable = _deduplicate_sessions(sessions)

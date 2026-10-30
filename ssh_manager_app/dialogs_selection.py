@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import tkinter as tk
+from .window_policy import AppWindow
 from tkinter import ttk
 
 from .ui_components import install_context_help, center_on_parent
 
 
-class SelectionReviewDialog(tk.Toplevel):
+class SelectionReviewDialog(AppWindow):
     """Review the complete action target set, including filtered-out hosts."""
 
     def __init__(self, app):
         super().__init__(app)
         install_context_help(self, "start")
         self.title("Häkchen-Auswahl prüfen")
-        self.transient(app)
         self.geometry("620x360")
         self.tree = app._tree
         frame = ttk.Frame(self, padding=16)

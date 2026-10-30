@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from . import file_picker as filedialog
+from .window_policy import messagebox
 
 from .actions_ui import apply_search_history_entry, clear_search_history, persist_ui_state
 from .dialogs_toast import ToastNotification

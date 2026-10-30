@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .dns_lookup import DnsLookupResult, normalize_dns_server
 from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent, fit_window_to_parent, set_validation_state
@@ -33,7 +35,7 @@ def resolve_dns_server_selection(value: str) -> str | None:
     return normalize_dns_server(cleaned)
 
 
-class DnsLookupDialog(tk.Toplevel):
+class DnsLookupDialog(AppWindow):
     """Dialog for one manual DNS/IP lookup query."""
 
     def __init__(self, parent: tk.Tk):
@@ -42,8 +44,6 @@ class DnsLookupDialog(tk.Toplevel):
         self.title("DNS/IP auflösen")
         self.resizable(False, False)
         self.result: tuple[str, str, str | None] | None = None
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build()
         self._center_on_parent(parent)
@@ -132,7 +132,7 @@ class DnsLookupDialog(tk.Toplevel):
         center_on_parent(self, parent)
 
 
-class DnsServerDialog(tk.Toplevel):
+class DnsServerDialog(AppWindow):
     """Selects the resolver used for DNS lookups on a session selection."""
 
     def __init__(self, parent: tk.Tk, target_count: int):
@@ -141,8 +141,6 @@ class DnsServerDialog(tk.Toplevel):
         self.title("DNS-Server auswählen")
         self.resizable(False, False)
         self.result: str | None = None
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(target_count)
         self._center_on_parent(parent)
@@ -198,7 +196,7 @@ class DnsServerDialog(tk.Toplevel):
         center_on_parent(self, parent)
 
 
-class DnsLookupProgressDialog(tk.Toplevel):
+class DnsLookupProgressDialog(AppWindow):
     """Small modal progress indicator while DNS lookups run in the background."""
 
     def __init__(self, parent: tk.Tk, target_count: int):
@@ -206,8 +204,6 @@ class DnsLookupProgressDialog(tk.Toplevel):
         self.title("DNS/IP auflösen")
         self.resizable(False, False)
         self._cancel_event = threading.Event()
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._progress: ttk.Progressbar | None = None
         self._build(target_count)
@@ -258,7 +254,7 @@ class DnsLookupProgressDialog(tk.Toplevel):
         center_on_parent(self, parent)
 
 
-class DnsLookupResultsDialog(tk.Toplevel):
+class DnsLookupResultsDialog(AppWindow):
     """Shows DNS/IP lookup results in a compact table."""
 
     def __init__(self, parent: tk.Tk, results: list[DnsLookupResult]):
@@ -272,7 +268,6 @@ class DnsLookupResultsDialog(tk.Toplevel):
         self._selection_entry_var: tk.StringVar | None = None
         self._selection_anchor: int | None = None
         self.geometry("1080x420" if self._show_connection_names else "900x420")
-        self.transient(parent)
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build(parent)
         self._center_on_parent(parent)

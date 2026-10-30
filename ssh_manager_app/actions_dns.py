@@ -4,7 +4,7 @@ import ipaddress
 from concurrent.futures import ThreadPoolExecutor
 from .workers import run_worker
 from dataclasses import replace
-from tkinter import messagebox
+from .window_policy import messagebox
 
 from .dialogs_dns import DnsLookupDialog, DnsLookupProgressDialog, DnsLookupResultsDialog, DnsServerDialog
 from .dns_lookup import DnsLookupResult, resolve_dns_value

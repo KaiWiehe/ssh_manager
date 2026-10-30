@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 from typing import Optional
 
 from .constants import DEFAULT_USER, QUICK_USERS
@@ -37,7 +39,7 @@ def _build_quickselect_buttons(parent: ttk.Frame, usernames: list[str], target_v
         ).grid(row=row, column=col, padx=2, pady=2, sticky="ew")
     return frame
 
-class UserDialog(tk.Toplevel):
+class UserDialog(AppWindow):
     """
     Modaler Dialog zur Benutzernamen-Auswahl.
     Nach Schließen: self.result = gewählter Username (str), (Username, merken) oder None (Abbrechen).
@@ -55,8 +57,6 @@ class UserDialog(tk.Toplevel):
         self._remember_var = tk.BooleanVar(value=False)
 
         # Modal machen
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._build()

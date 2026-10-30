@@ -1,5 +1,6 @@
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from . import file_picker as filedialog
+from .window_policy import messagebox
 
 from . import storage
 

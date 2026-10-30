@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import tkinter as tk
+from .window_policy import AppWindow
 import uuid
-from tkinter import messagebox, ttk
+from tkinter import ttk
+from .window_policy import messagebox
 from typing import Optional
 
 from . import Session
@@ -11,7 +13,7 @@ from .dialogs_base import _HOSTNAME_RE, _USERNAME_RE, _build_quickselect_buttons
 from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent, set_validation_state
 
 
-class SessionEditDialog(tk.Toplevel):
+class SessionEditDialog(AppWindow):
     """
     Modaler Dialog zum Anlegen oder Bearbeiten einer eigenen Session.
     Unterstützt zwei Modi: 'Eigene Verbindung' (Hostname/Port/User) und
@@ -56,8 +58,6 @@ class SessionEditDialog(tk.Toplevel):
         self.resizable(False, False)
         self.result: Optional[Session] = None
 
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         self._build(folder_preset)

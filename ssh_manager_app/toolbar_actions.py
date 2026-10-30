@@ -1,7 +1,8 @@
 """Individual, persistent toolbar choices backed by the existing action menus."""
 import json
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
+from .window_policy import messagebox
 
 CONTEXT_ACTIONS = (
     'Verbindung öffnen', 'In WinSCP öffnen', 'Bearbeiten…', 'Als eigene Verbindung übernehmen…',

@@ -2,19 +2,20 @@ from __future__ import annotations
 
 from copy import deepcopy
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .dialogs_remote import RemoteCommandDialog, RemoteFavoriteEditDialog
 from .ui_components import install_context_help, fit_window_to_parent
 
 
-class RunbookLibraryDialog(tk.Toplevel):
+class RunbookLibraryDialog(AppWindow):
     def __init__(self, app):
         super().__init__(app)
         install_context_help(self, "runbooks")
         self.app = app
         self.title("Runbook-Bibliothek")
-        self.transient(app)
         self.items = deepcopy(app._initial_toolbar_search_texts.get("remote_command_favorites", []))
         frame = ttk.Frame(self, padding=16)
         frame.pack(fill="both", expand=True)

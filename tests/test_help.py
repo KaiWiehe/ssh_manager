@@ -49,7 +49,7 @@ def test_actual_app_delete_and_bulk_color_are_single_undo_steps(app, monkeypatch
     assert app._tree.get_session_colors() == {}
 
 
-def test_task_help_opens_exact_topic_and_restores_modal_grab(app):
+def test_task_help_opens_exact_topic_without_grabs(app):
     from ssh_manager_app.dialogs_remote import SshTunnelDialog
     open_help(app)
     window = app._help_window
@@ -62,10 +62,10 @@ def test_task_help_opens_exact_topic_and_restores_modal_grab(app):
     assert window.query.get() == ""
     assert window.selected_id == "tunnels"
     assert "Interner Dienst" in window.text.get("1.0", "end")
-    assert app.grab_current() is window
+    assert app.grab_current() is None
     window.close()
     app.update()
-    assert app.grab_current() is dialog
+    assert app.grab_current() is None
     dialog.destroy()
 
 
@@ -300,3 +300,44 @@ def test_named_filters_combine_criteria_without_overwriting_folder_state(app, mo
     apply_session_filters(app, {}, "")
     assert len(app._tree._item_to_session) == 2
     assert app._tree.get_open_folders() == {"Lab"}
+
+
+def test_restart_input_leaves_main_search_and_copy_usable(app, monkeypatch):
+    from ssh_manager_app.dialogs_restart import ServerRestartDialog
+    from ssh_manager_app.models import Session
+    from ssh_manager_app.actions_ui import rebuild_sessions
+    from test_restart_templates_ui import screenshot
+    session = Session("copy-host", "Copy host", [], "copy.invalid", "admin", source="app")
+    app._app_sessions = [session]
+    rebuild_sessions(app)
+    monkeypatch.setattr("ssh_manager_app.actions_restart._issue_reboot", lambda *a, **kw: pytest.fail("No reboot authorized"))
+    window = ServerRestartDialog(app, [(session, "admin")])
+    app.update()
+    assert app.grab_current() is None and not window.transient()
+    app._search_var.set("copy.invalid")
+    app.update()
+    app._search_entry.focus_force()
+    app._search_entry.selection_range(0, "end")
+    app._search_entry.event_generate("<<Copy>>")
+    assert app.clipboard_get() == "copy.invalid"
+    assert window.winfo_exists() and window.result is None
+    screenshot(window, "restart-modeless.png")
+    def find_warning(parent):
+        for child in parent.winfo_children():
+            if child.winfo_class() == "TLabel" and str(child.cget("text")).startswith("Achtung:"):
+                return child
+            found = find_warning(child)
+            if found is not None:
+                return found
+    label = find_warning(window)
+    controller = app._display_text_selection
+    controller.open(label, controller.content(label, 5, 5), label.winfo_rootx()+5, label.winfo_rooty()+5)
+    controller.select_all()
+    controller.overlay.focus_force()
+    app.update()
+    controller.overlay.event_generate("<Control-c>")
+    assert app.clipboard_get().startswith("Achtung: 1 Server ausgewählt.")
+    assert window.result is None
+    screenshot(window, "restart-copy-selection.png")
+    controller.close()
+    window._on_cancel()

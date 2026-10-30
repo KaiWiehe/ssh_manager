@@ -7,7 +7,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
+from ssh_manager_app.window_policy import messagebox
 
 from ssh_manager_app import (
     Session,

@@ -1,6 +1,8 @@
 """Per-run concurrency choice: zero means every selected target, never a hidden cap."""
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 
 def worker_count(total, limit=8):
@@ -43,7 +45,7 @@ class ParallelismControl(ttk.Frame):
 
 def choose_parallelism(parent, count, default=8, title="Prüfung starten"):
     from .ui_components import fit_window_to_parent
-    window = tk.Toplevel(parent)
+    window = AppWindow(parent)
     window.title(title)
     window.result = None
     body = ttk.Frame(window, padding=16)
@@ -62,8 +64,6 @@ def choose_parallelism(parent, count, default=8, title="Prüfung starten"):
     actions.pack(fill="x", pady=(16, 0))
     ttk.Button(actions, text="Prüfung starten", command=accept).pack(side="right")
     ttk.Button(actions, text="Abbrechen", command=window.destroy).pack(side="right", padx=8)
-    window.transient(parent)
-    window.grab_set()
     window.bind("<Escape>", lambda _: window.destroy())
     fit_window_to_parent(window, parent, 700, 210)
     parent.wait_window(window)

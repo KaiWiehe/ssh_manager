@@ -1,6 +1,6 @@
 """Validation shared by certificate search and deployment dialogs."""
 import posixpath
-from tkinter import messagebox
+from .window_policy import messagebox
 
 
 def certificate_paths(lines: list[str]) -> list[str]:

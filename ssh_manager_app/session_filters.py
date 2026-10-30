@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .ssh_utils import read_port
 from .ui_components import install_context_help, fit_window_to_parent
@@ -45,14 +47,12 @@ def apply_session_filters(app, filters, query, *, persist=True):
         persist_ui_state(app)
 
 
-class SessionFiltersDialog(tk.Toplevel):
+class SessionFiltersDialog(AppWindow):
     def __init__(self, app):
         super().__init__(app)
         install_context_help(self, "filters")
         self.app = app
         self.title("Filter und gespeicherte Ansichten")
-        self.transient(app)
-        self.grab_set()
         frame = ttk.Frame(self, padding=16)
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)

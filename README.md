@@ -341,8 +341,7 @@ Beim Umbenennen oder Verschieben in einen vorhandenen Ordner muss das Zusammenf�
 öffnet ein separates, nichtmodales Hilfefenster. Links stehen die Themen, rechts
 die Erklärungen; die Suche berücksichtigt Titel und vollständige Hilfetexte.
 **Was passiert hier?** in einem Aufgabendialog öffnet direkt dessen Hilfethema.
-Bei modalen Dialogen wird nach dem Schließen der Hilfe die Bedienung an den
-Dialog zurückgegeben. Gesperrte Aktionen nennen ihre Voraussetzungen.
+Die Hilfe und alle anderen App-Fenster lassen das Hauptfenster jederzeit bedienbar. Gesperrte Aktionen nennen ihre Voraussetzungen.
 
 Die Hilfe erklärt alle Aktionen, Quellen, Einstellungen und die Tastaturbedienung
 und zeigt aktuelle sowie voreingestellte App-Kürzel. F1 kann unter
@@ -605,3 +604,10 @@ Die GUI-EXE läuft ohne zusätzliches Konsolenfenster; die CLI nutzt das aufrufe
 Terminal. Beide verwenden das App-Icon und Daten unter `%APPDATA%\SSH-Manager\`.
 Die Paket-Metadaten einschließlich der Lizenzdateien werden in die jeweiligen
 portablen Anwendungen aufgenommen. Die Python-Variante bleibt weiterhin nutzbar.
+
+
+### Fenster und Text kopieren
+
+Neue Fenster dürfen beim Öffnen einmal aktiv werden; sie sperren weder das Hauptfenster noch andere Arbeitsfenster und bleiben nicht erzwungen im Vordergrund. Das gilt auch für „Server neu starten“, Eingaben, Bestätigungen und die app-eigene Dateiauswahl. Vor einer Serveraktion ist weiterhin die jeweilige Bestätigung nötig.
+
+Angezeigten Text mit gedrückter linker Maustaste ziehen, um ihn zu markieren, dann **Strg+C** drücken. Das gilt auch für Beschriftungen, Schaltflächentexte, Tabs und Tabellenzellen. Bei verschiebbaren Spaltentiteln **Strg** beim Ziehen halten, um deren Text statt der Spalte auszuwählen. Die Auswahl ist schreibgeschützt; **Esc** oder ein Klick außerhalb schließt sie. Normale Klicks führen weiterhin die jeweilige Aktion aus. Eingabefelder und Textbereiche behalten ihre gewohnte Auswahlbedienung.

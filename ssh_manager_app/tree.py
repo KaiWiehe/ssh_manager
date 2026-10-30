@@ -3,7 +3,8 @@ from __future__ import annotations
 import queue
 from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
+from .window_policy import messagebox
 
 from . import PALETTE, Session, ToolbarSettings, color_tag
 from .constants import _SSH_CONFIG_DEFAULT_FOLDER

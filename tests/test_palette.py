@@ -207,10 +207,8 @@ def _make_fake_dialog(*, on_width_changed=None, current_width=DEFAULT_PALETTE_WI
     return fake
 
 
-def test_close_releases_grab_restores_focus_then_destroys():
-    """``_close`` must release the Tk grab and hand focus back to the main
-    window BEFORE destroying the popup, otherwise the main window stays
-    frozen for a few seconds after running a palette action."""
+def test_close_destroys_without_grab_or_focus_transfer():
+    """Closing a nonmodal palette never redirects focus away from another window."""
     fake = _make_fake_dialog()
 
     CommandPaletteDialog._close(fake)
@@ -220,15 +218,13 @@ def test_close_releases_grab_restores_focus_then_destroys():
     unbound_events = [c.args[0] for c in fake.unbind.call_args_list]
     assert "<FocusOut>" in unbound_events
     assert "<Unmap>" in unbound_events
-    fake.grab_release.assert_called_once()
-    fake._master.focus_set.assert_called_once()
+    fake.grab_release.assert_not_called()
+    fake._master.focus_set.assert_not_called()
     fake.destroy.assert_called_once()
     # Order matters: unbind(s) -> grab_release -> master focus -> destroy.
     assert fake._mock_order == [
         "unbind",
         "unbind",
-        "grab_release",
-        "master_focus_set",
         "destroy",
     ]
 
@@ -239,7 +235,7 @@ def test_close_is_idempotent():
     CommandPaletteDialog._close(fake)
     # Only the first invocation should reach destroy()/grab_release().
     assert fake.destroy.call_count == 1
-    assert fake.grab_release.call_count == 1
+    assert fake.grab_release.call_count == 0
 
 
 def test_close_still_releases_grab_when_destroy_raises():
@@ -247,8 +243,8 @@ def test_close_still_releases_grab_when_destroy_raises():
     fake.destroy.side_effect = tk.TclError("boom")
     # Must not propagate; grab_release must still have happened.
     CommandPaletteDialog._close(fake)
-    fake.grab_release.assert_called_once()
-    fake._master.focus_set.assert_called_once()
+    fake.grab_release.assert_not_called()
+    fake._master.focus_set.assert_not_called()
 
 
 def _wire_real_close(fake):
@@ -279,14 +275,12 @@ def test_execute_selected_closes_popup_before_running_callback():
     assert result == "break"
     # Popup teardown happened before scheduling the action.
     fake.destroy.assert_called_once()
-    fake._master.focus_set.assert_called_once()
-    fake.grab_release.assert_called_once()
+    fake._master.focus_set.assert_not_called()
+    fake.grab_release.assert_not_called()
     # _close ran before after_idle was used to schedule the action.
     assert fake._mock_order == [
         "unbind",
         "unbind",
-        "grab_release",
-        "master_focus_set",
         "destroy",
     ]
     # The callback was NOT invoked synchronously; it's deferred.

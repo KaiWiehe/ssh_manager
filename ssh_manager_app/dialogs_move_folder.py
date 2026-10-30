@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 from typing import Optional
 
 from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent
 
 
-class MoveFolderDialog(tk.Toplevel):
+class MoveFolderDialog(AppWindow):
     """
     Minimaler modaler Dialog zum Verschieben einer Session in einen anderen Ordner.
     Nach Schließen: self.result = Ordner-String oder None (Abbrechen).
@@ -19,8 +21,6 @@ class MoveFolderDialog(tk.Toplevel):
         self.title("In Ordner verschieben")
         self.resizable(False, False)
         self.result: Optional[str] = None
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(existing_folders, current_folder)
         self._center_on_parent(parent)

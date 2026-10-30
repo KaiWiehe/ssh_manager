@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from tkinter import messagebox
+from .window_policy import single_pending
+
+from .window_policy import messagebox
 
 from .core import (
     TerminalLaunchError,
@@ -28,6 +30,7 @@ from .dialogs_user import UserDialog
 from .models import Session
 
 
+@single_pending
 def connect_sessions(app, sessions: list[Session]) -> None:
     """Öffnet mehrere ausgewählte Sessions im Terminal; feste Benutzernamen werden bevorzugt."""
     if not sessions:
@@ -84,6 +87,7 @@ def resolve_single_session_user(app, session: Session, title: str = "Benutzernam
 
 
 
+@single_pending
 def quick_connect_session(app, session: Session) -> None:
     """Öffnet eine einzelne Session direkt, etwa via Doppelklick oder Kontextmenü."""
     user = resolve_single_session_user(app, session)
@@ -106,6 +110,7 @@ def quick_connect_session(app, session: Session) -> None:
 
 
 
+@single_pending
 def deploy_ssh_key(app, sessions: list[Session]) -> None:
     """Öffnet den ssh-copy-id Dialog und startet den Key-Transfer im Terminal."""
     dialog = SshCopyIdDialog(app, target_count=len(sessions), quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
@@ -132,6 +137,7 @@ def deploy_ssh_key(app, sessions: list[Session]) -> None:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
+@single_pending
 def remove_ssh_key(app, sessions: list[Session]) -> None:
     """Öffnet den Remove-Key Dialog und entfernt den Key remote via SSH."""
     dialog = SshRemoveKeyDialog(app, target_count=len(sessions), quick_users=list(app.settings.quick_users), default_user=app.settings.default_user)
@@ -158,6 +164,7 @@ def remove_ssh_key(app, sessions: list[Session]) -> None:
         messagebox.showerror("Fehler", f"Fehler beim Starten:\n{exc}", parent=app)
 
 
+@single_pending
 def open_tunnel(app, session: Session | None = None) -> None:
     """Öffnet den Tunnel-Dialog und startet den SSH-Tunnel im Terminal."""
     dialog = SshTunnelDialog(
@@ -212,6 +219,7 @@ def resolve_users_for_sessions(app, sessions: list[Session], mode: str, *, share
     return resolved
 
 
+@single_pending
 def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = None, initial_spec: dict | None = None) -> None:
     """Führt einen Remote-Befehl auf einem oder mehreren Hosts aus."""
     runnable = [session for session in sessions if session.hostname]
@@ -401,6 +409,7 @@ def copy_ssh_command(app, session: Session) -> None:
     copy_ssh_commands(app, [session])
 
 
+@single_pending
 def open_via_jumphost(app, session: Session) -> None:
     """Öffnet eine einzelne Verbindung temporär über einen Jumphost."""
     dialog = JumpHostDialog(app, session, app._sessions, open_folders_getter=app._tree.get_open_folders)

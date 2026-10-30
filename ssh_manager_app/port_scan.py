@@ -9,7 +9,9 @@ import subprocess
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .ssh_utils import ssh_argv
 from .ui_components import fit_window_to_parent, install_context_help
@@ -105,12 +107,11 @@ def scan_address(address, cancel, report, *, ports=range(1, 65536), rate=50, tim
     return done, total, counts
 
 
-class FullPortScanDialog(tk.Toplevel):
+class FullPortScanDialog(AppWindow):
     def __init__(self, parent, sessions, user=""):
         super().__init__(parent)
         install_context_help(self, "diagnosis")
         self.title("Alle TCP-Ports prüfen – dauert sehr lange")
-        self.transient(parent)
         self.sessions, self.user = list(sessions), user
         self.cancel_event = threading.Event()
         self.events = queue.SimpleQueue()

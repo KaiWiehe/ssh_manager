@@ -4,7 +4,9 @@ from copy import deepcopy
 import re
 import shlex
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .ui_components import install_context_help, fit_window_to_parent
 
@@ -77,14 +79,12 @@ def prepare_parameter_spec(spec, values, *, redact=False):
     return updated
 
 
-class RunbookParametersDialog(tk.Toplevel):
+class RunbookParametersDialog(AppWindow):
     def __init__(self, parent, parameters):
         validate_definitions(parameters)
         super().__init__(parent)
         install_context_help(self, "parameters")
         self.title("Runbook-Eingaben")
-        self.transient(parent)
-        self.grab_set()
         self.result = None
         self.parameters = parameters
         self.variables = {}
@@ -142,13 +142,11 @@ class RunbookParametersDialog(tk.Toplevel):
         self.destroy()
 
 
-class ParameterDefinitionsDialog(tk.Toplevel):
+class ParameterDefinitionsDialog(AppWindow):
     def __init__(self, parent, parameters):
         super().__init__(parent)
         install_context_help(self, "parameters")
         self.title("Runbook-Parameter definieren")
-        self.transient(parent)
-        self.grab_set()
         self.result = None
         self.parameters = deepcopy(parameters)
         frame = ttk.Frame(self, padding=16)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import time
-from tkinter import messagebox
+from .window_policy import messagebox
 
 from .constants import _SSH_CONFIG_FILE
 from .core import _find_winscp

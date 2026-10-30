@@ -7,7 +7,9 @@ from pathlib import Path
 import os
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .ui_components import install_context_help, fit_window_to_parent
 
@@ -81,13 +83,12 @@ def reload_source(app, source):
     return True
 
 
-class SourceStatusDialog(tk.Toplevel):
+class SourceStatusDialog(AppWindow):
     def __init__(self, parent):
         super().__init__(parent)
         install_context_help(self, "sources")
         self.title("Quellenstatus")
         self.app = parent
-        self.transient(parent)
         frame = ttk.Frame(self, padding=14)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="Externe Quellen werden live gelesen. Eigene Verbindungen sind App-Daten. Eine Übernahme erzeugt eine Kopie; das Original bleibt unverändert.", wraplength=720).pack(anchor="w")

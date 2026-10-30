@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import tkinter as tk
+from .window_policy import AppWindow, single_pending, wait_for_window, owner_alive
 from dataclasses import replace
-from tkinter import messagebox, simpledialog, ttk
+from copy import deepcopy
+from tkinter import ttk
+from .window_policy import messagebox, simpledialog
 
 from .actions_app import get_all_folder_names, get_ssh_aliases
 from .actions_ui import rebuild_sessions
@@ -14,6 +17,32 @@ from .local_undo import local_undo, cleanup_session_metadata
 from .models import Session
 from .editor import open_in_vscode
 from .storage import save_app_sessions, save_notes, save_sessions_and_notes
+
+
+def _capture_targets(app, sessions):
+    keys = {session.key for session in sessions}
+    if not keys:
+        return ({}, {}, {}), keys
+    return deepcopy((
+        {session.key: session for session in app._app_sessions if session.key in keys},
+        {key: app.__dict__.get("_notes", {}).get(key) for key in keys},
+        {key: app.__dict__.get("_session_user_overrides", {}).get(key) for key in keys},
+    )), keys
+
+
+def _targets_unchanged(app, captured):
+    baseline, keys = captured
+    current = (
+        {session.key: session for session in app._app_sessions if session.key in keys},
+        {key: app.__dict__.get("_notes", {}).get(key) for key in keys},
+        {key: app.__dict__.get("_session_user_overrides", {}).get(key) for key in keys},
+    )
+    if not owner_alive(app):
+        return False
+    if baseline == current:
+        return True
+    messagebox.showwarning("Zwischenzeitlich geändert", "Die betroffenen Verbindungen oder Notizen wurden inzwischen geändert. Bitte den Dialog erneut öffnen; die neueren Änderungen bleiben erhalten.", parent=app)
+    return False
 
 
 def _confirm_folder_merge(app, target_path: list[str], source_paths: list[list[str]]) -> bool:
@@ -30,6 +59,7 @@ def _confirm_folder_merge(app, target_path: list[str], source_paths: list[list[s
     )
 
 
+@single_pending
 @local_undo("Verbindung anlegen")
 def add_session(app, folder_preset: str = "") -> None:
     """Öffnet den Dialog zum Anlegen einer neuen Session (App oder SSH-Alias)."""
@@ -40,7 +70,8 @@ def add_session(app, folder_preset: str = "") -> None:
         folder_preset=folder_preset,
         quick_users=list(app.settings.quick_users),
     )
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
     if dialog.result is None:
         return
     app._app_sessions.append(dialog.result)
@@ -52,12 +83,17 @@ def add_session(app, folder_preset: str = "") -> None:
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Verbindung bearbeiten")
 def edit_session(app, session: Session) -> None:
     """Öffnet den Dialog zum Bearbeiten einer App-Session."""
+    captured = _capture_targets(app, [session])
     dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, note=app._notes.get(session.key, ""), quick_users=list(app.settings.quick_users))
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
     if dialog.result is None:
+        return
+    if not _targets_unchanged(app, captured):
         return
     for i, existing in enumerate(app._app_sessions):
         if existing.key == session.key:
@@ -71,11 +107,13 @@ def edit_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Verbindung duplizieren")
 def duplicate_app_session(app, session: Session) -> None:
     """Dupliziert eine App-Session (öffnet Dialog mit vorausgefüllten Daten, neue UUID)."""
     dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, duplicate=True, quick_users=list(app.settings.quick_users))
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
     if dialog.result is None:
         return
     app._app_sessions.append(dialog.result)
@@ -83,6 +121,7 @@ def duplicate_app_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Verbindung übernehmen")
 def copy_external_session(app, session: Session) -> None:
     """Copy a host-based imported connection into the app, never its source."""
@@ -93,7 +132,8 @@ def copy_external_session(app, session: Session) -> None:
     dialog = SessionEditDialog(app, get_all_folder_names(app), session=session, duplicate=True,
                                note=app._notes.get(session.key, ""), quick_users=list(app.settings.quick_users))
     dialog.title("Als eigene Verbindung übernehmen")
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
     if dialog.result is None:
         return
     app._app_sessions.append(dialog.result)
@@ -103,15 +143,20 @@ def copy_external_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Verbindung verschieben")
 def move_session(app, session: Session) -> None:
     """Verschiebt eine App- oder SSH-Alias-Session in einen anderen Ordner."""
+    captured = _capture_targets(app, [session])
     dialog = MoveFolderDialog(app, get_all_folder_names(app), session.folder_key)
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
     if dialog.result is None:
         return
     folder_path = [p for p in dialog.result.split("/") if p]
     if folder_path and not _confirm_folder_merge(app, folder_path, [session.folder_path]):
+        return
+    if not _targets_unchanged(app, captured):
         return
     for i, existing in enumerate(app._app_sessions):
         if existing.key == session.key:
@@ -121,17 +166,22 @@ def move_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Auswahl verschieben")
 def move_sessions(app, sessions: list[Session]) -> None:
     """Verschiebt mehrere App-/SSH-Alias-Sessions in denselben Ordner."""
+    captured = _capture_targets(app, sessions)
     if not sessions:
         return
     dialog = MoveFolderDialog(app, get_all_folder_names(app), sessions[0].folder_key)
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
     if dialog.result is None:
         return
     folder_path = [p for p in dialog.result.split("/") if p]
     if folder_path and not _confirm_folder_merge(app, folder_path, [session.folder_path for session in sessions]):
+        return
+    if not _targets_unchanged(app, captured):
         return
     keys = {session.key for session in sessions}
     for i, existing in enumerate(app._app_sessions):
@@ -141,14 +191,18 @@ def move_sessions(app, sessions: list[Session]) -> None:
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Verbindung löschen")
 def delete_session(app, session: Session) -> None:
     """Löscht eine App-Session nach Bestätigung."""
+    captured = _capture_targets(app, [session])
     if not messagebox.askyesno(
         "Verbindung löschen",
         f"Verbindung '{session.display_name}' wirklich löschen?",
         parent=app,
     ):
+        return
+    if not _targets_unchanged(app, captured):
         return
     app._app_sessions = [existing for existing in app._app_sessions if existing.key != session.key]
     if app.__dict__.get("_local_undo_enabled"):
@@ -159,14 +213,18 @@ def delete_session(app, session: Session) -> None:
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Ordner löschen")
 def delete_folder(app, sessions: list[Session], folder_key: str) -> None:
     """Löscht alle App-Sessions in einem Ordner nach Bestätigung."""
+    captured = _capture_targets(app, sessions)
     if not messagebox.askyesno(
         "Ordner löschen",
         f"Ordner '{folder_key}' und alle {len(sessions)} Verbindung(en) darin löschen?",
         parent=app,
     ):
+        return
+    if not _targets_unchanged(app, captured):
         return
     keys_to_delete = {session.key for session in sessions}
     app._app_sessions = [existing for existing in app._app_sessions if existing.key not in keys_to_delete]
@@ -178,10 +236,12 @@ def delete_folder(app, sessions: list[Session], folder_key: str) -> None:
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Ordner umbenennen")
 def rename_folder(app, folder_key: str) -> None:
     """Benennt einen Ordner um, indem folder_path aller enthaltenen Sessions angepasst wird."""
     parts = folder_key.split("/")
+    captured = _capture_targets(app, [session for session in app._app_sessions if session.folder_path[:len(parts)] == parts])
     depth = len(parts) - 1
     old_name = parts[depth]
     prefix = parts[:depth]
@@ -201,6 +261,8 @@ def rename_folder(app, folder_key: str) -> None:
     if not _confirm_folder_merge(app, prefix + [new_name], [parts]):
         return
 
+    if not _targets_unchanged(app, captured):
+        return
     for session in app._app_sessions:
         folder_path = session.folder_path
         if len(folder_path) > depth and folder_path[:depth] == prefix and folder_path[depth] == old_name:
@@ -210,6 +272,7 @@ def rename_folder(app, folder_key: str) -> None:
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Alias übernehmen")
 def duplicate_ssh_alias(app, session: Session) -> None:
     """Dupliziert einen SSH-Config-Alias in einen anderen Ordner."""
@@ -222,7 +285,8 @@ def duplicate_ssh_alias(app, session: Session) -> None:
         alias_preset=session.display_name,
         quick_users=list(app.settings.quick_users),
     )
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
     if dialog.result is None:
         return
     app._app_sessions.append(dialog.result)
@@ -256,23 +320,24 @@ def _set_session_username(app, session: Session, username: str) -> None:
             app._session_user_overrides.pop(session.key, None)
 
 
+@single_pending
 @local_undo("Benutzer setzen")
 def set_session_username(app, session: Session, username: str) -> None:
     _set_session_username(app, session, username.strip())
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Benutzer setzen")
 def set_sessions_username(app, sessions: list[Session]) -> None:
+    captured = _capture_targets(app, sessions)
     if not sessions:
         return
-    dialog = tk.Toplevel(app)
+    dialog = AppWindow(app)
     dialog.title("Benutzer setzen")
     from .ui_components import install_context_help
     install_context_help(dialog, "sources")
     dialog.resizable(False, False)
-    dialog.transient(app)
-    dialog.grab_set()
 
     frame = ttk.Frame(dialog, padding=16)
     frame.pack(fill="both", expand=True)
@@ -315,18 +380,23 @@ def set_sessions_username(app, sessions: list[Session]) -> None:
     ttk.Button(btn_frame, text="Abbrechen", command=on_cancel, width=10).pack(side="left", padx=4)
     dialog.bind("<Return>", lambda _e: on_ok())
     dialog.bind("<Escape>", lambda _e: on_cancel())
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
 
     user = result["user"]
     if user is None:
+        return
+    if not _targets_unchanged(app, captured):
         return
     for session in sessions:
         _set_session_username(app, session, user)
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("Benutzer entfernen")
 def clear_sessions_username(app, sessions: list[Session]) -> None:
+    captured = _capture_targets(app, sessions)
     if not sessions:
         return
     if not messagebox.askyesno(
@@ -335,21 +405,23 @@ def clear_sessions_username(app, sessions: list[Session]) -> None:
         parent=app,
     ):
         return
+    if not _targets_unchanged(app, captured):
+        return
     for session in sessions:
         _set_session_username(app, session, "")
     rebuild_sessions(app)
 
 
+@single_pending
 @local_undo("App-Anpassung bearbeiten")
 def edit_session_details(app, session: Session) -> None:
     """Bearbeitet festen Benutzer und Notiz für jede Session-Art."""
-    dialog = tk.Toplevel(app)
+    captured = _capture_targets(app, [session])
+    dialog = AppWindow(app)
     dialog.title("Verbindung bearbeiten")
     from .ui_components import install_context_help
     install_context_help(dialog, "sources")
     dialog.resizable(False, False)
-    dialog.transient(app)
-    dialog.grab_set()
 
     frame = ttk.Frame(dialog, padding=16)
     frame.pack(fill="both", expand=True)
@@ -381,6 +453,8 @@ def edit_session_details(app, session: Session) -> None:
         if username and not _USERNAME_RE.match(username):
             messagebox.showwarning("Ungültiger Benutzername", "Nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche erlaubt.", parent=dialog)
             return
+        if not _targets_unchanged(app, captured):
+            return
         _set_session_username(app, session, username)
         note_value = note_text.get("1.0", "end").strip()
         if note_value:
@@ -402,6 +476,7 @@ def edit_session_details(app, session: Session) -> None:
     ttk.Button(btn_frame, text="Abbrechen", command=on_cancel, width=10).pack(side="left", padx=4)
     dialog.bind("<Escape>", lambda _e: on_cancel())
     dialog.bind("<Control-Return>", lambda _e: on_ok())
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
     if result["saved"]:
         rebuild_sessions(app)

@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import tkinter as tk
+from .window_policy import AppWindow
 from tkinter import ttk
 
 
-class ToastNotification(tk.Toplevel):
+class ToastNotification(AppWindow):
     """Kleines unauffälliges Toast oben rechts."""
+
+    activate_on_open = False
 
     def __init__(self, parent: tk.Tk, message: str, duration_ms: int = 2200):
         super().__init__(parent)
         self.withdraw()
         self.overrideredirect(True)
-        self.attributes("-topmost", True)
 
         frame = ttk.Frame(self, padding=(12, 8), style="Toast.TFrame")
         frame.pack(fill="both", expand=True)

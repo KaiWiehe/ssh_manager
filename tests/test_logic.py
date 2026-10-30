@@ -816,7 +816,7 @@ def test_toast_notification_places_itself_and_schedules_destroy():
         winfo_width=lambda: 500,
     )
 
-    with patch("ssh_manager_app.dialogs_toast.tk.Toplevel.__init__", return_value=None), \
+    with patch("ssh_manager_app.dialogs_toast.AppWindow.__init__", return_value=None), \
          patch("ssh_manager_app.dialogs_toast.ttk.Frame") as frame_cls, \
          patch("ssh_manager_app.dialogs_toast.ttk.Label") as label_cls:
         frame = MagicMock()
@@ -828,7 +828,7 @@ def test_toast_notification_places_itself_and_schedules_destroy():
 
     toast.withdraw.assert_called_once_with()
     toast.overrideredirect.assert_called_once_with(True)
-    toast.attributes.assert_called_once_with("-topmost", True)
+    toast.attributes.assert_not_called()
     frame_cls.assert_called_once_with(toast, padding=(12, 8), style="Toast.TFrame")
     frame.pack.assert_called_once_with(fill="both", expand=True)
     label_cls.assert_called_once_with(frame, text="Saved", style="Toast.TLabel")
@@ -2182,7 +2182,7 @@ def test_edit_session_note_saves_note_and_refreshes_ui():
 
     app.wait_window.side_effect = fake_wait_window
 
-    with patch("ssh_manager_app.actions_notes.tk.Toplevel", return_value=dialog), \
+    with patch("ssh_manager_app.actions_notes.AppWindow", return_value=dialog), \
          patch("ssh_manager_app.actions_notes.ttk.Frame", return_value=MagicMock()), \
          patch("ssh_manager_app.actions_notes.ttk.Label", return_value=MagicMock()), \
          patch("ssh_manager_app.actions_notes.ttk.Button", side_effect=fake_button), \
@@ -2231,7 +2231,7 @@ def test_edit_session_note_cancel_keeps_existing_notes():
 
     app.wait_window.side_effect = fake_wait_window
 
-    with patch("ssh_manager_app.actions_notes.tk.Toplevel", return_value=dialog), \
+    with patch("ssh_manager_app.actions_notes.AppWindow", return_value=dialog), \
          patch("ssh_manager_app.actions_notes.ttk.Frame", return_value=MagicMock()), \
          patch("ssh_manager_app.actions_notes.ttk.Label", return_value=MagicMock()), \
          patch("ssh_manager_app.actions_notes.ttk.Button", side_effect=fake_button), \

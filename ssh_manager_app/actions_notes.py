@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from .window_policy import AppWindow, single_pending, wait_for_window
 from tkinter import ttk
 
 from .actions_ui import persist_ui_state
@@ -9,15 +10,16 @@ from .storage import save_notes
 from .local_undo import local_undo
 
 
+@single_pending
 @local_undo("Notiz bearbeiten")
 def edit_session_note(app, session) -> None:
-    dialog = tk.Toplevel(app)
+    from .actions_sessions import _capture_targets, _targets_unchanged
+    captured = _capture_targets(app, [session])
+    dialog = AppWindow(app)
     dialog.title("Notiz bearbeiten")
     from .ui_components import install_context_help
     install_context_help(dialog, "organize")
     dialog.resizable(False, False)
-    dialog.transient(app)
-    dialog.grab_set()
 
     frame = ttk.Frame(dialog, padding=16)
     frame.pack(fill="both", expand=True)
@@ -34,6 +36,8 @@ def edit_session_note(app, session) -> None:
     result = {"saved": False}
 
     def on_ok() -> None:
+        if not _targets_unchanged(app, captured):
+            return
         note = note_text.get("1.0", "end").strip()
         if note:
             app._notes[session.key] = note
@@ -65,7 +69,8 @@ def edit_session_note(app, session) -> None:
     dialog.geometry(f"+{x}+{y}")
     dialog.bind("<Escape>", lambda _e: on_cancel())
     dialog.bind("<Control-Return>", lambda _e: on_ok())
-    app.wait_window(dialog)
+    if not wait_for_window(app, dialog):
+        return
     if result["saved"]:
         app._tree.refresh(app._sessions)
         persist_ui_state(app)

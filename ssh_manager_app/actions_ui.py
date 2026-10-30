@@ -342,7 +342,7 @@ def rebuild_sessions(app, *, reload_winscp: bool = False) -> None:
     _migrate_filezilla_in_app(app)
     success = True
     if reload_winscp:
-        from tkinter import messagebox
+        from .window_policy import messagebox
         try:
             reader = app._registry_reader()
             app._winscp_sessions = reader.load_sessions()
@@ -358,7 +358,7 @@ def rebuild_sessions(app, *, reload_winscp: bool = False) -> None:
     from .storage import take_load_warnings
     warnings = take_load_warnings()
     if warnings:
-        from tkinter import messagebox
+        from .window_policy import messagebox
         messagebox.showwarning("Import unvollständig", "\n\n".join(warnings), parent=app)
         success = False
     app._sessions = build_visible_sessions(app)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import tkinter as tk
+from .window_policy import AppWindow
 from tkinter import ttk
 
 from .shortcuts import DEFAULT_ACTION_ORDER, default_shortcuts
@@ -290,7 +291,7 @@ Löst auf den bestätigten Hosts einen Neustart mit sudo aus. Laufende Verbindun
 Standardmäßig starten alle Hosts gleichzeitig. Optional die Anzahl gleichzeitiger Neustarts begrenzen: Ein weiterer Host beginnt erst nach Abschluss oder Timeout der Prüfung eines vorherigen Hosts. „Überwachung stoppen“ verhindert noch wartende Neustarts; bereits ausgelöste Neustarts laufen weiter. Bei mehr als fünf Hosts wird die Anzahl zusätzlich bestätigt. Das Formular ist scrollbar und die Aktionsbuttons bleiben sichtbar.
 
 Einzelhost, Auswahl und Ordner
-Die Beschriftung des Kontextmenüs nennt den Geltungsbereich. Im Menü Aktionen und in der Toolbar werden die angehakten Sessions übergeben. Vor dem Start die endgültige Hostliste im jeweiligen Dialog prüfen. Die Hilfe selbst führt keine Serveraktion aus."""),
+Die Beschriftung des Kontextmenüs nennt den Geltungsbereich. Im Menü Aktionen und in der Toolbar werden die angehakten Sessions übergeben. Vor dem Start die endgültige Hostliste im jeweiligen Dialog prüfen. Die Hilfe selbst führt keine Serveraktion aus. Neue Fenster dürfen einmal aktiv werden, sperren aber keine anderen App-Fenster. Angezeigten Text mit der Maus ziehen und mit Strg+C kopieren; Esc oder Klick außerhalb beendet die schreibgeschützte Auswahl. Bei verschiebbaren Spaltentiteln Strg beim Ziehen halten."""),
     HelpTopic("restart_templates", "Massen-Neustarts, Dienststatus und Vorlagen", """Vorlagen erstellen
 Server links anhaken und Aktionen → Massen-Neustarts öffnen. „Aus Auswahl erstellen“ übernimmt die Server in eine direkt editierbare Tabelle. Benutzer werden aus den aktuellen Verbindungen vorbelegt. Quick-Access-User und „Leere Benutzer füllen“ ergänzen nur fehlende Angaben. Benutzeränderungen gelten ausschließlich für die Vorlage, auch bei SSH-Aliasen.
 
@@ -315,7 +316,7 @@ Die nichtmodale Ergebnistabelle zeigt je Server und Dienst Soll, Ist, Ergebnis u
 Beide Fenster verwenden dieselbe Vorlagenbibliothek. Änderungen an anderen Vorlagen bleiben erhalten. Wurde die geöffnete Vorlage inzwischen in einem anderen Fenster verändert oder gelöscht, wird Speichern/Prüfen/Neustarten blockiert; unter „Vorlagen“ erneut öffnen. Lokale Änderungen vorher bei Bedarf separat übernehmen.
 
 Ergebnisse
-Fortschritts-/Ergebnisfenster und Vorlagenverwaltung sperren das Hauptfenster nicht. Während der Überwachung und nach Abschluss kannst du im SSH-Manager andere Verbindungen oder Fehler-Server auswählen und weitere Aktionen ausführen. Die Ergebnisfenster bleiben dabei offen. Nur konkrete Eingaben und Startbestätigungen sind vorübergehend modal.
+Fortschritts-/Ergebnisfenster und Vorlagenverwaltung sperren das Hauptfenster nicht. Während der Überwachung und nach Abschluss kannst du im SSH-Manager andere Verbindungen oder Fehler-Server auswählen und weitere Aktionen ausführen. Die Ergebnisfenster bleiben dabei offen. Auch Eingaben, Rückfragen und Startbestätigungen bleiben eigenständige Fenster: Das Hauptfenster bleibt bedienbar. Ein Start wartet weiterhin auf die ausdrückliche Bestätigung.
 „Alle Fehler kopieren“ enthält Fehler und Zeitüberschreitungen, „Alles kopieren“ die ganze Tabelle mit Überschriften. Strg/Umschalt markiert mehrere Zeilen; „Auswahl kopieren“ oder Strg+C kopiert sie. Einzelne Textstellen unten oder in der vollständigen Detailansicht markieren. Doppelklick öffnet die Details. Hover hebt die ganze Zeile hervor. Nicht gestartete und nicht weiter überwachte Server sind keine bestätigten Erfolge oder Fehler."""),
     HelpTopic("sshkeys", "SSH-Keys übertragen und entfernen", """SSH Key übertragen
 Überträgt einen öffentlichen SSH-Key auf die ausgewählten Hosts, damit spätere Anmeldungen mit dem passenden privaten Schlüssel möglich sind. Wähle die öffentliche Schlüsseldatei und den Benutzer im Dialog. Erfordert zunächst eine funktionierende Anmeldung und Schreibrechte auf die SSH-Autorisierung des Benutzers. Ein privater Schlüssel bleibt lokal.
@@ -495,7 +496,7 @@ def open_help(app, topic_id=None):
     return window
 
 
-class HelpWindow(tk.Toplevel):
+class HelpWindow(AppWindow):
     """Nonmodal help with a separate shortcut boundary."""
     _blocks_app_shortcuts = True
 
@@ -505,7 +506,6 @@ class HelpWindow(tk.Toplevel):
         self.title("SSH Manager – Hilfe")
         self.geometry("1000x720")
         self.minsize(680, 440)
-        self.transient(app)
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", self.close)
         self.bind("<FocusIn>", self._on_focus, add="+")
@@ -553,11 +553,7 @@ class HelpWindow(tk.Toplevel):
 
     def close(self, _event=None):
         self.app._help_window = None
-        previous = self.__dict__.get("_return_grab")
         self.destroy()
-        if previous is not None and previous.winfo_exists():
-            previous.grab_set()
-            previous.lift()
         return "break"
 
     def show_topic(self, topic_id):

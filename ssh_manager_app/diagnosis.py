@@ -9,7 +9,9 @@ import time
 import socket
 import subprocess
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .ssh_utils import ssh_argv, read_port
 from .ui_components import install_context_help, fit_window_to_parent
@@ -129,7 +131,7 @@ def diagnose_many(sessions, user, authenticate, ports=(), max_parallel=8):
         return list(pool.map(lambda session: (session, diagnose_session(session, session.username or user, authenticate=authenticate, **({"ports": ports} if ports else {}))), sessions))
 
 
-class ConnectionDiagnosisDialog(tk.Toplevel):
+class ConnectionDiagnosisDialog(AppWindow):
     def __init__(self, parent, sessions):
         super().__init__(parent)
         install_context_help(self, "diagnosis")
@@ -137,7 +139,6 @@ class ConnectionDiagnosisDialog(tk.Toplevel):
         self.sessions = list(sessions)
         self._app = parent
         self._ports_timer = None
-        self.transient(parent)
         frame = ttk.Frame(self, padding=14)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text=f"{len(sessions)} Ziel(e). DNS und TCP prüfen keine Anmeldung. Quellen werden nicht verändert.", wraplength=660).pack(anchor="w")

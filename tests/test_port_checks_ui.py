@@ -309,3 +309,35 @@ def test_render_target_groups_and_themes(app, monkeypatch, theme):
         window.update()
         ImageGrab.grab(window=window.winfo_id()).save(Path(directory) / f"port-check-{theme}.png")
     window.destroy()
+
+
+@pytest.mark.parametrize("action", ["save_template", "delete_template"])
+@pytest.mark.parametrize("concurrent", ["other", "same", "editor"])
+def test_template_questions_revalidate_after_nonmodal_answer(app, monkeypatch, action, concurrent):
+    window = ui.open_port_checks(app)
+    set_targets(window)
+    window.name.set("Original")
+    window.save_template()
+    errors = []
+    monkeypatch.setattr(ui.messagebox, "showerror", lambda *a, **kw: errors.append(a))
+    def concurrent_change(*args, **kwargs):
+        library = app._initial_toolbar_search_texts[pc.STATE_KEY]
+        if concurrent == "other":
+            library["items"].append({"name": "Added elsewhere", "targets": [["other.invalid", 22]]})
+        elif concurrent == "same":
+            library["items"][0]["targets"][0][1] = 9999
+        else:
+            window.name.set("Different selection")
+        return True
+    monkeypatch.setattr(ui.messagebox, "askyesno", concurrent_change)
+    getattr(window, action)()
+    library = app._initial_toolbar_search_texts[pc.STATE_KEY]["items"]
+    if concurrent == "other":
+        assert not errors
+        assert any(i["name"] == "Added elsewhere" for i in library)
+        assert any(i["name"] == "Original" for i in library) == (action == "save_template")
+    else:
+        assert errors and len(library) == 1
+        if concurrent == "same":
+            assert library[0]["targets"][0][1] == 9999
+    window.destroy()

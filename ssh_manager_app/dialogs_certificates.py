@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import tkinter as tk
+from .window_policy import AppWindow
 import posixpath
 import subprocess
 from .workers import run_worker
 from pathlib import Path
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from . import file_picker as filedialog
+from tkinter import scrolledtext, ttk
+from .window_policy import messagebox
 
 from .ssh_utils import connection_value, ssh_argv
 from .certificate_paths import certificate_paths, confirm_broad_certificate_paths
@@ -66,7 +69,7 @@ def _sort_remote_entries(entries: list[tuple[str, str]]) -> list[tuple[str, str]
     return sorted(entries, key=lambda entry: (0 if entry[0] == "d" else 1, entry[1].casefold()))
 
 
-class RemoteFolderBrowserDialog(tk.Toplevel):
+class RemoteFolderBrowserDialog(AppWindow):
     """Browse direct remote subdirectories on one selected reference host."""
 
     def __init__(self, parent: tk.Toplevel, session_users: list[tuple[Session, str]], initial_path: str, sudo_password: str):
@@ -85,8 +88,6 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self._load_generation = 0
         self._loading = False
 
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build()
         self._center_on_parent(parent)
@@ -229,7 +230,7 @@ class RemoteFolderBrowserDialog(tk.Toplevel):
         self.geometry(f"+{x}+{y}")
 
 
-class CertificateDeployDialog(tk.Toplevel):
+class CertificateDeployDialog(AppWindow):
     """Collects one certificate deployment without persisting sensitive data."""
 
     def __init__(self, parent: tk.Tk, target_count: int, reference_sessions: list[tuple[Session, str]] | None = None, favorites: list[dict] | None = None, simple: bool = False):
@@ -250,8 +251,6 @@ class CertificateDeployDialog(tk.Toplevel):
         self._sudo_password_var = tk.StringVar()
         self._show_password_var = tk.BooleanVar(value=False)
 
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(target_count)
         self._center_on_parent(parent)
@@ -369,6 +368,8 @@ class CertificateDeployDialog(tk.Toplevel):
                 self._refresh_files()
             return
         paths = filedialog.askopenfilenames(parent=self, title="Dateien auswählen")
+        if not self.winfo_exists():
+            return
         for path in paths:
             if path and path not in self._files:
                 self._files.append(path)
@@ -393,7 +394,6 @@ class CertificateDeployDialog(tk.Toplevel):
             return
         dialog = CertificatePermissionsDialog(self, self._reference_sessions, self._files, self._quick_users, self._default_owner, self._permissions)
         self.wait_window(dialog)
-        self.grab_set()
         if dialog.result is not None:
             self._permissions = dialog.result
             owners = set(self._permissions["owners"].values())

@@ -17,6 +17,7 @@ Design split:
 from __future__ import annotations
 
 import tkinter as tk
+from .window_policy import AppWindow
 from dataclasses import dataclass, field
 from tkinter import ttk
 from typing import Callable, Iterable, Sequence
@@ -226,7 +227,7 @@ class _PaletteTooltip:
 # ---------------------------------------------------------------------------
 
 
-class CommandPaletteDialog(tk.Toplevel):
+class CommandPaletteDialog(AppWindow):
     """Popup window that shows sessions and actions in a quick-open list."""
 
     PLACEHOLDER = "Tippen um zu suchen \u00b7 '>' f\u00fcr Befehle \u00b7 Enter zum Ausf\u00fchren \u00b7 Esc zum Schlie\u00dfen"
@@ -267,19 +268,10 @@ class CommandPaletteDialog(tk.Toplevel):
 
         self.withdraw()
         self.overrideredirect(True)
-        self.transient(master)
-        try:
-            self.attributes("-topmost", True)
-        except tk.TclError:
-            pass
 
         self._build()
         self._position()
         self.deiconify()
-        try:
-            self.grab_set()
-        except tk.TclError:
-            pass
         self._entry.focus_set()
         self._render(self._current_query())
 
@@ -498,16 +490,6 @@ class CommandPaletteDialog(tk.Toplevel):
             except Exception:
                 # Settings persistence must never break the close path.
                 pass
-        try:
-            self.grab_release()
-        except tk.TclError:
-            pass
-        # Hand focus back to the main window before destroying ourselves so
-        # the OS/Tk doesn't get confused about where keyboard input should go.
-        try:
-            self._master.focus_set()
-        except tk.TclError:
-            pass
         try:
             self.destroy()
         except tk.TclError:

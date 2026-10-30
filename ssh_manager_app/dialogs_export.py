@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from .window_policy import AppWindow
 from tkinter import ttk
 
 from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent
@@ -16,7 +17,7 @@ EXPORT_COLUMNS = (
 )
 
 
-class ExportColumnsDialog(tk.Toplevel):
+class ExportColumnsDialog(AppWindow):
     """Modal selection dialog for the columns of a connection export."""
 
     def __init__(self, parent: tk.Tk, export_label: str, scope_counts: dict[str, int] | None = None):
@@ -34,8 +35,6 @@ class ExportColumnsDialog(tk.Toplevel):
             key: tk.BooleanVar(value=key in {"display_name", "hostname"})
             for key, _label in EXPORT_COLUMNS
         }
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(export_label)
         self._center_on_parent(parent)

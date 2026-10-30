@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from .window_policy import AppWindow
+from tkinter import scrolledtext, ttk
+from .window_policy import messagebox
 
 from .secret_scripts import clear_password_fields
 from .models import Session
 from .ui_components import install_context_help, build_dialog_header, fit_window_to_parent
 
 
-class ServerRestartDialog(tk.Toplevel):
+class ServerRestartDialog(AppWindow):
     """Collects the shared options for a distributed server restart."""
 
     def __init__(self, parent: tk.Tk, session_users: list[tuple[Session, str]]):
@@ -26,8 +28,6 @@ class ServerRestartDialog(tk.Toplevel):
         self._limit_var = tk.BooleanVar(value=False)
         self._parallel_var = tk.StringVar(value="8")
         self._target_count = len(session_users)
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self._build(session_users)
         self._center_on_parent(parent)
@@ -183,7 +183,7 @@ class ServerRestartDialog(tk.Toplevel):
         fit_window_to_parent(self, parent, 720, 570, min_width=580, min_height=440)
 
 
-class ServerRestartProgressDialog(tk.Toplevel):
+class ServerRestartProgressDialog(AppWindow):
     """Displays live status for all parallel restart workers."""
 
     TERMINAL_STATES = {"online", "error", "timeout", "stopped", "not_started"}

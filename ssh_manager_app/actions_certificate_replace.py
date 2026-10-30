@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .window_policy import single_pending
+
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from .workers import run_worker
@@ -9,7 +11,7 @@ import tempfile
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from tkinter import messagebox
+from .window_policy import messagebox
 
 from .actions_remote import resolve_users_for_sessions
 from .actions_ui import persist_ui_state
@@ -153,6 +155,7 @@ def _scan_host(session: Session, user: str, roots: list[str], names: list[str], 
     return {"matches": list(dict.fromkeys(matches)), "symlinks": list(dict.fromkeys(symlinks)), "errors": [], "warnings": warnings}
 
 
+@single_pending
 def replace_certificates(app, sessions: list[Session]) -> None:
     runnable = [session for session in sessions if session.hostname]
     if not runnable:

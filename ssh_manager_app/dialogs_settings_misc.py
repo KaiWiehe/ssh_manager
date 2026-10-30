@@ -5,8 +5,11 @@ from copy import deepcopy
 from dataclasses import replace
 import subprocess
 import tkinter as tk
+from .window_policy import AppWindow
 from pathlib import Path
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from . import file_picker as filedialog
+from tkinter import scrolledtext, ttk
+from .window_policy import messagebox
 
 from . import AppSettings, AppearanceSettings, ImportSettings, SourceVisibilitySettings, ToolbarSettings, WindowsTerminalSettings, WinSCPSettings, settings_to_dict
 from .ssh_utils import connection_value
@@ -16,7 +19,7 @@ from .storage import load_settings_from_path, atomic_write_text
 from .workers import run_worker
 
 
-class SshConfigInspectDialog(tk.Toplevel):
+class SshConfigInspectDialog(AppWindow):
     """
     Modaler Dialog der die effektive SSH-Konfiguration eines Alias anzeigt (ssh -G <alias>).
     """
@@ -27,8 +30,6 @@ class SshConfigInspectDialog(tk.Toplevel):
         self.title(f"SSH-Konfiguration: {alias}")
         self.resizable(True, True)
         self.geometry("600x450")
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build(alias)
         self._center_on_parent(parent)

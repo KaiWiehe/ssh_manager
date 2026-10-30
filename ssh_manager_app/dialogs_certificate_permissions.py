@@ -1,14 +1,16 @@
 """Explicit ownership and access policy for newly deployed certificate files."""
 from pathlib import Path
 import tkinter as tk
-from tkinter import messagebox, ttk
+from .window_policy import AppWindow
+from tkinter import ttk
+from .window_policy import messagebox
 
 from .dialogs_base import _USERNAME_RE, _build_quickselect_buttons
 from .certificate_permissions import CERTIFICATE_MODES
 from .ui_components import build_dialog_actions, build_dialog_header, fit_window_to_parent
 
 
-class CertificatePermissionsDialog(tk.Toplevel):
+class CertificatePermissionsDialog(AppWindow):
     def __init__(self, parent, session_users, files, quick_users, default_user, previous=None):
         super().__init__(parent)
         self.title("Dateibesitzer und Rechte")
@@ -71,8 +73,6 @@ class CertificatePermissionsDialog(tk.Toplevel):
         ttk.Label(root, text="Ohne Haken behalten vorhandene Dateien ihre Besitzer und Rechte. Neue Dateien erhalten die gewählte Regel.",
                   wraplength=650, style="Muted.TLabel").grid(row=7, column=0, sticky="w", pady=(4, 0))
         build_dialog_actions(root, row=8, primary_text="Übernehmen", primary_command=self._ok, cancel_command=self._cancel)
-        self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self._cancel)
         self.bind("<Escape>", lambda _: self._cancel())
         self._toggle()

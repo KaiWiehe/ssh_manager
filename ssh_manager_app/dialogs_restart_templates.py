@@ -4,7 +4,9 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 import tkinter as tk
-from tkinter import ttk, messagebox
+from .window_policy import AppWindow, single_pending
+from tkinter import ttk
+from .window_policy import messagebox
 import uuid
 
 from .restart_templates import (all_connections, new_template, resolve_targets, service_check,
@@ -15,14 +17,12 @@ from .restart_passwords import seal, unseal, passwords_for_run
 
 
 def modal(window, parent, title, width=820, height=520, *, blocking=True):
+    """Legacy layout helper; every window is now independently usable."""
     window.title(title)
-    if blocking:
-        window.transient(parent)
-        window.grab_set()
     fit_window_to_parent(window, parent, width, height)
 
 
-class SaveTemplateChoice(tk.Toplevel):
+class SaveTemplateChoice(AppWindow):
     def __init__(self, parent, name):
         super().__init__(parent)
         self.result = None
@@ -43,7 +43,7 @@ class SaveTemplateChoice(tk.Toplevel):
         self.destroy()
 
 
-class ConnectionPicker(tk.Toplevel):
+class ConnectionPicker(AppWindow):
     def __init__(self, parent, sessions, multiple=False):
         super().__init__(parent)
         self.sessions = list(sessions)
@@ -72,7 +72,7 @@ class ConnectionPicker(tk.Toplevel):
             self.destroy()
 
 
-class ServicePicker(tk.Toplevel):
+class ServicePicker(AppWindow):
     def __init__(self, parent, session, user, on_accept):
         super().__init__(parent)
         self.on_accept = on_accept
@@ -167,7 +167,7 @@ class ServiceChecks(ttk.Frame):
         return [service_check(unit.get(), "active" if want.get() == "aktiv" else "inactive") for _, unit, want in self.fields]
 
 
-class RestartPreview(tk.Toplevel):
+class RestartPreview(AppWindow):
     def __init__(self, parent, template, targets):
         super().__init__(parent)
         self.result = None
@@ -214,7 +214,7 @@ class RestartPreview(tk.Toplevel):
         self.destroy()
 
 
-class RestartTemplatesDialog(tk.Toplevel):
+class RestartTemplatesDialog(AppWindow):
     def __init__(self, app, selection, *, status_only=False):
         super().__init__(app)
         self.status_only = status_only
@@ -578,6 +578,7 @@ class RestartTemplatesDialog(tk.Toplevel):
                 raise ValueError("Parallelität und Wartezeiten müssen ganze Zahlen sein.") from error
         return item
 
+    @single_pending
     def check_status(self):
         if not self.save():
             return
@@ -609,6 +610,7 @@ class RestartTemplatesDialog(tk.Toplevel):
         self.wait_window(picker)
         return picker.result
 
+    @single_pending
     def add_targets(self):
         selected = self.pick(multiple=True)
         if selected:
@@ -617,6 +619,7 @@ class RestartTemplatesDialog(tk.Toplevel):
                 self.template["targets"].extend(t for t in new_template(selected)["targets"] if t["key"] not in known)
             self.mutate(add)
 
+    @single_pending
     def browse(self, index):
         target = self.template["targets"][index]
         user, checks = self.rows[index]
@@ -625,7 +628,11 @@ class RestartTemplatesDialog(tk.Toplevel):
             messagebox.showwarning("Servicebrowser", "Zuerst eindeutige aktuelle Verbindung und Benutzer festlegen.", parent=self)
             return
         session = matches[0]
+        requested_user = user.get().strip()
         def apply(names):
+            if not checks.winfo_exists() or user.get().strip() != requested_user:
+                messagebox.showwarning("Dienstauswahl verworfen", "Vorlage, Server oder Benutzer wurde während der Abfrage geändert. Bitte Dienste erneut auswählen.", parent=self)
+                return
             existing = {unit.get() for _, unit, _ in checks.fields}
             for name in names:
                 if name not in existing:
@@ -654,14 +661,17 @@ class RestartTemplatesDialog(tk.Toplevel):
     def current_library(self):
         return validate_library(deepcopy(self.app._initial_toolbar_search_texts.get("restart_templates", {"schema": 1, "items": []})))
 
+    @single_pending
     def save(self):
         try:
+            baseline = deepcopy(self.original)
             library = self.current_library()
             if self.original is not None:
                 current = next((i for i in library["items"] if i["id"] == self.original["id"]), None)
                 if current != self.original:
                     raise ValueError("Vorlage wurde in einem anderen Fenster geändert oder gelöscht. Bitte unter Vorlagen erneut öffnen; lokale Änderungen zuvor bei Bedarf separat übernehmen.")
             item = validate_template(self.collect())
+            editor_item = deepcopy(item)
             if item == self.original:
                 return True
             if self.original is not None:
@@ -672,6 +682,17 @@ class RestartTemplatesDialog(tk.Toplevel):
                 mode, name = choice.result
                 if mode == "new":
                     item["id"], item["name"] = uuid.uuid4().hex, name
+            # The save-choice window does not block any other manager. Merge
+            # against the current library only after that question has closed.
+            if not self.winfo_exists():
+                return False
+            if self.original != baseline or validate_template(self.collect()) != editor_item:
+                raise ValueError("Der Editor wurde während der Speicherauswahl geändert. Bitte die aktuelle Vorlage erneut speichern.")
+            library = self.current_library()
+            if self.original is not None:
+                current = next((i for i in library["items"] if i["id"] == self.original["id"]), None)
+                if current != self.original:
+                    raise ValueError("Vorlage wurde in einem anderen Fenster geändert oder gelöscht. Bitte unter Vorlagen erneut öffnen.")
             library["items"] = [i for i in library["items"] if i["id"] != item["id"]] + [item]
             self.persist(library)
             self.template = deepcopy(next(i for i in self.library["items"] if i["id"] == item["id"]))
@@ -683,12 +704,21 @@ class RestartTemplatesDialog(tk.Toplevel):
             messagebox.showerror("Vorlage nicht gespeichert", str(error), parent=self)
             return False
 
+    @single_pending
     def delete_template(self):
         selected = self.list.selection()
-        if not selected or not messagebox.askyesno("Vorlage löschen", "Diese Neustart-Vorlage wirklich löschen?", parent=self):
+        if not selected:
             return
         try:
+            baseline = deepcopy(next((i for i in self.current_library()["items"] if i["id"] == selected[0]), None))
+            if baseline is None or not messagebox.askyesno("Vorlage löschen", "Diese Neustart-Vorlage wirklich löschen?", parent=self):
+                return
+            if not self.winfo_exists():
+                return
             library = self.current_library()
+            current = next((i for i in library["items"] if i["id"] == selected[0]), None)
+            if self.list.selection() != selected or current != baseline:
+                raise ValueError("Auswahl oder Vorlage wurde während der Rückfrage geändert. Bitte erneut öffnen.")
             library["items"] = [i for i in library["items"] if i["id"] != selected[0]]
             self.persist(library)
             if self.template and self.template["id"] == selected[0]:
@@ -699,6 +729,7 @@ class RestartTemplatesDialog(tk.Toplevel):
         except (ValueError, OSError) as error:
             messagebox.showerror("Löschen fehlgeschlagen", str(error), parent=self)
 
+    @single_pending
     def preview(self):
         if not self.save():
             return
