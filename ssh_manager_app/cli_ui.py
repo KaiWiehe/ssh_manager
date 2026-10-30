@@ -15,6 +15,7 @@ from prompt_toolkit.widgets import (Button, CheckboxList, Dialog, Frame, Label,
 
 from .cli_search import SearchFilters, entry_details, safe_text, tree_rows
 from .session_catalog import SOURCE_LABELS
+from .ssh_utils import connection_value
 from .version import APP_VERSION
 
 
@@ -53,18 +54,41 @@ class SessionPicker:
                      Button("Abbrechen", handler=self.close_filters)],
             width=Dimension(preferred=110), with_background=True,
         )
+        # One-off user for the next connection; never written back to any source.
+        self.user_open = False
+        self.user_entry = None
+        self.user_index = -1
+        self.user_message = ""
+        self.chosen_user = None
+        self.quick_users = list(catalog.settings.quick_users)
+        self.user_input = TextArea(multiline=False, prompt="Benutzer: ", height=1,
+                                   accept_handler=lambda _: self.accept_user() or True)
+        self.user_input.buffer.on_text_changed += lambda _: self.user_text_changed()
+        self.user_dialog = Dialog(
+            title="Verbinden als Benutzer (nur diese Verbindung)",
+            body=HSplit([Window(FormattedTextControl(self.user_info), height=1),
+                         self.user_input,
+                         Frame(Window(FormattedTextControl(self.quick_user_text,
+                                                           get_cursor_position=lambda: Point(0, max(0, self.user_index))),
+                                      height=Dimension(min=1, max=8)),
+                               title="Quick-Users (↑/↓ übernehmen)"),
+                         Window(FormattedTextControl(lambda: self.user_message), height=1)]),
+            buttons=[Button("Verbinden", handler=self.accept_user),
+                     Button("Abbrechen", handler=self.close_user_dialog)],
+            width=Dimension(preferred=70), with_background=True,
+        )
         body = HSplit([
             Window(FormattedTextControl(f"SSH Manager CLI {APP_VERSION}"), height=1, style="class:title"),
             self.search,
             Window(FormattedTextControl(self.filter_text), height=1),
             DynamicContainer(self.body_layout),
             Window(FormattedTextControl(self.source_text), height=Dimension(min=1, max=3)),
-            Window(FormattedTextControl("Enter: verbinden/Ordner | ↑↓: Auswahl | Tab: Bereich | F2: Filter | F3: Reset | Esc: Ende"), height=2),
+            Window(FormattedTextControl("Enter: verbinden/Ordner | F4: anderer Benutzer | ↑↓: Auswahl | Tab: Bereich | F2: Filter | F3: Reset | Esc: Ende"), height=2),
         ])
         container = FloatContainer(body, floats=[Float(
             ConditionalContainer(self.filter_dialog, filter=Condition(lambda: self.filter_open)),
             left=1, right=1, top=2, bottom=2,
-        )])
+        ), Float(ConditionalContainer(self.user_dialog, filter=Condition(lambda: self.user_open)))])
         kb = self.key_bindings()
         self.app = Application(layout=Layout(container, focused_element=self.search),
                                key_bindings=kb, full_screen=True, mouse_support=False,
@@ -147,15 +171,71 @@ class SessionPicker:
         self.close_filters()
         self.refresh()
 
-    def activate(self):
+    def selected_row(self):
         size = self.app.output.get_size()
         if not self.rows or size.rows < 14 or size.columns < 45:
+            return None
+        return self.rows[self.index]
+
+    def activate(self):
+        row = self.selected_row()
+        if row is None:
             return
-        row = self.rows[self.index]
         if row.entry:
-            self.app.exit(result=row.entry)
+            if row.entry.session.is_ssh_config_session or row.entry.user:
+                self.app.exit(result=row.entry)
+            else:
+                self.open_user_dialog(row.entry)
         else:
             self.toggle_folder(row.path)
+
+    def open_user_dialog(self, entry):
+        self.user_entry = entry
+        self.user_input.text = ""
+        self.user_index = -1
+        self.user_message = ""
+        self.user_return_focus = self.app.layout.current_window
+        self.user_open = True
+        self.app.layout.focus(self.user_input)
+
+    def close_user_dialog(self):
+        self.user_open = False
+        self.user_entry = None
+        self.app.layout.focus(self.user_return_focus)
+
+    def user_text_changed(self):
+        self.user_message = ""
+        if not (0 <= self.user_index < len(self.quick_users)
+                and self.quick_users[self.user_index] == self.user_input.text):
+            self.user_index = -1
+
+    def select_quick_user(self, step):
+        if not self.quick_users:
+            return
+        self.user_index = min(len(self.quick_users) - 1, max(0, self.user_index + step))
+        self.user_input.text = self.quick_users[self.user_index]
+        self.user_input.buffer.cursor_position = len(self.user_input.text)
+
+    def accept_user(self):
+        try:
+            self.chosen_user = connection_value(self.user_input.text.strip(), "Benutzer")
+        except ValueError:
+            self.user_message = "Bitte einen gültigen Benutzernamen eingeben oder auswählen."
+            return
+        self.app.exit(result=self.user_entry)
+
+    def user_info(self):
+        entry = self.user_entry
+        if entry is None:
+            return ""
+        current = "aus SSH-Konfiguration" if entry.session.is_ssh_config_session else entry.user or "keiner"
+        return safe_text(f"{entry.session.display_name} – bisher: {current}")
+
+    def quick_user_text(self):
+        if not self.quick_users:
+            return [("", "Keine Quick-Users konfiguriert – Namen eintippen.")]
+        return [("class:selected" if i == self.user_index else "", safe_text(user) + "\n")
+                for i, user in enumerate(self.quick_users)]
 
     def toggle_folder(self, path):
         if self.search.text.strip():
@@ -168,7 +248,8 @@ class SessionPicker:
 
     def key_bindings(self):
         kb = KeyBindings()
-        main = Condition(lambda: not self.filter_open)
+        main = Condition(lambda: not self.filter_open and not self.user_open)
+        user_field = Condition(lambda: self.user_open) & has_focus(self.user_input)
         tree_or_search = main & (has_focus(self.tree_control) | has_focus(self.search))
 
         @kb.add("up", filter=tree_or_search)
@@ -223,9 +304,25 @@ class SessionPicker:
         def reset(event):
             self.reset_filters()
 
+        @kb.add("f4", filter=main)
+        def other_user(event):
+            row = self.selected_row()
+            if row is not None and row.entry:
+                self.open_user_dialog(row.entry)
+
+        @kb.add("up", filter=user_field)
+        def previous_user(event):
+            self.select_quick_user(-1)
+
+        @kb.add("down", filter=user_field)
+        def next_user(event):
+            self.select_quick_user(1)
+
         @kb.add("escape", eager=True)
         def escape(event):
-            if self.filter_open:
+            if self.user_open:
+                self.close_user_dialog()
+            elif self.filter_open:
                 self.close_filters()
             else:
                 event.app.exit(result=None)

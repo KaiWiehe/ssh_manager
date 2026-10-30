@@ -223,7 +223,8 @@ schmalen Fenstern darunter. Gleichnamige Datensätze behalten ihre eigene Identi
 | ↑ / ↓, Bild ↑ / ↓ in Details | Vollständige Notizen lesen/scrollen |
 | F2 | Quellen, Ordner einschließlich Unterordnern und Ansicht auswählen |
 | F3 | Alle Filter zurücksetzen |
-| Esc | Filterdialog schließen, sonst Suche beenden |
+| F4 | Markierte Verbindung mit einem anderen Benutzer starten (nur diese Verbindung) |
+| Esc | Benutzer-/Filterdialog schließen, sonst Suche beenden |
 | Strg+C | Suche abbrechen; während SSH erhält SSH die Eingabe |
 
 Im Filterdialog mit Tab zwischen Bereichen wechseln, mit Pfeilen wählen und mit
@@ -238,8 +239,11 @@ deren SSH-Agent-Umgebung. PowerShell und Git Bash können unterschiedliche Clien
 verwenden. SSH-Aliase behalten die Konfiguration des Clients, einschließlich
 ProxyJump/Include; im Detailbereich werden unaufgelöste Angaben entsprechend
 gekennzeichnet. Andere Verbindungen verwenden den festen Benutzer, dann den
-konfigurierten Standard. Fehlt dieser, erfolgt eine Terminalabfrage mit
-Quick-User-Vervollständigung per Tab; Esc/Strg+C brechen ab.
+konfigurierten Standard. Fehlt dieser, öffnet Enter dasselbe Benutzerfenster wie
+F4: Namen eintippen oder Quick-Users mit ↑/↓ übernehmen, Enter verbindet, Esc
+führt zurück in Baum bzw. Suchfeld. Der dort gewählte Benutzer gilt nur für diese Verbindung
+und wird nirgends gespeichert. Bei SSH-Aliasen wird er per `ssh -l` übergeben;
+Host, Port, Keys und ProxyJump bleiben aus der SSH-Konfiguration.
 
 Bei Git-/MSYS-SSH stellt ein konstanter Bash-`exec`-Aufruf den Vordergrundprozess
 für korrekte Terminaleingaben einschließlich Strg+C her. Der gewählte SSH-Client

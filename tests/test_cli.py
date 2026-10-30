@@ -146,22 +146,75 @@ def test_stale_gui_delete_keeps_restarted_existing_cli_entry_first(isolated_stor
     assert json.loads(storage._STATE_FILE.read_text())["recent_sessions"] == ["b", "a"]
 
 
-def test_user_prompt_escape_aborts(monkeypatch):
-    from ssh_manager_app.cli import prompt_user
-    from prompt_toolkit.shortcuts import PromptSession
+DOWN_TO_ENTRY = "\x1b[B\x1b[B"  # Firma -> Produktion -> web-01
+
+
+def run_picker(entries, *keystrokes, quick_users=("root", "ops")):
     from prompt_toolkit.input import create_pipe_input
     from prompt_toolkit.output import DummyOutput
-    import threading
-    with create_pipe_input() as pipe:
-        session = PromptSession(input=pipe, output=DummyOutput())
-        monkeypatch.setattr("prompt_toolkit.shortcuts.prompt", session.prompt)
-        timer = threading.Timer(0.1, lambda: pipe.send_text("\x1b"))
-        timer.start()
-        try:
-            with pytest.raises(KeyboardInterrupt):
-                prompt_user(["deploy"])
-        finally:
-            timer.join()
+    from ssh_manager_app.cli_ui import SessionPicker
+    settings = default_settings()
+    settings.quick_users = list(quick_users)
+    async def run():
+        with create_pipe_input() as pipe:
+            picker = SessionPicker(Catalog(entries, settings, {}, []), input=pipe, output=DummyOutput())
+            loop = asyncio.get_running_loop()
+            for i, keys in enumerate(keystrokes):
+                loop.call_later(0.1 * (i + 1), pipe.send_text, keys)
+            return picker, await asyncio.wait_for(picker.app.run_async(), timeout=5)
+    return asyncio.run(run())
+
+
+def test_f4_picks_quick_user_only_for_this_connection():
+    picker, result = run_picker([entry()], DOWN_TO_ENTRY + "\x1bOS", "\x1b[B\x1b[B", "\r")
+    assert result.identity == ("app", "one") and picker.chosen_user == "ops"
+    assert result.user == "deploy"  # catalog entry itself stays unchanged
+
+
+def test_f4_escape_returns_to_tree_and_enter_keeps_normal_user():
+    picker, result = run_picker([entry()], DOWN_TO_ENTRY + "\x1bOS", "\x1b", "\r")
+    assert result.identity == ("app", "one") and picker.chosen_user is None
+
+
+def test_missing_user_opens_dialog_and_rejects_invalid_names():
+    missing = replace(entry(), user="")
+    picker, result = run_picker([missing], DOWN_TO_ENTRY + "\r", "bad name\r", "\x15admin\r")
+    assert result.identity == ("app", "one") and picker.chosen_user == "admin"
+
+
+def test_f4_ignores_folders_and_escape_restores_tree_focus():
+    # F4 on "Firma" opens nothing; Tab moves to the tree, F4+Esc must return there.
+    picker, result = run_picker([entry()], "\x1bOS\t", "\x1b[B\x1b[B\x1bOS", "\x1b", "\r")
+    assert result.identity == ("app", "one") and picker.chosen_user is None
+    assert picker.app.layout.has_focus(picker.tree_control)
+
+
+def test_without_quick_users_free_input_works_and_options_are_rejected():
+    picker, result = run_picker([entry()], DOWN_TO_ENTRY + "\x1bOS", "\x1b[B-oProxyCommand=x\r",
+                                "\x15ops\r", quick_users=())
+    assert picker.chosen_user == "ops" and result.identity == ("app", "one")
+
+
+def test_alias_keeps_config_user_without_dialog():
+    picker, result = run_picker([entry(source="ssh_config")], DOWN_TO_ENTRY + "\r")
+    assert result.session.is_ssh_config_session and picker.chosen_user is None
+
+
+def test_alias_with_chosen_user_uses_login_option(monkeypatch):
+    from ssh_manager_app import cli_launch
+    child = Mock()
+    child.wait.return_value = 0
+    spawn = Mock(return_value=child)
+    monkeypatch.setattr(cli_launch.shutil, "which", lambda _: "ssh")
+    monkeypatch.setattr(cli_launch.subprocess, "Popen", spawn)
+    monkeypatch.setattr(storage, "record_recent_sessions", lambda _: [])
+    alias = replace(entry(source="ssh_config"), user="")
+    cli_launch.launch(alias, "admin")
+    assert spawn.call_args.args[0] == ["ssh", "-l", "admin", "--", "web-01"]
+    cli_launch.launch(alias)
+    assert spawn.call_args.args[0] == ["ssh", "--", "web-01"]
+    cli_launch.launch(entry(), "admin")
+    assert spawn.call_args.args[0] == ["ssh", "--", "admin@192.0.2.10"]
 
 
 def test_recent_processes_do_not_lose_entries(isolated_storage):

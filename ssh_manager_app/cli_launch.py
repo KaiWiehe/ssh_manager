@@ -6,6 +6,7 @@ import signal
 import subprocess
 import os
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 
 from .session_catalog import CatalogEntry
@@ -42,7 +43,11 @@ def launch(entry: CatalogEntry, user: str | None = None) -> tuple[int, str | Non
     client = shutil.which("ssh")
     if client is None:
         raise OSError("SSH-Client nicht im PATH gefunden. OpenSSH oder Git-SSH bereitstellen.")
-    args = ssh_argv(entry.session, entry.user if user is None else user)
+    session = entry.session
+    if user and session.is_ssh_config_session:
+        # `ssh -l` overrides only the alias' User; host, port and keys stay configured.
+        session = replace(session, ssh_user_override=user)
+    args = ssh_argv(session, entry.user if user is None else user)
     args[0] = client
     msys_bash = Path(client).with_name("bash.exe")
     if os.name == "nt" and Path(client).with_name("msys-2.0.dll").is_file() and msys_bash.is_file():

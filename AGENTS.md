@@ -346,6 +346,7 @@ Wenn weiter refactort wird, zuerst die Testbasis ausbauen und erst danach weiter
 - `sshm.py`, `cli.py`: separater Konsoleneinstieg ohne Tk-Fenster; `ssh_manager.py` bleibt GUI-Einstieg.
 - `session_catalog.py`: gemeinsamer effektiver Benutzer und CLI-Katalog über alle Quellen, unabhängig von GUI-Sichtbarkeit; Aliase dem SSH-Client überlassen.
 - `cli_search.py`, `cli_ui.py`: Fuzzy-Suche mit echtem Elternbaum, stabilen Datensatz-IDs und kontrollierter Darstellung von Terminal-Steuerzeichen. Favoriten/Recent filtern den Originalbaum. Details rechts, bei schmalen Fenstern darunter.
+- F4 bzw. Enter ohne Benutzer öffnet im Picker das Benutzerfenster (freie Eingabe + Quick-Users). Der Benutzer gilt nur für diese Verbindung und wird nie gespeichert; Aliase erhalten ihn per `ssh -l` (Kai 30.10.2026).
 - `cli_launch.py`: aktuelles Terminal und geerbte Handles/Agent-Umgebung erhalten, kein WT-/Herdr-Neustart. MSYS-SSH benötigt Bash mit konstantem `exec "$@"` und separaten Argumenten für korrekte Strg+C-Weitergabe. Konsolenmodi und Signalhandler restaurieren.
 - `storage.record_recent_sessions()` und `state_lock.py`: kurze prozessübergreifende Transaktionen; aktuelle Disk-Reihenfolge bei GUI-Delete/Undo erhalten. Auch späteres Speichern eines alten GUI-Snapshots darf neue CLI-Starts nicht verdrängen. Kein Dateilock während SSH.
 - `ssh_manager.spec` baut GUI und `sshm.exe`; beide Artefakte prüfen. `scripts/install_cli.ps1` bietet persönliche Installation/PATH mit Environment-Broadcast, keine Profiländerung.
