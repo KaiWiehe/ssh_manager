@@ -224,6 +224,7 @@ schmalen Fenstern darunter. Gleichnamige Datensätze behalten ihre eigene Identi
 | F2 | Quellen, Ordner einschließlich Unterordnern und Ansicht auswählen |
 | F3 | Alle Filter zurücksetzen |
 | F4 | Markierte Verbindung mit einem anderen Benutzer starten (nur diese Verbindung) |
+| F5 | Hostname der markierten Verbindung in die Zwischenablage kopieren (SSH-Aliase: `HostName` aus der Config, sonst der Alias) |
 | Esc | Benutzer-/Filterdialog schließen, sonst Suche beenden |
 | Strg+C | Suche abbrechen; während SSH erhält SSH die Eingabe |
 

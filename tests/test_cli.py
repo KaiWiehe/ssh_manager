@@ -344,3 +344,31 @@ def test_ui_escape_cancels_and_filters_preserve_original_path():
             asyncio.get_running_loop().call_later(0.1, pipe.send_text, "\x03")
             assert await asyncio.wait_for(picker.app.run_async(), timeout=5) is None
     asyncio.run(run())
+
+
+def test_f5_copies_hostname_without_connecting(monkeypatch):
+    from ssh_manager_app import cli_ui
+    copied = []
+    monkeypatch.setattr(cli_ui, "copy_to_clipboard", copied.append)
+    picker, result = run_picker([entry()], DOWN_TO_ENTRY + "\x1b[15~", "\x1b")
+    assert result is None and copied == ["192.0.2.10"]
+    assert picker.status_message == "Hostname kopiert: 192.0.2.10"
+
+
+def test_f5_on_folder_copies_nothing_and_message_clears_on_move(monkeypatch):
+    from ssh_manager_app import cli_ui
+    copied = []
+    monkeypatch.setattr(cli_ui, "copy_to_clipboard", copied.append)
+    picker, result = run_picker([entry()], "\x1b[15~", "\x1b")
+    assert copied == [] and "bitte eine Verbindung" in picker.status_message
+    picker.update_details()
+    assert picker.status_message == ""
+
+
+def test_f5_reports_clipboard_failure(monkeypatch):
+    from ssh_manager_app import cli_ui
+    def fail(text):
+        raise OSError("clip missing")
+    monkeypatch.setattr(cli_ui, "copy_to_clipboard", fail)
+    picker, result = run_picker([entry()], DOWN_TO_ENTRY + "\x1b[15~", "\x1b")
+    assert result is None and "nicht in die Zwischenablage" in picker.status_message

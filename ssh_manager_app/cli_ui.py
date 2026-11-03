@@ -1,6 +1,10 @@
 """Keyboard-first terminal picker: filtered original tree and detail inspector."""
 from __future__ import annotations
 
+import os
+import subprocess
+from pathlib import Path
+
 from prompt_toolkit.application import Application
 from prompt_toolkit.data_structures import Point
 from prompt_toolkit.filters import Condition, has_focus
@@ -17,6 +21,13 @@ from .cli_search import SearchFilters, entry_details, safe_text, tree_rows
 from .session_catalog import SOURCE_LABELS
 from .ssh_utils import connection_value
 from .version import APP_VERSION
+
+
+def copy_to_clipboard(text):
+    # clip.exe takes UTF-16LE without BOM (a BOM would be copied too); no newline added.
+    clip = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/clip.exe")
+    subprocess.run([clip], input=text.encode("utf-16-le"), check=True, timeout=5,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 class SessionPicker:
@@ -60,6 +71,7 @@ class SessionPicker:
         self.user_index = -1
         self.user_message = ""
         self.chosen_user = None
+        self.status_message = ""
         self.quick_users = list(catalog.settings.quick_users)
         self.user_input = TextArea(multiline=False, prompt="Benutzer: ", height=1,
                                    accept_handler=lambda _: self.accept_user() or True)
@@ -83,7 +95,7 @@ class SessionPicker:
             Window(FormattedTextControl(self.filter_text), height=1),
             DynamicContainer(self.body_layout),
             Window(FormattedTextControl(self.source_text), height=Dimension(min=1, max=3)),
-            Window(FormattedTextControl("Enter: verbinden/Ordner | F4: anderer Benutzer | ↑↓: Auswahl | Tab: Bereich | F2: Filter | F3: Reset | Esc: Ende"), height=2),
+            Window(FormattedTextControl(self.hint_text), height=2),
         ])
         container = FloatContainer(body, floats=[Float(
             ConditionalContainer(self.filter_dialog, filter=Condition(lambda: self.filter_open)),
@@ -111,6 +123,7 @@ class SessionPicker:
 
     def update_details(self):
         from prompt_toolkit.document import Document
+        self.status_message = ""
         row = self.rows[self.index] if self.rows else None
         if row is None:
             text = "Keine Treffer. Suche ändern oder mit F3 alle Filter zurücksetzen."
@@ -135,6 +148,10 @@ class SessionPicker:
             style = "class:selected" if i == self.index else "class:folder" if not row.entry else ""
             fragments.append((style, prefix + row.label + "\n"))
         return fragments
+
+    def hint_text(self):
+        keys = "Enter: verbinden/Ordner | F4: anderer Benutzer | F5: Hostname kopieren | Esc: Ende\n"
+        return keys + (safe_text(self.status_message) or "↑↓: Auswahl | Tab: Bereich | F2: Filter | F3: Reset")
 
     def filter_text(self):
         sources = ", ".join(SOURCE_LABELS[s] for s in SOURCE_LABELS if s in self.filters.sources) or "Keine"
@@ -188,6 +205,19 @@ class SessionPicker:
                 self.open_user_dialog(row.entry)
         else:
             self.toggle_folder(row.path)
+
+    def copy_hostname(self):
+        row = self.rows[self.index] if self.rows else None
+        if row is None or not row.entry:
+            self.status_message = "Hostname kopieren: bitte eine Verbindung auswählen."
+            return
+        host = row.entry.session.hostname
+        try:
+            copy_to_clipboard(host)
+        except (OSError, subprocess.SubprocessError):
+            self.status_message = "Hostname konnte nicht in die Zwischenablage kopiert werden."
+        else:
+            self.status_message = f"Hostname kopiert: {host}"
 
     def open_user_dialog(self, entry):
         self.user_entry = entry
@@ -309,6 +339,10 @@ class SessionPicker:
             row = self.selected_row()
             if row is not None and row.entry:
                 self.open_user_dialog(row.entry)
+
+        @kb.add("f5", filter=main)
+        def copy_host(event):
+            self.copy_hostname()
 
         @kb.add("up", filter=user_field)
         def previous_user(event):
