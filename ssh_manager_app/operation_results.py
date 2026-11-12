@@ -17,7 +17,7 @@ import uuid
 from .ui_components import install_context_help, fit_window_to_parent
 
 _paths = ContextVar("operation_result_paths", default={})
-LABELS = {"prepared": "vorbereitet", "started": "Terminal gestartet", "running": "läuft", "success": "erfolgreich", "failed": "fehlgeschlagen", "unknown": "Status unbekannt"}
+LABELS = {"prepared": "vorbereitet", "started": "Terminal gestartet", "running": "läuft", "success": "erfolgreich", "failed": "fehlgeschlagen", "unknown": "Status unbekannt", "not_started": "nicht gestartet"}
 
 
 @contextmanager
@@ -72,6 +72,9 @@ class OperationJob:
         # remote failure or offer automatic retries without an exit receipt.
         self.started_at = time.monotonic()
         self.states = {key: ("unknown", "Start nicht vollständig bestätigt") for key in self.states}
+
+    def not_started(self):
+        self.states = {key: ("not_started", "Lokaler Start wurde abgebrochen; keine Ausführung gestartet") for key in self.states}
 
     def poll(self):
         for key, path in self.paths.items():

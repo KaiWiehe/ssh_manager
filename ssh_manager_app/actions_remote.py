@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .terminal_ui import launch_built_command_ui, run_terminal_ui
+
 from .window_policy import single_pending
 
 from .window_policy import messagebox
@@ -55,20 +57,24 @@ def connect_sessions(app, sessions: list[Session]) -> None:
             for session in sessions:
                 _set_session_username(app, session, shared_user)
             rebuild_sessions(app)
-    try:
-        app._terminal_launcher.launch(
-            sessions,
-            shared_user,
-            app._tree.get_session_colors(),
-            terminal_settings=terminal_settings,
-        )
+    colors = app._tree.get_session_colors()
+
+    def success(_value):
         add_recent_sessions(app, sessions)
-    except TerminalLaunchError as exc:
-        if exc.started_sessions:
+
+    def failed(exc):
+        if isinstance(exc, TerminalLaunchError) and exc.started_sessions:
             add_recent_sessions(app, exc.started_sessions)
         messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
+
+    try:
+        run_terminal_ui(
+            app, lambda settings: app._terminal_launcher.launch(sessions, shared_user, colors, terminal_settings=settings),
+            terminal_settings, success, failed, resources=[s.key for s in sessions],
+        )
     except Exception as exc:
-        messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
+        failed(exc)
+
 
 
 
@@ -93,20 +99,24 @@ def quick_connect_session(app, session: Session) -> None:
     user = resolve_single_session_user(app, session)
     if user is None and not (session.is_ssh_config_session and session.username):
         return
-    try:
-        app._terminal_launcher.launch(
-            [session],
-            user or "",
-            app._tree.get_session_colors(),
-            terminal_settings=app.settings.windows_terminal,
-        )
+    colors = app._tree.get_session_colors()
+
+    def success(_value):
         add_recent_session(app, session)
-    except TerminalLaunchError as exc:
-        if exc.started_sessions:
-            add_recent_session(app, session)
+
+    def failed(exc):
+        if isinstance(exc, TerminalLaunchError) and exc.started_sessions:
+            add_recent_sessions(app, exc.started_sessions)
         messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
+
+    try:
+        run_terminal_ui(
+            app, lambda settings: app._terminal_launcher.launch([session], user or "", colors, terminal_settings=settings),
+            app.settings.windows_terminal, success, failed, resources=[session.key],
+        )
     except Exception as exc:
-        messagebox.showerror("Fehler beim Starten", str(exc), parent=app)
+        failed(exc)
+
 
 
 
@@ -124,13 +134,13 @@ def deploy_ssh_key(app, sessions: list[Session]) -> None:
         job = create_job(app, sessions, "SSH-Key verteilen", lambda failed: deploy_ssh_key(app, failed))
         with track_results(job):
             cmd = build_ssh_copy_id_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
-        TerminalLauncher.launch_built_command(
+        launch_built_command_ui(
+            app,
             cmd,
             [session.display_name for session in sessions],
             app.settings.windows_terminal,
+            job=job,
         )
-        if job:
-            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
         if job:
             job.uncertain_launch()
@@ -151,13 +161,13 @@ def remove_ssh_key(app, sessions: list[Session]) -> None:
         job = create_job(app, sessions, "SSH-Key entfernen", lambda failed: remove_ssh_key(app, failed))
         with track_results(job):
             cmd = build_ssh_remove_key_command(sessions, key_filename, user, terminal_settings=app.settings.windows_terminal)
-        TerminalLauncher.launch_built_command(
+        launch_built_command_ui(
+            app,
             cmd,
             [session.display_name for session in sessions],
             app.settings.windows_terminal,
+            job=job,
         )
-        if job:
-            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
         if job:
             job.uncertain_launch()
@@ -179,7 +189,8 @@ def open_tunnel(app, session: Session | None = None) -> None:
     jumphost, local_port, remote_host, remote_port, user = dialog.result
     try:
         cmd = build_ssh_tunnel_command(jumphost, local_port, remote_host, remote_port, user, terminal_settings=app.settings.windows_terminal)
-        TerminalLauncher.launch_built_command(
+        launch_built_command_ui(
+            app,
             cmd,
             [f"SSH-Tunnel {user}@{jumphost}"],
             app.settings.windows_terminal,
@@ -335,13 +346,13 @@ def run_remote_command(app, sessions: list[Session], *, run_mode: str | None = N
                 cmd = build_remote_script_wt_command([(session, user, runtime_spec) for session, user in session_users], **build_kwargs)
         sudo_password = ""
         dialog.result = None
-        TerminalLauncher.launch_built_command(
+        launch_built_command_ui(
+            app,
             cmd,
             [session.display_name for session, _user in session_users],
             app.settings.windows_terminal,
+            job=job,
         )
-        if job:
-            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
         if job:
             job.uncertain_launch()
@@ -449,7 +460,8 @@ def open_via_jumphost(app, session: Session) -> None:
             app._tree.get_session_colors().get(session.key),
             terminal_settings=app.settings.windows_terminal,
         )
-        TerminalLauncher.launch_built_command(
+        launch_built_command_ui(
+            app,
             cmd,
             [session.display_name],
             app.settings.windows_terminal,

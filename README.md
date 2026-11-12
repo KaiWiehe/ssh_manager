@@ -1,6 +1,6 @@
 # SSH-Manager
 
-Öffnet mehrere SSH-Verbindungen gleichzeitig als Tabs in Windows Terminal oder optional in einem persistenten Herdr-Workspace.
+Öffnet mehrere SSH-Verbindungen als Tabs in Windows Terminal, der Herdr App für Windows oder einem bisherigen Herdr-Workspace.
 
 Unterstützte Quellen:
 - **WinSCP** aus der Registry
@@ -449,7 +449,7 @@ Die Einstellungen liegen direkt im Hauptfenster und enthalten u. a.:
 - sichtbare Spalten (`Benutzer`, `Hostname`, `Port`, `Notizen`)
 - Reihenfolge der sichtbaren Spalten per Drag & Drop, Baumspalte `Name` bleibt immer links
 - Design/Theme, Akzentfarbe, Schriftarten und Tree-Zeilenhöhe
-- Ziel für normale SSH-Verbindungen: Windows Terminal (Standard) oder Herdr
+- Terminalziel: Windows Terminal (Standard), Herdr (bisherige Terminalversion) oder Herdr App (Windows)
 - Windows-Terminal-Optik (Profilname, Farben, Titel)
 - Export / Import der Einstellungen
 - Reset von Einstellungen sowie Ansichtszustand
@@ -610,6 +610,29 @@ Terminal. Beide verwenden das App-Icon und Daten unter `%APPDATA%\SSH-Manager\`.
 Die Paket-Metadaten einschließlich der Lizenzdateien werden in die jeweiligen
 portablen Anwendungen aufgenommen. Die Python-Variante bleibt weiterhin nutzbar.
 
+
+### Neue Herdr App für Windows
+
+Unter **Einstellungen → Terminal → SSH-Verbindungen öffnen in** steht zusätzlich
+**Herdr App (Windows)** zur Auswahl. Die Desktop-App nutzt `herdr-app` und
+`herdr-core`/`hc`; **Herdr (bisherige Terminalversion)** nutzt weiterhin `herdr.exe`.
+Installation: [Herdr herunterladen](https://herdr.dev/download/).
+
+Die Programme werden über PATH oder `%LOCALAPPDATA%\Programs\herdr-app` und
+`%LOCALAPPDATA%\Programs\herdr-core` gefunden. Git für Windows mit Git Bash bleibt
+erforderlich. Die Auswahl wird gespeichert. Die App öffnet je Verbindung einen
+benannten Tab im lokalen Bereich **SSH Manager** und wird bei Bedarf gestartet.
+Auch Tunnel, Runbooks, Key-, Datei-, Zertifikats- und Dienstaktionen verwenden
+dieses Ziel. `sshm` bleibt im aufrufenden Terminal. Profil, Tabfarben und
+Titeloptionen für Windows Terminal gelten weiterhin für Windows Terminal.
+Die neue App verwendet ihre eigene Darstellung und erhält persönliche Layouts.
+
+Die SSH-Manager-Oberfläche bleibt während des Starts bedienbar. Bei Fehlern vor
+jedem Tab-Start wird ein Wechsel zu Windows Terminal zur Bestätigung angeboten.
+Nach Teilstarts oder unklaren Antworten erfolgt kein automatischer Zweitstart:
+vor erneutem Ausführen die Tabs prüfen. Ein angelegter Tab bestätigt keinen
+SSH- oder Remote-Erfolg. Mehrere gleichnamige lokale Bereiche **SSH Manager**
+müssen zuerst eindeutig benannt werden.
 
 ### Fenster und Text kopieren
 

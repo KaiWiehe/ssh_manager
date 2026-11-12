@@ -341,6 +341,12 @@ Weiterhin als Konstanten relevant:
 Wenn weiter refactort wird, zuerst die Testbasis ausbauen und erst danach weitere App-Action-Methoden aus `SSHManagerApp` auslagern. Nicht sofort wieder `__init__` oder den kompletten UI-Startpfad groß umbauen.
 
 
+### Native Herdr App (ab 0.2.88)
+
+- `herdr_app.py`: zusätzlicher Modus `herdr_app` für `herdr-app.exe` und `hc.exe`; `herdr` bleibt die eigenständige TUI-Integration.
+- `terminal_ui.py`: App-IPC im Worker, Rückmeldung und bestätigter WT-Fallback auf Tk. Alle GUI-Terminalstarts einschließlich Dienstaktionen hierüber führen. Zielreservierungen bis Ende nichtmodaler Fallbackfragen halten, auch bei Moduswechsel beachten.
+- Explizite lokale Space-IDs, strukturierte argv und benannte Tabs verwenden. `space.new` erzeugt bereits den ersten Tab. Mutierende Aufrufe nach Timeout nie automatisch wiederholen; ein angelegter Tab ist kein Remote-Erfolg. Sicher ungestartete Skripte bereinigen, bei unklarem Start betroffene Skripte erhalten. `sshm` bleibt im geerbten Terminal.
+
 ### CLI (ab 0.2.79)
 
 - `sshm.py`, `cli.py`: separater Konsoleneinstieg ohne Tk-Fenster; `ssh_manager.py` bleibt GUI-Einstieg.

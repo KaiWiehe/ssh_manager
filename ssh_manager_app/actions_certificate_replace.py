@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .terminal_ui import launch_built_command_ui
+
 from .window_policy import single_pending
 
 import subprocess
@@ -266,13 +268,13 @@ def _show_replace_preview(app, progress, scanned, spec, source_summary) -> None:
         spec["sudo_password"] = ""
         for _session, _user, run_spec in deployments:
             run_spec["sudo_password"] = ""
-        TerminalLauncher.launch_built_command(
+        launch_built_command_ui(
+            app,
             command,
             [session.display_name for session, _user, _spec in deployments],
             app.settings.windows_terminal,
+            job=job,
         )
-        if job:
-            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
         if job:
             job.uncertain_launch()

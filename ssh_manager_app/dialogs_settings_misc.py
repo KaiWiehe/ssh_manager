@@ -137,7 +137,8 @@ class SettingsView(ttk.Frame):
     }
     SSH_OPEN_MODE_LABELS = {
         "windows_terminal": "Windows Terminal – Verbindungen als Tabs öffnen (Standard)",
-        "herdr": "Herdr – Verbindungen als Herdr-Tabs öffnen",
+        "herdr": "Herdr (bisherige Terminalversion)",
+        "herdr_app": "Herdr App (Windows)",
     }
     WINSCP_OPEN_MODE_LABELS = {
         "tabs": "Als Tabs im vorhandenen/gleichen Fenster",
@@ -574,7 +575,8 @@ class SettingsView(ttk.Frame):
         self._title_mode_combo.grid(row=3, column=1, sticky="ew", pady=6)
         ttk.Label(
             form,
-            text="Herdr verwendet den festen Workspace „SSH Manager“ und den Session-Namen als Tab-Titel.",
+            text="Herdr App: Bereich „SSH Manager“, je Verbindung ein benannter Tab.\n"
+                 "Bisheriges Herdr: Workspace „SSH Manager“. Profil, Farben und Titeloptionen gelten für Windows Terminal.",
             style="SettingsHint.TLabel",
         ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
         return frame

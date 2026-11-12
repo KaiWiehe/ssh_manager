@@ -387,7 +387,7 @@ def load_settings_from_path(path: Path, *, require_settings: bool = False) -> Ap
     if winscp_open_mode not in {"tabs", "windows"}:
         winscp_open_mode = defaults.winscp.open_mode
     ssh_open_mode = str(wt_raw.get("ssh_open_mode", defaults.windows_terminal.ssh_open_mode))
-    if ssh_open_mode not in {"windows_terminal", "herdr"}:
+    if ssh_open_mode not in {"windows_terminal", "herdr", "herdr_app"}:
         ssh_open_mode = defaults.windows_terminal.ssh_open_mode
 
     theme = str(appearance_raw.get("theme", defaults.appearance.theme)).strip() or defaults.appearance.theme

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .terminal_ui import launch_built_command_ui
+
 from .window_policy import single_pending
 
 from .window_policy import messagebox
@@ -76,13 +78,13 @@ def deploy_certificate_files(app, sessions: list[Session], *, simple: bool = Fal
                 terminal_settings=app.settings.windows_terminal,
             )
         deployment.pop("sudo_password", None)
-        TerminalLauncher.launch_built_command(
+        launch_built_command_ui(
+            app,
             command,
             [session.display_name for session, _user in session_users],
             app.settings.windows_terminal,
+            job=job,
         )
-        if job:
-            job.launched()
     except (OSError, RuntimeError, ValueError) as exc:
         if job:
             job.uncertain_launch()

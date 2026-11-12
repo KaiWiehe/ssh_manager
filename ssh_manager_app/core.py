@@ -1128,6 +1128,10 @@ class TerminalLauncher:
         terminal_settings: WindowsTerminalSettings | None = None,
     ) -> None:
         settings = terminal_settings or WindowsTerminalSettings()
+        if settings.ssh_open_mode == "herdr_app":
+            from .herdr_app import HerdrAppLauncher
+            HerdrAppLauncher.launch_tabs(cls._tabs_from_windows_command(command, labels), settings)
+            return
         if settings.ssh_open_mode == "herdr":
             tabs = cls._tabs_from_windows_command(command, labels)
             try:
@@ -1146,6 +1150,10 @@ class TerminalLauncher:
         if not sessions:
             return
         settings = terminal_settings or WindowsTerminalSettings()
+        if settings.ssh_open_mode == "herdr_app":
+            command = build_wt_command(sessions, user, session_colors, terminal_settings=settings)
+            TerminalLauncher.launch_built_command(command, [s.display_name for s in sessions], settings)
+            return
         if settings.ssh_open_mode == "herdr":
             try:
                 HerdrLauncher.launch(sessions, user, settings)

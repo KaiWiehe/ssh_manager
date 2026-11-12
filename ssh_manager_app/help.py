@@ -342,7 +342,7 @@ Darstellung
 Theme, Akzentfarbe, UI-/Baumschrift und Zeilenhöhe passen die Darstellung an. Einstellungen wirken auf die entsprechenden UI-Bereiche live.
 
 Terminal und Benutzer
-Windows Terminal ist das Standardziel; Herdr ist optional und muss installiert sein. Die Terminal-Einstellungen steuern unter anderem Profil, Farben und Titel. Schnellauswahl-Benutzer und Standardbenutzer vereinfachen die Anmeldung.
+Windows Terminal ist das Standardziel. Optional sind Herdr (bisherige Terminalversion mit herdr.exe) und Herdr App (Windows, herdr-app plus herdr-core/hc) auswählbar. Die neue App wird über PATH oder LOCALAPPDATA/Programs/herdr-app erkannt und bei Bedarf gestartet; Git Bash bleibt erforderlich. Pro Verbindung entsteht ein benannter Tab im lokalen Bereich SSH Manager. Mehrdeutige lokale Bereiche SSH Manager zuerst eindeutig benennen. Die Auswahl gilt auch für Runbooks, Tunnel, Key-, Datei-, Zertifikats- und Dienstaktionen. sshm bleibt im aufrufenden Terminal. Die Oberfläche bleibt während des Starts bedienbar. Vor dem ersten Tab kann ein bestätigter Wechsel zu Windows Terminal angeboten werden; bei Teilstarts oder unklaren Antworten zuerst Tabs prüfen, um Doppelstarts zu vermeiden. Persönliche Herdr-Layouts bleiben erhalten. Profil, Farben und Titeloptionen für Windows Terminal gelten für Windows Terminal. Schnellauswahl-Benutzer und Standardbenutzer vereinfachen die Anmeldung.
 
 Start, Import und Prüfzeit
 Beim Start können Ordner aufgeklappt, eingeklappt oder mit dem gemerkten Zustand angezeigt werden. Die Wartezeit für Hosts prüfen begrenzt den TCP-Verbindungsversuch. Importoptionen steuern die Übernahme von WinSCP-/FileZilla-Benutzern. Die WinSCP-Einstellung bestimmt das Öffnen in Tabs oder Fenstern.

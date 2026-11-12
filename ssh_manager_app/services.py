@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .terminal_ui import launch_built_command_ui
+
 from .window_policy import single_pending
 
 import re
@@ -146,9 +148,7 @@ def run_service_action(app, sessions, action, initial=None):
             built = build_remote_command_wt_command([(session, user, command) for session, user in session_users], close_on_success=False,
                       sudo_password=password or None, session_colors=app._tree.get_session_colors(), terminal_settings=app.settings.windows_terminal)
         password = ""
-        TerminalLauncher.launch_built_command(built, [session.display_name for session, _ in session_users], app.settings.windows_terminal)
-        if job:
-            job.launched()
+        launch_built_command_ui(app, built, [session.display_name for session, _ in session_users], app.settings.windows_terminal, job=job)
     except (OSError, ValueError, RuntimeError):
         if job:
             job.uncertain_launch()
