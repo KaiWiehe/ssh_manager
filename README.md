@@ -2,6 +2,9 @@
 
 Öffnet mehrere SSH-Verbindungen als Tabs in Windows Terminal, der Herdr App für Windows oder einem bisherigen Herdr-Workspace.
 
+**Kais Installation als Script:** [Schritt-für-Schritt-Anleitung mit `ssh_manager`
+und `sshm`](INSTALLATION.md). Der optionale EXE-Bau steht dort ganz am Ende.
+
 Unterstützte Quellen:
 - **WinSCP** aus der Registry
 - **SSH Config** aus `~/.ssh/config`
