@@ -132,10 +132,11 @@ class ServicePicker(AppWindow):
 
 class ServiceChecks(ttk.Frame):
     """Service names come exclusively from the server browser."""
-    def __init__(self, parent, checks, on_browse):
+    def __init__(self, parent, checks, on_browse, on_resize=None):
         super().__init__(parent)
         self.fields = []
         self.on_browse = on_browse
+        self.on_resize = on_resize
         self.columnconfigure(0, weight=1)
         self.addrow = ttk.Button(self, text="Dienste auswählen…", command=on_browse)
         self.addrow.grid(row=0, column=0, sticky="ew", pady=3)
@@ -155,6 +156,8 @@ class ServiceChecks(ttk.Frame):
         ttk.Button(row, text="×", width=3, command=lambda: self.remove(field)).grid(row=0, column=2)
         self.fields.append(field)
         self.addrow.grid_configure(row=len(self.fields))
+        if self.on_resize:
+            self.on_resize()
 
     def remove(self, field):
         self.fields.remove(field)
@@ -162,9 +165,131 @@ class ServiceChecks(ttk.Frame):
         for i, (row, _, _) in enumerate(self.fields):
             row.grid_configure(row=i)
         self.addrow.grid_configure(row=len(self.fields))
+        if self.on_resize:
+            self.on_resize()
 
     def values(self):
         return [service_check(unit.get(), "active" if want.get() == "aktiv" else "inactive") for _, unit, want in self.fields]
+
+
+class RestartTargetTable:
+    """Give each server its own canvas window so Tk can unmap offscreen rows."""
+
+    DIVIDER_SPACE = 11
+
+    def __init__(self, canvas):
+        self.canvas = canvas
+        self.rows = []
+        self.pending_layout = None
+        self.scroll_top = None
+        self.region = None
+        self.header = ttk.Frame(canvas)
+        for i, title in enumerate(("Server / aktuelles Ziel", "Benutzer", "Service / Sollzustand", "Serveraktionen")):
+            ttk.Label(self.header, text=title, style="Muted.TLabel", padding=(6, 8)).grid(row=0, column=i, sticky="w")
+        self.add_window(self.header)
+        canvas.bind("<Configure>", self.schedule_layout)
+        canvas.bind("<<ThemeChanged>>", self.schedule_layout)
+        canvas.bind("<Destroy>", self.cancel_layout)
+
+    def add_window(self, frame):
+        frame.columnconfigure(2, weight=1)
+        # Columns with variable content report their own natural width.
+        frame.cells = tuple(frame.grid_slaves(row=0, column=i)[0] for i in range(4))
+        frame.item = self.canvas.create_window(0, 0, anchor="nw", window=frame, state="hidden")
+        frame.layout_height = None
+        frame.column_widths = None
+        frame.bind("<Configure>", lambda event: self.row_resized(frame, event.height))
+        self.schedule_layout()
+
+    def row_resized(self, frame, height):
+        if height != frame.layout_height:
+            self.schedule_layout()
+
+    def append(self, row):
+        self.rows.append(row)
+        row.divider = self.canvas.create_line(0, 0, 0, 0, state="hidden")
+        self.add_window(row)
+
+    def focus_adjacent(self, row, direction):
+        index = self.rows.index(row) + direction
+        if not 0 <= index < len(self.rows):
+            return None
+        next_row = self.rows[index]
+        bounds = self.canvas.bbox(next_row.item)
+        if not bounds or self.region is None:
+            return None
+        top = self.canvas.canvasy(0)
+        viewport = self.canvas.winfo_height()
+        if bounds[1] < top or bounds[3] > top + viewport:
+            edge = bounds[1] if direction > 0 else max(bounds[1], bounds[3] - viewport)
+            self.canvas.yview_moveto(edge / self.region[3])
+        widget = next_row.user_input if direction > 0 else next_row.remove_button
+        widget.focus_set()
+        return "break"
+
+    def remove(self, index):
+        row = self.rows.pop(index)
+        bounds = self.canvas.bbox(row.item)
+        if bounds:
+            top = self.canvas.canvasy(0)
+            start, end = bounds[1], bounds[3] + self.DIVIDER_SPACE
+            # Keep the surviving content above the viewport at the same offset.
+            adjustment = min(max(top - start, 0), end - start)
+            if self.scroll_top is None:
+                self.scroll_top = top
+            self.scroll_top -= adjustment
+        self.canvas.delete(row.item, row.divider)
+        row.destroy()
+        self.schedule_layout()
+
+    def schedule_layout(self, _event=None):
+        if self.pending_layout is None:
+            self.pending_layout = self.canvas.after_idle(self.layout)
+
+    def cancel_layout(self, event):
+        if event.widget is self.canvas and self.pending_layout is not None:
+            self.canvas.after_cancel(self.pending_layout)
+            self.pending_layout = None
+
+    def layout(self):
+        canvas = self.canvas
+        # Finish nested pack/grid size requests even for unmapped server rows.
+        # Keep the pending marker set so Configure events cannot reenter layout.
+        canvas.update_idletasks()
+        self.pending_layout = None
+        if not canvas.winfo_exists():
+            return
+        frames = [self.header, *self.rows]
+        # The user and service cells have six pixels of padding on each side.
+        columns = tuple(max(frame.cells[i].winfo_reqwidth() + (12 if i in (1, 2) and frame is not self.header else 0)
+                            for frame in frames) for i in range(4))
+        width = max(canvas.winfo_width(), sum(columns))
+        divider = ttk.Style(canvas).lookup("RestartDivider.TFrame", "background")
+        top = 0
+        for i, frame in enumerate(frames):
+            if frame.column_widths != columns:
+                for column, minimum in enumerate(columns):
+                    frame.columnconfigure(column, minsize=minimum)
+                frame.column_widths = columns
+            canvas.coords(frame.item, 0, top)
+            if frame.layout_height is None or self.region is None or width != self.region[2]:
+                canvas.itemconfigure(frame.item, width=width, state="normal")
+            frame.layout_height = frame.winfo_reqheight()
+            top += frame.layout_height
+            if frame is not self.header:
+                if i < len(self.rows):
+                    canvas.coords(frame.divider, 0, top + 5, width, top + 5)
+                    canvas.itemconfigure(frame.divider, fill=divider, state="normal")
+                    top += self.DIVIDER_SPACE
+                else:
+                    canvas.itemconfigure(frame.divider, state="hidden")
+        region = (0, 0, width, top)
+        if self.region != region:
+            canvas.configure(scrollregion=region)
+            self.region = region
+        if self.scroll_top is not None:
+            canvas.yview_moveto(self.scroll_top / max(1, top))
+            self.scroll_top = None
 
 
 class RestartPreview(AppWindow):
@@ -367,65 +492,11 @@ class RestartTemplatesDialog(AppWindow):
         horizontal.pack(side="bottom", fill="x")
         self.canvas.pack(fill="both", expand=True)
         self.canvas.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
-        table = ttk.Frame(self.canvas)
-        window = self.canvas.create_window((0, 0), window=table, anchor="nw")
-        # Coalesce geometry bursts and avoid configuring an unchanged window width.
-        canvas = self.canvas
-        pending_fit = None
-        def fit_table():
-            nonlocal pending_fit
-            pending_fit = None
-            width = max(canvas.winfo_width(), table.winfo_reqwidth())
-            if int(float(canvas.itemcget(window, "width"))) != width:
-                canvas.itemconfigure(window, width=width)
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        def schedule_fit(_event=None):
-            nonlocal pending_fit
-            if pending_fit is None:
-                pending_fit = canvas.after_idle(fit_table)
-        def cleanup_fit(event):
-            if event.widget is canvas and pending_fit is not None:
-                canvas.after_cancel(pending_fit)
-        canvas.bind("<Destroy>", cleanup_fit)
-        table.bind("<Configure>", schedule_fit)
-        canvas.bind("<Configure>", schedule_fit)
         self.canvas.configure(background=ttk.Style(self).lookup("TFrame", "background"))
-        table.columnconfigure(2, weight=1)
-        for i, text in enumerate(("Server / aktuelles Ziel", "Benutzer", "Service / Sollzustand", "Serveraktionen")):
-            ttk.Label(table, text=text, style="Muted.TLabel", padding=(6, 8)).grid(row=0, column=i, sticky="w")
-        connections = {}
-        for session in all_connections(self.app):
-            connections.setdefault(session.key, []).append(session)
-        for i, target in enumerate(self.template["targets"]):
-            matches = connections.get(target["key"], [])
-            session = matches[0] if len(matches) == 1 else None
-            label = session.display_name if session else target["label"]
-            details = f"{session.hostname}:{session.port}" if session else "Verbindung mehrdeutig – entfernen und neu hinzufügen" if matches else "Verbindung fehlt – entfernen und neu hinzufügen"
-            server = ttk.Frame(table, padding=(6, 8))
-            server.grid(row=i*2+1, column=0, sticky="nw")
-            ttk.Label(server, text=f"{i+1}. {label}").pack(anchor="w")
-            ttk.Label(server, text=details, wraplength=220, style="Muted.TLabel" if session else "Error.TLabel").pack(anchor="w")
-            user = tk.StringVar(value=target["user"])
-            credentials = ttk.Frame(table)
-            credentials.grid(row=i*2+1, column=1, sticky="new", padx=6, pady=8)
-            ttk.Combobox(credentials, textvariable=user, values=list(self.app.settings.quick_users), width=18).pack(fill="x")
-            password = self.password_variable(target.get("password_protected", ""))
-            self.password_fields.append(password)
-            password_frame = ttk.Frame(credentials)
-            password_frame.pack(fill="x", pady=(6, 0))
-            ttk.Label(password_frame, text="sudo-Passwort" + (" · nicht lesbar" if password._unreadable else ""),
-                      style="Error.TLabel" if password._unreadable else "Muted.TLabel").pack(anchor="w")
-            ttk.Entry(password_frame, textvariable=password, show="•", width=18).pack(fill="x")
-            self.password_widgets.append(password_frame)
-            checks = ServiceChecks(table, target["checks"], lambda index=i: self.browse(index))
-            checks.grid(row=i*2+1, column=2, sticky="new", padx=6, pady=6)
-            actions = ttk.Frame(table, padding=4)
-            actions.grid(row=i*2+1, column=3, sticky="ne")
-            ttk.Button(actions, text="Server entfernen", command=lambda index=i: self.remove_target(index)).grid(row=0, column=0, sticky="ew", pady=3)
-            if i < len(self.template["targets"]) - 1:
-                ttk.Frame(table, height=1, style="RestartDivider.TFrame").grid(row=i*2+2, column=0, columnspan=4, sticky="ew", pady=5)
-            self.rows.append((user, checks))
+        self.target_table = RestartTargetTable(self.canvas)
+        self._install_scroll()
         self._bind_scroll(self.canvas)
+        self.append_target_rows(self.template["targets"])
         self.toggle_password_mode()
         options = ttk.LabelFrame(self.editor, text="Ablauf", padding=8)
         if not self.status_only:
@@ -461,38 +532,92 @@ class RestartTemplatesDialog(AppWindow):
         ttk.Button(footer, text="Dienststatus prüfen", command=self.check_status,
                    style="Accent.TButton" if self.status_only else "TButton").pack(side="left")
 
+    def append_target_rows(self, targets):
+        connections = {}
+        for session in all_connections(self.app):
+            connections.setdefault(session.key, []).append(session)
+        for target in targets:
+            matches = connections.get(target["key"], [])
+            session = matches[0] if len(matches) == 1 else None
+            label = session.display_name if session else target["label"]
+            details = f"{session.hostname}:{session.port}" if session else "Verbindung mehrdeutig – entfernen und neu hinzufügen" if matches else "Verbindung fehlt – entfernen und neu hinzufügen"
+            row = ttk.Frame(self.canvas)
+            server = ttk.Frame(row, padding=(6, 8))
+            server.grid(row=0, column=0, sticky="nw")
+            row.server_name = ttk.Label(server, text=f"{len(self.rows)+1}. {label}")
+            row.server_name.pack(anchor="w")
+            row.server_label = label
+            ttk.Label(server, text=details, wraplength=220, style="Muted.TLabel" if session else "Error.TLabel").pack(anchor="w")
+            user = tk.StringVar(value=target["user"])
+            credentials = ttk.Frame(row)
+            credentials.grid(row=0, column=1, sticky="new", padx=6, pady=8)
+            row.user_input = ttk.Combobox(credentials, textvariable=user, values=list(self.app.settings.quick_users), width=18)
+            row.user_input.pack(fill="x")
+            password = self.password_variable(target.get("password_protected", ""))
+            self.password_fields.append(password)
+            password_frame = ttk.Frame(credentials)
+            ttk.Label(password_frame, text="sudo-Passwort" + (" · nicht lesbar" if password._unreadable else ""),
+                      style="Error.TLabel" if password._unreadable else "Muted.TLabel").pack(anchor="w")
+            ttk.Entry(password_frame, textvariable=password, show="•", width=18).pack(fill="x")
+            self.password_widgets.append(password_frame)
+            if self.password_per_connection.get() and not self.status_only:
+                password_frame.pack(fill="x", pady=(6, 0))
+            checks = ServiceChecks(row, target["checks"],
+                                   lambda row=row: self.browse(self.target_table.rows.index(row)),
+                                   self.target_table.schedule_layout)
+            checks.grid(row=0, column=2, sticky="new", padx=6, pady=6)
+            actions = ttk.Frame(row, padding=4)
+            actions.grid(row=0, column=3, sticky="ne")
+            row.remove_button = ttk.Button(actions, text="Server entfernen",
+                                           command=lambda row=row: self.remove_target(self.target_table.rows.index(row)))
+            row.remove_button.grid(row=0, column=0, sticky="ew", pady=3)
+            row.remove_button.bind("<Tab>", lambda _, row=row: self.target_table.focus_adjacent(row, 1))
+            for sequence in ("<Shift-Tab>", "<ISO_Left_Tab>"):
+                row.user_input.bind(sequence, lambda _, row=row: self.target_table.focus_adjacent(row, -1))
+            self.rows.append((user, checks))
+            self.target_table.append(row)
+            self._bind_scroll(row)
+
     def update_execution_mode(self):
         mode = self.options["mode"].get()
         self.option_widgets["max_parallel"].configure(state="normal" if mode == MODE_LABELS["parallel"] else "disabled")
         self.option_widgets["on_error"].configure(state="disabled" if mode == MODE_LABELS["all_parallel"] else "readonly")
 
+    def _install_scroll(self):
+        canvas = self.canvas
+        self._wheel_tag = tag = "RestartWheel" + str(canvas)
+        pending = None
+        pixels = 0.0
+
+        def flush():
+            nonlocal pending, pixels
+            pending = None
+            step = int(pixels)
+            pixels -= step
+            if step:
+                canvas.yview_scroll(step, "units")
+
+        def wheel(event):
+            nonlocal pending, pixels
+            pixels -= event.delta * 48 / 120
+            if pending is None:
+                pending = canvas.after(16, flush)
+            return "break"
+
+        binding = canvas.bind_class(tag, "<MouseWheel>", wheel)
+
+        def cleanup(event):
+            if event.widget is canvas:
+                if pending is not None:
+                    canvas.after_cancel(pending)
+                canvas.unbind_class(tag, "<MouseWheel>")
+                canvas._root().deletecommand(binding)
+
+        canvas.bind("<Destroy>", cleanup, add="+")
+
     def _bind_scroll(self, widget):
         # One binding tag per canvas: adding services never duplicates callbacks.
-        tag = "RestartWheel" + str(self.canvas)
-        if not self.canvas.bind_class(tag, "<MouseWheel>"):
-            canvas = self.canvas
-            pending = None
-            pixels = 0.0
-            def flush():
-                nonlocal pending, pixels
-                pending = None
-                step = int(pixels)
-                pixels -= step
-                canvas.yview_scroll(step, "units")
-            def wheel(event):
-                nonlocal pending, pixels
-                pixels -= event.delta * 48 / 120
-                if pending is None:
-                    pending = canvas.after(16, flush)
-                return "break"
-            binding = canvas.bind_class(tag, "<MouseWheel>", wheel)
-            def cleanup(event):
-                if event.widget is canvas:
-                    if pending is not None:
-                        canvas.after_cancel(pending)
-                    canvas.unbind_class(tag, "<MouseWheel>")
-                    canvas._root().deletecommand(binding)
-            canvas.bind("<Destroy>", cleanup, add="+")
+        tag = self._wheel_tag
         tags = widget.bindtags()
         if tag not in tags:
             widget.bindtags((tag,) + tags)
@@ -540,6 +665,7 @@ class RestartTemplatesDialog(AppWindow):
             else:
                 widget.pack_forget()
         self.fill_password_button.configure(state="normal" if enabled else "disabled")
+        self.target_table.schedule_layout()
 
     def fill_passwords(self):
         if not self.password_per_connection.get():
@@ -590,20 +716,14 @@ class RestartTemplatesDialog(AppWindow):
         except ValueError as error:
             messagebox.showwarning("Dienststatus nicht gestartet", str(error), parent=self)
 
-    def mutate(self, callback):
-        try:
-            self.template = self.collect()
-        except ValueError as error:
-            messagebox.showwarning("Vorlage", str(error), parent=self)
-            return
-        position = self.canvas.yview()[0]
-        callback()
-        self.build_editor()
-        self.canvas.update_idletasks()
-        self.canvas.yview_moveto(position)
-
     def remove_target(self, index):
-        self.mutate(lambda: self.template["targets"].pop(index))
+        self.template["targets"].pop(index)
+        self.rows.pop(index)
+        self.password_fields.pop(index).set("")
+        self.password_widgets.pop(index)
+        self.target_table.remove(index)
+        for number, row in enumerate(self.target_table.rows[index:], index + 1):
+            row.server_name.configure(text=f"{number}. {row.server_label}")
 
     def pick(self, multiple=False):
         picker = ConnectionPicker(self, all_connections(self.app), multiple)
@@ -612,12 +732,15 @@ class RestartTemplatesDialog(AppWindow):
 
     @single_pending
     def add_targets(self):
+        table = self.target_table
         selected = self.pick(multiple=True)
-        if selected:
-            def add():
-                known = {t["key"] for t in self.template["targets"]}
-                self.template["targets"].extend(t for t in new_template(selected)["targets"] if t["key"] not in known)
-            self.mutate(add)
+        if not selected or not table.canvas.winfo_exists() or table is not self.target_table:
+            return
+        known = {target["key"] for target in self.template["targets"]}
+        targets = [target for target in new_template(selected)["targets"] if target["key"] not in known]
+        if targets:
+            self.template["targets"].extend(targets)
+            self.append_target_rows(targets)
 
     @single_pending
     def browse(self, index):

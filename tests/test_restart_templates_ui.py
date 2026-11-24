@@ -373,12 +373,29 @@ def test_27_server_scroll_and_browser_only_service_selection(app, monkeypatch, s
     app._app_sessions = [Session(str(i), f"TEST-{i:02}", [], f"host{i}.invalid", "admin", source="app") for i in range(27)]
     window = RestartTemplatesDialog(app, app._app_sessions, status_only=status_only)
     app.update()
-    table = window.rows[0][1].master
-    assert len([w for w in table.winfo_children() if isinstance(w, ttk.Frame) and w.cget("style") == "RestartDivider.TFrame"]) == 26
+    table = window.target_table
+    assert sum(window.canvas.itemcget(row.divider, "state") == "normal" for row in table.rows) == 26
+    assert 0 < sum(row.winfo_ismapped() for row in table.rows) < 27
+    hidden_index = next(i for i, row in enumerate(table.rows[:-1]) if not row.winfo_ismapped())
+    hidden_row, following_row = table.rows[hidden_index:hidden_index+2]
+    hidden_checks = window.rows[hidden_index][1]
+    before = window.canvas.bbox(following_row.item)[1]
+    for i in range(4):
+        hidden_checks.add(f"hidden-{i}.service")
+    app.update()
+    expanded = window.canvas.bbox(following_row.item)[1]
+    assert expanded > before and not hidden_row.winfo_ismapped()
+    assert expanded == window.canvas.bbox(hidden_row.item)[3] + table.DIVIDER_SPACE
+    for field in hidden_checks.fields[:]:
+        hidden_checks.remove(field)
+    app.update()
+    assert window.canvas.bbox(following_row.item)[1] == before
+    assert window.canvas.bbox(hidden_row.item)[3] + table.DIVIDER_SPACE == before
     checks = window.rows[0][1]
     assert not hasattr(checks, "new")
     assert not any(isinstance(w, ttk.Entry) for w in checks.winfo_children())
-    buttons = [w for frame in table.winfo_children() for w in frame.winfo_children() if isinstance(w, ttk.Button)]
+    buttons = [w for row in table.rows for frame in row.winfo_children()
+               for w in frame.winfo_children() if isinstance(w, ttk.Button)]
     assert not any(w.cget("text") in ("+", "↑", "↓", "Ersetzen…") for w in buttons)
     calls = []
     class Picker:
@@ -396,7 +413,7 @@ def test_27_server_scroll_and_browser_only_service_selection(app, monkeypatch, s
     assert checks.values()[0]["expected"] == "inactive"
     window._bind_scroll(checks)
     window._bind_scroll(checks)
-    user_combo = next(w for w in table.winfo_children() if isinstance(w, ttk.Frame) and w.grid_info().get("column") == 1).winfo_children()[0]
+    user_combo = table.rows[0].cells[1].winfo_children()[0]
     before_user = window.rows[0][0].get()
     user_combo.event_generate("<MouseWheel>", delta=-120)
     app.update()
@@ -404,12 +421,24 @@ def test_27_server_scroll_and_browser_only_service_selection(app, monkeypatch, s
     app.update()
     assert window.canvas.canvasy(0) == pytest.approx(48, abs=2)
     assert window.rows[0][0].get() == before_user
+    # Tab across the viewport boundary still enters the adjacent server.
+    edge = next(i for i, row in enumerate(table.rows) if not row.winfo_ismapped())
+    table.rows[edge - 1].remove_button.focus_force()
+    app.update()
+    table.rows[edge - 1].remove_button.event_generate("<Tab>")
+    app.update()
+    assert window.focus_get() is table.rows[edge].user_input
     window.canvas.yview_moveto(.5)
     app.update()
-    position = window.canvas.yview()[0]
-    window.remove_target(1)
+    surviving = table.rows[15]
+    offset = window.canvas.bbox(surviving.item)[1] - window.canvas.canvasy(0)
+    removed = table.rows[1]
+    removed.cells[3].winfo_children()[0].invoke()
     app.update()
-    assert window.canvas.yview()[0] == pytest.approx(position, abs=.02)
+    assert not removed.winfo_exists()
+    assert table.rows[14] is surviving
+    assert surviving.server_name.cget("text").startswith("15. ")
+    assert window.canvas.bbox(surviving.item)[1] - window.canvas.canvasy(0) == offset
     window.canvas.yview_moveto(0)
     app.update()
     for theme in ("default", "dark_neutral", "midnight"):
@@ -420,6 +449,34 @@ def test_27_server_scroll_and_browser_only_service_selection(app, monkeypatch, s
         screenshot(window, f"smooth-{'status' if status_only else 'restart'}-{theme}.png")
     window.destroy()
     app.update()
+
+
+def test_row_changes_preserve_live_fields_and_keep_canvas_rows_aligned(app, monkeypatch):
+    window = RestartTemplatesDialog(app, app._app_sessions[:2])
+    app.update()
+    table = window.target_table
+    user, services = window.rows[1]
+    user.set("unsaved")
+    services.add("longer.service", "inactive")
+    password = window.password_fields[1]
+    password.set("unsaved-test-password")
+    window.name.set("Unsaved template")
+    window.options["reboot_timeout"].set("")
+    window.remove_target(0)
+    monkeypatch.setattr(window, "pick", lambda **kw: [app._app_sessions[2]])
+    window.add_targets()
+    app.update()
+    assert window.target_table is table and window.rows[0] == (user, services)
+    assert window.password_fields[0] is password
+    assert window.options["reboot_timeout"].get() == ""
+    assert window.name.get() == "Unsaved template"
+    before = window.canvas.bbox(table.rows[1].item)[1]
+    services.remove(services.fields[0])
+    app.update()
+    first, second = (window.canvas.bbox(row.item) for row in table.rows)
+    assert second[1] == first[3] + table.DIVIDER_SPACE < before
+    assert [t["key"] for t in window.template["targets"]] == ["two", "three"]
+    window.destroy()
 
 
 def test_service_picker_shows_safe_key_error(app, monkeypatch):

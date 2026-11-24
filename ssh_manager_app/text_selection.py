@@ -26,12 +26,15 @@ class DisplayTextSelection:
         self.install(app)
 
     def install(self, widget):
+        self.install_widget(widget)
+        for child in widget.winfo_children():
+            self.install(child)
+
+    def install_widget(self, widget):
         if not isinstance(widget, (tk.Entry, ttk.Entry, tk.Text, tk.Spinbox, ttk.Spinbox, ttk.Combobox)):
             tags = widget.bindtags()
             if self.tag not in tags:
                 widget.bindtags((self.tag,) + tags)
-        for child in widget.winfo_children():
-            self.install(child)
 
     def outside_press(self, event):
         if self.overlay is not None and event.widget is not self.overlay:
@@ -47,7 +50,7 @@ class DisplayTextSelection:
 
     def mapped(self, event):
         try:
-            self.install(event.widget)
+            self.install_widget(event.widget)
         except (tk.TclError, AttributeError):
             pass
 
