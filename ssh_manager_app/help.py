@@ -38,76 +38,159 @@ Diese Aktionen ändern die Checkbox-Auswahl im aktuellen Baum. Nutze sie für ge
 
 Voraussetzungen
 Für SSH muss der Zielhost erreichbar sein und eine Anmeldung erlauben. Windows Terminal und Git Bash müssen für den Standard-Startpfad installiert sein. Herdr ist eine optionale Terminalwahl in den Einstellungen."""),
-    HelpTopic("installation", "Installation und EXE-Build", r"""Quellcode oder fertige EXE?
-Ein Git-Klon oder ZIP-Download enthält den Quellcode. Er baut keine EXEs und richtet keinen sshm-Befehl ein. Die grafische App und die CLI lassen sich direkt mit Python starten oder als zwei portable EXEs bauen. Diese Hilfe ist offline lesbar; sie führt die Befehle nicht aus.
+    HelpTopic("installation", "Installation als Script und optionale EXE", r"""Diese Anleitung beschreibt meinen Start über Git Bash, mit einer lokalen Python-Umgebung und den Kürzeln ssh_manager und sshm. Dafür ist kein EXE-Build nötig. Der optionale EXE-Bau steht ganz am Ende.
 
-1. Voraussetzungen auf dem Build-PC
-Für den hier geprüften Windows-x64-Build: Windows, Python 3.14 in 64-Bit-Ausführung mit venv/pip und für git clone Git für Windows. Download-Adressen: https://www.python.org/downloads/windows/ und https://git-scm.com/downloads/win . Git für Windows enthält Git Bash und SSH. Fertige EXEs benötigen später kein separat installiertes Python. Externe Werkzeuge für Verbindungsaktionen bleiben nötig: für den Standard-GUI-Pfad Windows Terminal und Git Bash; für die CLI ein SSH-Client im PATH der jeweiligen Shell. Herdr ist optional.
+Projektordner unter Windows: C:\dev\New_Git_Work\SSH-Manager. In Git Bash ist derselbe Ordner /c/dev/New_Git_Work/SSH-Manager.
 
-2. Repository herunterladen (PowerShell)
+1. Voraussetzungen
+- Windows mit Python 3.14, 64 Bit, einschließlich pip, venv und Tkinter. Die vorhandene Projektumgebung verwendet Python 3.14.7.
+- Git für Windows, einschließlich Git Bash und SSH.
+- Windows Terminal mit einem Profil namens Git Bash für die Standard-Terminalstarts der grafischen App.
+- Optional WinSCP bzw. FileZilla, wenn deren gespeicherte Verbindungen angezeigt werden sollen. SSH-Aliase kommen aus ~/.ssh/config.
+
+Herdr ist als alternatives Terminalziel möglich. Meine lokal gespeicherte SSH-Manager-Einstellung ist derzeit Windows Terminal, Profil Git Bash. Die Shell-Kürzel unten funktionieren auch in Git Bash innerhalb von Herdr.
+
+Alle folgenden Befehle sind für Git Bash, bis zum ausdrücklich als PowerShell gekennzeichneten EXE-Abschnitt. Jeden Schritt nur fortsetzen, wenn der vorherige erfolgreich war.
+
+2. Projekt herunterladen
+Nur bei einer neuen Installation:
+
+mkdir -p /c/dev/New_Git_Work
+cd /c/dev/New_Git_Work
 git clone https://github.com/KaiWiehe/ssh_manager.git SSH-Manager
-Set-Location SSH-Manager
-python --version
-python -m venv .venv
+cd SSH-Manager
 
-ZIP-Alternative
-ZIP vollständig entpacken und PowerShell im entpackten Repository-Ordner öffnen. Dort müssen ssh_manager.py, sshm.py, requirements.txt und scripts liegen. Auch dann python --version und python -m venv .venv ausführen. Wenn nur der Launcher py verfügbar ist, kann py -3.14 -m venv .venv die Umgebung erstellen. Befehle in PowerShell eingeben, nicht im Python-Prompt >>>. Die Umgebung muss nicht aktiviert werden, da die folgenden Befehle ihren Interpreter direkt aufrufen. Jeden Schritt nur nach Erfolg des vorherigen fortsetzen.
+Ist der Projektordner schon vorhanden, direkt dorthin wechseln und nicht erneut klonen:
 
-3. Architektur prüfen und beide EXEs bauen
+cd /c/dev/New_Git_Work/SSH-Manager
+
+Alternativ das Repository als ZIP herunterladen und vollständig in diesen Ordner entpacken. Dort müssen unter anderem ssh_manager.py, sshm.py, requirements.txt und ssh_manager_app/ liegen. Die späteren Git-Updates funktionieren nur bei einem Git-Klon.
+
+3. Python-Umgebung einrichten
+Bei einer neuen Installation einmalig:
+
+py -3.14 --version
+py -3.14 -m venv .venv
+
+Wenn py fehlt, aber python --version die gewünschte Python-3.14-Installation zeigt, stattdessen python -m venv .venv verwenden. Die vorhandene .venv auf meinem Rechner weiterverwenden; sie muss für diese Anleitung nicht neu angelegt werden. Auf einem anderen Rechner eine eigene .venv erstellen, keine kopieren.
+
+Laufzeit-Abhängigkeiten installieren und prüfen:
+
+./.venv/Scripts/python.exe -m pip install -r requirements.txt
+./.venv/Scripts/python.exe -m pip check
+./.venv/Scripts/python.exe -c 'import tkinter, ttkbootstrap, PIL, prompt_toolkit, wcwidth; print("Laufzeitimporte OK")'
+
+Eine Aktivierung mit activate ist nicht erforderlich. Die folgenden Aufrufe verwenden immer direkt Python aus der Projektumgebung. Für den Script-Betrieb werden nur die Pakete aus requirements.txt benötigt.
+
+4. Beide Varianten direkt starten
+Grafische Oberfläche:
+
+./.venv/Scripts/python.exe ssh_manager.py
+
+Terminalsuche:
+
+./.venv/Scripts/python.exe sshm.py
+
+Die GUI läuft bis zum Schließen im aufrufenden Terminal. Die CLI öffnet die Verbindung im aktuellen Terminal und kehrt nach SSH-Ende zur aufrufenden Shell zurück. Für die interaktive Suche ein normales Terminal verwenden.
+
+5. Meine Kürzel dauerhaft einrichten
+Die Definitionen stehen in C:\Users\Kai\.bashrc, in Git Bash ~/.bashrc. Datei beispielsweise mit VS Code öffnen:
+
+code ~/.bashrc
+
+Alternativ mit einem vorhandenen Texteditor öffnen. Die folgenden Definitionen einmal eintragen bzw. vorhandene Definitionen dieser beiden Namen gezielt ersetzen; den übrigen Inhalt der Datei erhalten:
+
+alias ssh_manager='"/c/dev/New_Git_Work/SSH-Manager/.venv/Scripts/python.exe" "/c/dev/New_Git_Work/SSH-Manager/ssh_manager.py"'
+
+sshm() {
+  "/c/dev/New_Git_Work/SSH-Manager/.venv/Scripts/python.exe" \
+    "C:/dev/New_Git_Work/SSH-Manager/sshm.py" "$@"
+}
+
+Das sind die lokal vorhandenen Definitionen: ssh_manager ist ein Alias, sshm eine Bash-Funktion. Die Alias-Zeile muss vollständig auf einer Zeile stehen. In der Funktion erhält "$@" alle Suchargumente, auch mit Leerzeichen. Durch die absoluten Pfade funktionieren beide Kürzel aus jedem Ordner. Bei einem anderen Projektordner beide Definitionen entsprechend anpassen.
+
+Meine ~/.bash_profile lädt ~/.bashrc bereits. Falls dies auf einem neuen Rechner fehlt, diese Zeile einmal in ~/.bash_profile ergänzen:
+
+test -f ~/.bashrc && . ~/.bashrc
+
+Definitionen in der aktuellen Git Bash neu laden und kontrollieren:
+
+source ~/.bashrc
+type ssh_manager
+type sshm
+sshm --version
+
+type ssh_manager muss den Alias und type sshm die Funktion anzeigen. sshm --version muss die aktuelle Projektversion ausgeben. Die Namen gelten in Git Bash; eine PowerShell-Sitzung liest diese Bash-Dateien nicht.
+
+6. Täglich benutzen
+ssh_manager           # Grafische Oberfläche öffnen
+sshm                  # Terminalsuche öffnen
+sshm web              # Suche mit Starttext "web"
+sshm web produktion   # Suche mit mehreren Suchwörtern
+
+Die Suchwörter wählen noch keine Verbindung automatisch aus. Im Picker mit Enter verbinden; F4 fragt einen Benutzer nur für diese Verbindung ab. F5 kopiert den Hostnamen, Esc bzw. Strg+C beendet die Suche.
+
+Für die GUI unter Einstellungen → Terminal → SSH-Verbindungen öffnen in das gewünschte Terminal wählen. Bei Windows Terminal muss der eingestellte Profilname zu dessen Git-Bash-Profil passen. sshm bleibt unabhängig davon im aktuellen Terminal und verwendet dessen SSH-Client und Agent-Umgebung.
+
+7. Script-Installation aktualisieren
+GUI schließen und laufende CLI-/SSH-Aufträge regulär beenden. Danach in Git Bash:
+
+cd /c/dev/New_Git_Work/SSH-Manager
+git pull --ff-only
+./.venv/Scripts/python.exe -m pip install -r requirements.txt
+./.venv/Scripts/python.exe -m pip check
+sshm --version
+
+Bei einem Pull-Fehler zunächst die Ursache klären. Die Kürzel müssen bei unverändertem Projektpfad nicht neu eingerichtet werden. Nach dem Neustart nutzen sie direkt den aktualisierten Python-Code; ein EXE-Build entfällt.
+
+8. Einstellungen, Verbindungen und typische Fehler
+GUI und CLI verwenden dieselben App-Daten unter %APPDATA%\SSH-Manager: settings.json, ui_state.json, app_sessions.json und notes.json. Updates im Repository ersetzen diese Dateien nicht. Über Datei → App sichern lässt sich ein App-Backup erstellen. WinSCP, FileZilla, SSH Config und SSH-Schlüssel müssen separat gesichert bzw. auf einem neuen Rechner eingerichtet werden; sie sind nicht Teil dieses Backups.
+
+- ssh_manager oder sshm fehlt: source ~/.bashrc ausführen und mit type ssh_manager bzw. type sshm prüfen. In neuen Login-Shells das Laden von .bashrc durch .bash_profile kontrollieren.
+- sshm startet eine EXE: type -a sshm zeigt alle Definitionen. Für diesen Script-Betrieb muss die oben gezeigte Bash-Funktion aufgelöst werden.
+- Python-/Modulfehler: Pfade prüfen und die Pakete mit genau ./.venv/Scripts/python.exe -m pip install -r requirements.txt installieren.
+- SSH fehlt oder verwendet einen anderen Agenten: In derselben Git Bash command -v ssh und ssh -V prüfen. GUI- und CLI-Terminal können unterschiedliche SSH-Umgebungen haben. Hintergrundprüfungen benötigen eine Anmeldung per Schlüssel/Agent ohne interaktive SSH-Passwortabfrage.
+- Git-Bash-Profil fehlt: In Windows Terminal ein Profil für die tatsächlich installierte Git-Bash-Datei bin\bash.exe einrichten und den Profilnamen in SSH-Manager abgleichen. Keine WSL-Bash dafür verwenden.
+
+Technische Quellen: requirements.txt, sshm.py, ssh_manager.py, scripts/build_windows.ps1, scripts/install_cli.ps1 sowie die lokal gelesenen Bash-Profile. Stand: 24.11.2026. Die Anleitung ändert keine Shell-Konfiguration.
+
+9. Optional ganz zum Schluss: EXEs bauen
+Nur wenn ich zusätzlich eigenständige Windows-Programme haben möchte. PowerShell im Projektordner öffnen und ausführen:
+
+Set-Location 'C:\dev\New_Git_Work\SSH-Manager'
 .\.venv\Scripts\python.exe -c "import struct; print(struct.calcsize('P') * 8)"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 
-Welche Architektur wird gebaut?
-Die Prüfung muss für den beschriebenen x64-Build 64 ausgeben. Unter Windows mit dem passenden Python bauen; dessen Architektur bestimmt die Ausgabe. Andere Architekturen sind nicht automatisch geprüft. Das Buildskript bevorzugt .venv\Scripts\python.exe, prüft die Versionsmetadaten und installiert die festgelegten Abhängigkeiten aus requirements-dev.txt einschließlich requirements.txt. Zum normalen Bauen keine Version erhöhen und PyInstaller nicht separat installieren. Bei einem Fehler zuerst dessen Ursache beheben.
+Die Architekturprüfung muss für den hier beschriebenen x64-Build 64 ausgeben. Das Buildskript verwendet bevorzugt .venv, prüft die Versionsmetadaten und installiert die Build-Abhängigkeiten aus requirements-dev.txt einschließlich der Laufzeit-Abhängigkeiten. Für einen normalen Build die App-Version nicht erhöhen. Es ersetzt die Ordner build und dist; dort keine eigenen Dateien ablegen und vorher daraus laufende EXEs schließen.
 
-4. Die richtige EXE wählen
-dist\SSH Manager.exe ist die grafische App, per Doppelklick startbar. dist\sshm.exe ist die Terminalsuche für PowerShell oder Git Bash. Beide enthalten ihre Python-Laufzeit. Der Build ersetzt build und dist: dort keine eigenen Dateien aufbewahren. Einstellungen und Verbindungen unter %APPDATA%\SSH-Manager werden nicht ersetzt.
+Nach erfolgreichem Build entstehen:
 
-5. GUI dauerhaft ablegen (PowerShell im Repository)
-$installDir = Join-Path $env:LOCALAPPDATA 'Programs\SSH-Manager'
-New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-Copy-Item -LiteralPath '.\dist\SSH Manager.exe' -Destination $installDir -Force
-& (Join-Path $installDir 'SSH Manager.exe')
+dist\SSH Manager.exe: Grafische Oberfläche per Doppelklick.
+dist\sshm.exe: Terminalsuche, beispielsweise .\dist\sshm.exe web in PowerShell.
 
-Portable Installation
-Alternativ die GUI direkt aus dist starten. Die feste Ablage bleibt beim nächsten Repository-Build erhalten. Es gibt keinen klassischen Setup-Assistenten; eine Windows-Verknüpfung auf die abgelegte EXE ist optional. Die persönliche Ablage benötigt keine Administratorrechte. Benutzerdaten liegen unter %APPDATA%\SSH-Manager, nicht neben der EXE. Für den CLI-Befehl anschließend das Hilfethema „CLI: sshm einrichten und verwenden“ öffnen; das CLI-Installationsskript kopiert nicht die GUI.
+Die EXEs enthalten Python. SSH, Git Bash und das für GUI-Aktionen gewählte Terminal bleiben externe Voraussetzungen. Die bisherigen Bash-Kürzel verwenden weiterhin die Scripts; der Build stellt sie nicht auf EXEs um. Zum gezielten Ausprobieren in Git Bash:
 
-Alternative ohne EXE-Build
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe ssh_manager.py
+"/c/dev/New_Git_Work/SSH-Manager/dist/SSH Manager.exe"
+/c/dev/New_Git_Work/SSH-Manager/dist/sshm.exe web
 
-CLI direkt mit Python
-.\.venv\Scripts\python.exe sshm.py web
+scripts/install_cli.ps1 -AddToPath ist für diesen Script-Betrieb nicht nötig: Es würde die CLI-EXE separat installieren. Die vorhandene Bash-Funktion sshm hat in Git Bash weiterhin Vorrang. Separat installierte EXEs werden durch git pull und Build nicht automatisch ersetzt.
 
-Python-Start und weitere Hilfe
-Direkter Python-Start erzeugt keine EXE und registriert kein sshm im PATH. Für spätere Updates und typische Fehler das Thema „Aktualisierung und Einrichtungsprobleme“ verwenden. Die gleichen Schritte stehen in der README.md des Repositorys."""),
-    HelpTopic("cli", "CLI: sshm einrichten und verwenden", r"""Was ist sshm?
-sshm ist ein eigenständiges Konsolenprogramm (sshm.exe), kein Shell-Alias und keine Profilfunktion. Es nutzt dieselben Verbindungen und App-Daten wie die grafische App; diese muss nicht laufen. Die benötigte Python-Laufzeit steckt in der EXE, der eigentliche SSH-Client bleibt ein externes Werkzeug.
+Sollten Windows bzw. Smart App Control eine selbst gebaute EXE blockieren, ist der Build allein kein Nachweis ihrer Ausführbarkeit. Für meinen hier beschriebenen Alltag bleibt der Script-Start mit ssh_manager und sshm verfügbar."""),
+    HelpTopic("cli", "CLI: sshm verwenden", r"""Was ist sshm in meinem Script-Betrieb?
+sshm ist meine Git-Bash-Funktion für den Python-Einstieg sshm.py. Sie verwendet die lokale .venv und übergibt alle Suchargumente mit "$@". Die grafische App muss dafür nicht laufen. Beide Varianten nutzen dieselben Verbindungen und App-Daten.
 
-1. Zuerst bauen
-Nach Git-Download zunächst die Schritte im Thema „Installation und EXE-Build“ ausführen. Erst der erfolgreiche Build erzeugt dist\sshm.exe. Ohne EXE ist der Python-Aufruf .\.venv\Scripts\python.exe sshm.py möglich, nachdem die Laufzeit-Abhängigkeiten installiert wurden.
+Einrichtung
+Die vollständigen Schritte und beide Kürzel ssh_manager und sshm stehen unter „Installation als Script und optionale EXE“, Abschnitt 5. Für diesen Weg ist kein EXE-Build und keine CLI-EXE-Installation nötig.
 
-2. CLI installieren (PowerShell im Repository)
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_cli.ps1 -AddToPath
-
-Was wird eingerichtet?
-Das Skript kopiert nur dist\sshm.exe nach %LOCALAPPDATA%\Programs\SSH-Manager\sshm.exe und ergänzt den Ordner im persönlichen Benutzer-PATH. PATH ist die Ordnerliste, in der die Shell nach Programmen sucht. Ohne -AddToPath wird nur die EXE kopiert. Shell-Profile und Maschinen-PATH bleiben unverändert. Das Skript installiert nicht die GUI-EXE; deren Ablage ist im Installations-Thema beschrieben. Bei einer erkannten Namenskollision bricht es ab.
-
-3. Neues Terminal und Aufruf prüfen (PowerShell)
-Get-Command sshm -All
-sshm --version
+Aufruf in Git Bash
 sshm
+sshm web
 sshm web produktion
 
-PATH und Git Bash
-Nach der Installation ein neues Terminal öffnen. Ein bereits laufender Terminalhost oder persistenter Herdr-Prozess kann den alten PATH behalten; bei Bedarf nach Ende laufender Arbeiten vollständig neu starten. In Git Bash zeigt command -v sshm das gefundene Programm. Profilbasierte Aliase oder Funktionen können den Namen überschatten; der Installer mit -NoProfile kennt diese Definitionen der aufrufenden Shell nicht. Mit den Prüfbefehlen sicherstellen, dass die gewünschte EXE gefunden wird. sshm web produktion füllt nur den Suchtext und verbindet nicht automatisch.
+Die Suchwörter füllen nur den Startsuchtext und verbinden nicht automatisch. Mit type sshm die Funktion und mit sshm --version die verwendete Version prüfen. Die Funktion gilt in Git Bash; PowerShell lädt die Bash-Profile nicht.
 
-Sofort ohne PATH verwenden (PowerShell)
-& "$env:LOCALAPPDATA\Programs\SSH-Manager\sshm.exe"
-
-Portable Verwendung direkt aus dem Repository
-PowerShell: .\dist\sshm.exe web
-Git Bash: ./dist/sshm.exe web
+Optionale EXE
+Eine separat gebaute sshm.exe ist ein zusätzlicher Starter für dieselbe CLI. Der optionale EXE-Bau steht ganz am Ende der Installationsanleitung. Er ersetzt die Bash-Funktion nicht; diese startet weiterhin das Script.
 
 Suche und Details
 Die globale Fuzzy-Suche berücksichtigt Name, Originalordner, Host/IP, Benutzer, Quelle und Notizen. Alle Quellen werden durchsucht, auch GUI-seitig ausgeblendete. Links bleiben die echten Elternordner sichtbar, rechts stehen die Details und vollständigen Notizen; schmal darunter. Bei aktiver Suche bleiben Trefferordner offen. Favoriten und Verlauf filtern den Originalbaum ohne zusätzliche Verbindungskopien. Favoriten werden weiterhin in der GUI bearbeitet.
@@ -120,40 +203,35 @@ SSH-Aliase behalten ihre SSH-Konfiguration. Andere Verbindungen nutzen den feste
 
 Terminalumgebung
 PowerShell und Git Bash können unterschiedliche SSH-Clients, Agenten und Konfigurationen verwenden; die CLI nimmt den ausführbaren SSH-Client aus dem geerbten PATH. Die vorgesehenen Terminalhosts sind Windows Terminal und Herdr. Die direkte Bedienabnahme in deren vier Shell-/Host-Kombinationen ist noch offen; die paketierte CLI ist gegen beide SSH-Clients in automatisierten lokalen Windows-ConPTY-Tests geprüft. Die Suche selbst startet keine Netzwerkprüfung."""),
-    HelpTopic("updates", "Aktualisierung und Einrichtungsprobleme", r"""Update aus dem Repository
-Vor dem Ersetzen die grafische App schließen und laufende CLI-/SSH-Aufträge beenden. Die folgenden Schritte einzeln in PowerShell im Repository mit bestehender .venv ausführen; nur bei Erfolg fortsetzen. git pull aktualisiert nur den Quellcode, weder gebaute noch installierte EXEs.
+    HelpTopic("updates", "Script-Updates und Einrichtungsprobleme", r"""Script-Installation aktualisieren (Git Bash)
+GUI schließen und laufende CLI-/SSH-Aufträge regulär beenden. Jeden Schritt nur nach Erfolg des vorherigen fortsetzen:
 
-1. Quellcode und Build aktualisieren
+cd /c/dev/New_Git_Work/SSH-Manager
 git pull --ff-only
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
-
-2. Installierte CLI ersetzen
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_cli.ps1 -AddToPath
-
-3. Abgelegte GUI ersetzen
-$installDir = Join-Path $env:LOCALAPPDATA 'Programs\SSH-Manager'
-Copy-Item -LiteralPath '.\dist\SSH Manager.exe' -Destination $installDir -Force
+./.venv/Scripts/python.exe -m pip install -r requirements.txt
+./.venv/Scripts/python.exe -m pip check
+sshm --version
 
 Nach dem Update
-Das Buildskript installiert auch geänderte Abhängigkeiten. Programme anschließend neu starten; CLI-Version mit sshm --version prüfen, GUI-Version im Fenster ablesen. Ein erneuter Build ersetzt nicht automatisch die separat abgelegten Programme. Eigene Verbindungen, Einstellungen und Notizen unter %APPDATA%\SSH-Manager bleiben erhalten. Bei lokalen Git-Änderungen einen abgebrochenen Pull zuerst klären; nicht mit einem alten Quellstand weiterbauen.
+Die Kürzel bleiben bei unverändertem Projektpfad erhalten. Nach dem Neustart starten ssh_manager und sshm direkt den aktualisierten Python-Code. Ein EXE-Build ist dafür nicht nötig. Bei einem Pull-Fehler zunächst die Ursache klären. Bei einem ZIP-Download gibt es kein Git-Update; die .venv und App-Daten beim Aktualisieren des Quellcodes erhalten.
 
-Python fehlt oder öffnet den Store
-Python-Installation und PATH prüfen. Falls vorhanden kann py -3.14 -m venv .venv die Umgebung anlegen. Die direkten .venv\Scripts\python.exe-Aufrufe benötigen keine Aktivierung. Python ist nur zum Bauen oder Quellcode-Start erforderlich, nicht zum Nutzen fertiger EXEs.
+Python fehlt oder Module werden nicht gefunden
+Python 3.14 mit pip/venv installieren bzw. dessen Auflösung prüfen. Eine neue Umgebung mit py -3.14 -m venv .venv anlegen; eine bestehende funktionierende Umgebung weiterverwenden. Die Laufzeitpakete mit ./.venv/Scripts/python.exe -m pip install -r requirements.txt installieren. Die direkten Python-Aufrufe benötigen keine Aktivierung der Umgebung.
 
-dist\sshm.exe fehlt oder Build schlägt fehl
-Zunächst den kompletten Build erfolgreich abschließen. Der erste fehlgeschlagene Schritt stoppt das Buildskript. Eine eventuell noch vorhandene alte EXE beweist keinen neuen erfolgreichen Build. Versionsfehler mit .\.venv\Scripts\python.exe scripts\bump_version.py --check untersuchen; zum normalen Bauen keine Version eigenständig erhöhen. Architektur des Build-Python prüfen (64 für Windows x64).
+ssh_manager oder sshm wird nicht gefunden
+In Git Bash source ~/.bashrc ausführen und type ssh_manager bzw. type sshm prüfen. Auf neuen Rechnern muss ~/.bash_profile die ~/.bashrc laden. Die vollständigen Definitionen und Pfade stehen in der Installationsanleitung unter Abschnitt 5. Die Alias-Definition für ssh_manager muss auf einer Zeile stehen.
 
-sshm wird nicht gefunden oder startet eine andere Anwendung
-In PowerShell Get-Command sshm, in Git Bash command -v sshm prüfen. Installer mit -AddToPath ausführen und neues Terminal öffnen; den bestehenden Terminalhost gegebenenfalls vollständig neu starten, ohne aktive Arbeiten abzubrechen. Alternativ den vollständigen Pfad %LOCALAPPDATA%\Programs\SSH-Manager\sshm.exe aufrufen. Bei Namenskollision die fremde Alias-/Funktions-/Programmdefinition zuerst prüfen; der Installer ersetzt sie nicht.
+sshm startet eine EXE statt des Scripts
+type -a sshm zeigt alle Definitionen. Für meinen Script-Betrieb muss die dokumentierte Bash-Funktion verwendet werden. In PowerShell gelten diese Bash-Kürzel nicht.
 
 SSH fehlt oder Anmeldung unterscheidet sich zwischen Shells
-ssh -V prüfen. PowerShell: Get-Command ssh. Git Bash: command -v ssh. Die EXE enthält Python, aber kein SSH. SSH-Client, Schlüssel, Agent und Konfiguration der jeweiligen Shell überprüfen. Windows Terminal/Git Bash für GUI-Verbindungen bereitstellen; für Herdr die Terminalwahl in den App-Einstellungen prüfen.
+In derselben Git Bash command -v ssh und ssh -V prüfen. CLI und GUI-Terminal können unterschiedliche SSH-Clients, Agenten und Konfigurationen verwenden. Für Windows Terminal muss der konfigurierte Git-Bash-Profilname stimmen. Hintergrundprüfungen benötigen eine Anmeldung per Schlüssel/Agent ohne interaktive SSH-Passwortabfrage.
 
-EXE kann nicht kopiert werden
-Die laufende Instanz der zu ersetzenden Datei beenden und erneut kopieren. Das Installationsskript installiert nur die CLI. Für die grafische App die GUI-EXE separat kopieren, wie unter „Installation und EXE-Build“ beschrieben.
+App-Daten und Sicherung
+Einstellungen, eigene Verbindungen, Notizen und UI-State liegen unter %APPDATA%\SSH-Manager und werden bei Script-Updates nicht ersetzt. Datei → App sichern erstellt ein App-Backup. Externe WinSCP-/FileZilla-Verbindungen, SSH Config und Schlüssel separat sichern.
 
-Persönliche Ablage entfernen
-Nicht mehr benötigte abgelegte EXEs gezielt entfernen. Den hinzugefügten Ordner %LOCALAPPDATA%\Programs\SSH-Manager nur dann aus dem Benutzer-PATH entfernen, wenn er nicht mehr benötigt wird. App-Daten unter %APPDATA%\SSH-Manager bleiben getrennt bestehen; nicht als Teil eines Programmupdates löschen."""),
+Falls zusätzlich EXEs verwendet werden
+Der optionale EXE-Bau steht ganz am Ende des Themas „Installation als Script und optionale EXE“. git pull aktualisiert weder gebaute noch separat installierte EXEs. Zum Ersetzen die betroffenen EXEs regulär schließen, neu bauen und separat installierte Dateien erneut kopieren. Das ist nur für diesen zusätzlichen EXE-Weg erforderlich; die Bash-Kürzel bleiben beim Script-Start."""),
     HelpTopic("keys", "Tastatur und Tastenkürzel", """Im Verbindungsbaum
 ↑ / ↓: Zur vorherigen/nächsten sichtbaren Zeile wechseln.
 →: Geschlossenen Ordner öffnen; im offenen Ordner zum ersten Kind wechseln.

@@ -182,9 +182,10 @@ Version im Fenster. Installation und Update überschreiben keine App-Benutzerdat
 - **Build schlägt fehl:** Den ersten Fehler beheben und danach neu bauen; eine
   alte EXE ist kein Nachweis eines erfolgreichen neuen Builds.
 
-Diese Anleitung ist auch offline in der App über **F1 → Installation und EXE-Build**,
-**CLI: sshm einrichten und verwenden** und **Aktualisierung und Einrichtungsprobleme**
-verfügbar. Die Hilfe führt die angezeigten Befehle nicht selbst aus.
+Die sortierte [Script-Installationsanleitung](INSTALLATION.md) ist auch offline
+in der App über **F1 → Installation als Script und optionale EXE** verfügbar.
+Ergänzend gibt es **CLI: sshm verwenden** und **Script-Updates und Einrichtungsprobleme**.
+Die Hilfe führt die angezeigten Befehle nicht selbst aus.
 
 ## CLI: Verbindungen im aktuellen Terminal öffnen
 

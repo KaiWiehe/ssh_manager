@@ -1,5 +1,7 @@
 """Help search and isolated Windows/Tk integration (no user data or SSH)."""
 from unittest.mock import Mock
+from pathlib import Path
+import re
 import tkinter as tk
 
 import pytest
@@ -13,6 +15,45 @@ def test_search_matches_full_text_and_multiple_words():
     assert search_topics("", mapping) == list(TOPICS)
     assert [topic.id for topic in search_topics("WHITELIST reguläre", mapping)] == ["server"]
     assert search_topics("unbekanntes-hilfethema-xyz", mapping) == []
+
+
+def test_installation_help_keeps_approved_sections_and_copyable_commands():
+    guide = (Path(__file__).resolve().parents[1] / "INSTALLATION.md").read_text(encoding="utf-8")
+    installation = next(topic for topic in TOPICS if topic.id == "installation")
+    body = topic_body(installation, default_shortcuts())
+    sections = re.findall(r"^## (.+)$", guide, re.MULTILINE)
+    positions = [body.index(section) for section in sections]
+    assert positions == sorted(positions)
+    assert sections[-1] == "9. Optional ganz zum Schluss: EXEs bauen"
+    for command_block in re.findall(r"```(?:bash|powershell)\n(.*?)\n```", guide, re.DOTALL):
+        assert command_block in body
+    assert "scripts\\build_windows.ps1" not in body[:positions[-1]]
+    cli = next(topic for topic in TOPICS if topic.id == "cli")
+    assert "Git-Bash-Funktion" in cli.body
+    updates = next(topic for topic in TOPICS if topic.id == "updates")
+    assert "./.venv/Scripts/python.exe -m pip install -r requirements.txt" in updates.body
+    assert "scripts\\build_windows.ps1" not in updates.body
+
+
+def test_installation_help_displays_aliases_and_finds_them_in_search(app):
+    window = open_help(app, "installation")
+    app.update()
+    body = window.text.get("1.0", "end-1c")
+    alias = next(topic for topic in TOPICS if topic.id == "installation").body.split("alias ssh_manager=", 1)[1].split("\n", 1)[0]
+    alias = "alias ssh_manager=" + alias
+    assert alias in body
+    assert '"C:/dev/New_Git_Work/SSH-Manager/sshm.py" "$@"' in body
+    start = window.text.search(alias, "1.0", exact=True)
+    window.text.tag_add("sel", start, f"{start}+{len(alias)}c")
+    assert window.text.get("sel.first", "sel.last") == alias
+    assert str(window.text.cget("state")) == "disabled"
+    assert app.grab_current() is None
+    assert not window.transient()
+    window.query.set("sshm()")
+    app.update()
+    assert window.topics.get_children() == ("installation",)
+    assert window.selected_id == "installation"
+    assert "9. Optional ganz zum Schluss: EXEs bauen" in window.text.get("1.0", "end-1c")
 
 
 def test_actual_app_delete_and_bulk_color_are_single_undo_steps(app, monkeypatch):
