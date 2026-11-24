@@ -68,6 +68,7 @@ def _run_ssh(
         errors="replace",
         timeout=timeout,
         check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
 
 

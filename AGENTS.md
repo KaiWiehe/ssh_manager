@@ -361,6 +361,7 @@ Wenn weiter refactort wird, zuerst die Testbasis ausbauen und erst danach weiter
 
 ### Handling-Module (ab 0.2.60)
 
+- Hintergrund-SSH für (Massen-)Neustarts, Boot-ID-/SSH-Rückkehr und Dienstprüfungen muss unter Windows ohne Konsolenfenster laufen (`CREATE_NO_WINDOW` am gemeinsamen `_run_ssh`-Prozessstart). Keine kurz aufblinkenden oder den Fokus übernehmenden `ssh.exe`-/cmd-Fenster; bewusst geöffnete interaktive Terminals bleiben separat (Kai 24.11.2026).
 - `selection.py`, `dialogs_selection.py`: Einzelzielregel und vollständige Häkchen-Auswahl einschließlich verborgener Treffer.
 - `details.py`, `session_filters.py`: Verbindungsdetails und gespeicherte strukturierte Ansichten.
 - `runbook_library.py`, `runbook_parameters.py`: getrennte Verwaltung und typisierte Laufzeit-Eingaben. Geheimwerte nie in Favoriten/History ablegen.

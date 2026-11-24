@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import subprocess
+import json
+import sys
 import threading
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from ssh_manager_app.actions_restart import (
     RestartResult,
@@ -72,6 +76,45 @@ def test_run_ssh_uses_argument_list_without_shell_and_keeps_stdin_separate():
     assert "stdin-secret" not in repr(command)
     assert run.call_args.kwargs["input"] == "stdin-secret"
     assert "shell" not in run.call_args.kwargs
+    assert run.call_args.kwargs["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    assert run.call_args.kwargs["capture_output"] is True
+    assert run.call_args.kwargs["timeout"] == 9
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows console creation regression")
+def test_restart_ssh_child_has_no_console_from_windowless_parent(tmp_path):
+    """Exercise the real process boundary used by the packaged GUI, without SSH."""
+    from pathlib import Path
+
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    result_file = tmp_path / "console.json"
+    harness = tmp_path / "console_probe.py"
+    harness.write_text(
+        "import ctypes, json, sys\n"
+        "from pathlib import Path\n"
+        "from ssh_manager_app import actions_restart\n"
+        "from ssh_manager_app.models import Session\n"
+        "actions_restart._ssh_args = lambda *args: [sys.argv[1], '-c', "
+        "'import ctypes; print(ctypes.windll.kernel32.GetConsoleWindow())']\n"
+        "result = actions_restart._run_ssh(Session('probe', 'probe', [], 'localhost'), '', 'unused')\n"
+        "Path(sys.argv[2]).write_text(json.dumps({"
+        "'parent_console': ctypes.windll.kernel32.GetConsoleWindow(), "
+        "'child_console': result.stdout.strip(), 'returncode': result.returncode, "
+        "'stderr': result.stderr}))\n",
+        encoding="utf-8",
+    )
+    # -c keeps the repository importable; the harness itself lives in tmp_path.
+    subprocess.run(
+        [str(pythonw), "-c", "import runpy, sys; runpy.run_path(sys.argv.pop(1), run_name='__main__')",
+         str(harness), sys.executable, str(result_file)],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        timeout=20,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    assert json.loads(result_file.read_text()) == {
+        "parent_console": 0, "child_console": "0", "returncode": 0, "stderr": "",
+    }
 
 
 def test_service_name_is_shell_quoted_for_remote_check():
