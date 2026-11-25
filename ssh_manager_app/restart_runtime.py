@@ -8,8 +8,8 @@ import shlex
 import subprocess
 import threading
 import time
+from typing import Protocol
 
-from .models import Session
 from .ssh_failures import SSH_AUTHENTICATION_HELP, ssh_authentication_failed
 from .ssh_utils import connection_value
 
@@ -47,6 +47,27 @@ SSH_PROBE_TIMEOUT_SECONDS = 8
 SSH_REBOOT_TIMEOUT_SECONDS = 20
 _CONNECTED_MARKER = "__SSH_MANAGER_CONNECTED__"
 _BOOT_ID_RE = re.compile(r"^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
+MASS_RESTART_SSH_OPTIONS = (
+    "StrictHostKeyChecking=yes", "ForwardAgent=no", "ClearAllForwardings=yes",
+    "ControlMaster=no", "ControlPath=none", "RequestTTY=no",
+)
+
+
+class SshTarget(Protocol):
+    @property
+    def display_name(self) -> str: ...
+
+    @property
+    def hostname(self) -> str: ...
+
+    @property
+    def port(self) -> int: ...
+
+    @property
+    def is_ssh_config_session(self) -> bool: ...
+
+    @property
+    def ssh_user_override(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -56,24 +77,7 @@ class RestartResult:
     includes_service_states: bool = False
 
 
-def monitor_template_restart(session, user, password, checks, reboot_timeout, service_timeout,
-                             cancel, report, *, monotonic=time.monotonic, poll_interval=2):
-    report("preflight", "Vorprüfung aller hinterlegten Service-Units")
-    for check in checks:
-        if cancel.is_set():
-            return RestartResult("not_started", "Neustart wurde nicht ausgelöst")
-        kind, state = probe_unit(session, user, check["unit"])
-        if kind != "state":
-            return RestartResult("error", f"Vorprüfung {check['unit']}: {state}; kein Neustart ausgelöst")
-    result = monitor_server_restart(session, user, password, "", reboot_timeout, cancel, report,
-                                    evidence_detail=True, poll_interval_seconds=poll_interval)
-    if result.status != "online" or not checks:
-        return result
-    return wait_for_service_states(session, user, checks, service_timeout, cancel, report,
-                                   result.detail, monotonic, poll_interval)
-
-
-def _ssh_args(session: Session, user: str, connect_timeout: int = 5) -> list[str]:
+def _ssh_args(session: SshTarget, user: str, connect_timeout: int = 5, *, strict=False) -> list[str]:
     args = [
         "ssh",
         "-o",
@@ -83,6 +87,9 @@ def _ssh_args(session: Session, user: str, connect_timeout: int = 5) -> list[str
         "-o",
         "ConnectionAttempts=1",
     ]
+    if strict:
+        for option in MASS_RESTART_SSH_OPTIONS:
+            args.extend(["-o", option])
     if session.is_ssh_config_session:
         if session.ssh_user_override:
             args.extend(["-l", connection_value(session.ssh_user_override)])
@@ -95,7 +102,7 @@ def _ssh_args(session: Session, user: str, connect_timeout: int = 5) -> list[str
 
 
 def _run_ssh(
-    session: Session,
+    session: SshTarget,
     user: str,
     remote_command: str,
     *,
@@ -125,7 +132,7 @@ def _process_error(completed: subprocess.CompletedProcess[str], fallback: str, *
     return compact if compact else fallback
 
 
-def _read_boot_id(session: Session, user: str, *, timeout=SSH_PROBE_TIMEOUT_SECONDS) -> tuple[bool, str | None, str]:
+def _read_boot_id(session: SshTarget, user: str, *, timeout=SSH_PROBE_TIMEOUT_SECONDS) -> tuple[bool, str | None, str]:
     command = f"printf '%s\\n' '{_CONNECTED_MARKER}'; cat /proc/sys/kernel/random/boot_id 2>/dev/null || true"
     try:
         completed = _run_ssh(session, user, command, timeout=timeout)
@@ -140,7 +147,7 @@ def _read_boot_id(session: Session, user: str, *, timeout=SSH_PROBE_TIMEOUT_SECO
     return True, boot_id, ""
 
 
-def _service_load_state(session: Session, user: str, service: str) -> tuple[bool, str, str]:
+def _service_load_state(session: SshTarget, user: str, service: str) -> tuple[bool, str, str]:
     command = f"systemctl show --property=LoadState --value {shlex.quote(service)}"
     try:
         completed = _run_ssh(session, user, command)
@@ -156,7 +163,7 @@ def _service_load_state(session: Session, user: str, service: str) -> tuple[bool
     return True, state, ""
 
 
-def _service_active(session: Session, user: str, service: str) -> tuple[bool, bool, str]:
+def _service_active(session: SshTarget, user: str, service: str) -> tuple[bool, bool, str]:
     command = f"systemctl is-active {shlex.quote(service)}"
     try:
         completed = _run_ssh(session, user, command)
@@ -171,7 +178,7 @@ def _service_active(session: Session, user: str, service: str) -> tuple[bool, bo
     return True, completed.returncode == 0 and state_text == "active", state_text
 
 
-def _issue_reboot(session: Session, user: str, sudo_password: str, *, timeout=SSH_REBOOT_TIMEOUT_SECONDS) -> tuple[bool, bool, str]:
+def _issue_reboot(session: SshTarget, user: str, sudo_password: str, *, timeout=SSH_REBOOT_TIMEOUT_SECONDS) -> tuple[bool, bool, str]:
     if sudo_password:
         remote_command = "sudo -S -p '' reboot"
         input_text = sudo_password + "\n"
@@ -199,7 +206,7 @@ def _issue_reboot(session: Session, user: str, sudo_password: str, *, timeout=SS
 
 
 def monitor_server_restart(
-    session: Session,
+    session: SshTarget,
     user: str,
     sudo_password: str,
     service: str,
@@ -317,6 +324,10 @@ def probe_unit(session, user, unit, timeout=8):
         if ssh_authentication_failed(completed.returncode, completed.stderr):
             return "error", SSH_AUTHENTICATION_HELP
         return "connection", "SSH nicht erreichbar"
+    return service_probe_result(completed)
+
+
+def service_probe_result(completed):
     props = dict(line.split("=", 1) for line in completed.stdout.splitlines() if "=" in line)
     if props.get("LoadState") == "not-found":
         return "error", "Dienst nicht vorhanden"
@@ -325,38 +336,14 @@ def probe_unit(session, user, unit, timeout=8):
     return "state", props["ActiveState"]
 
 
-def wait_for_service_states(session, user, checks, service_timeout, cancel, report, evidence, monotonic, poll_interval):
-    deadline = monotonic() + service_timeout
-    latest = {c["unit"]: "noch nicht geprüft" for c in checks}
-    def details():
-        return "\n".join(f"{c['unit']}: Soll {c['expected']}, Ist {latest[c['unit']]}" for c in checks)
-    while monotonic() < deadline:
-        if cancel.is_set():
-            return RestartResult("stopped", evidence + "\nServiceüberwachung beendet\n" + details(), includes_service_states=True)
-        all_match = True
-        for check in checks:
-            remaining = deadline - monotonic()
-            if remaining <= 0 or cancel.is_set():
-                all_match = False
-                break
-            kind, state = probe_unit(session, user, check["unit"], timeout=max(.1, min(8, remaining)))
-            latest[check["unit"]] = state
-            if kind == "error":
-                return RestartResult("error", evidence + "\n" + details(), includes_service_states=True)
-            all_match &= kind == "state" and state == check["expected"]
-        if all_match and monotonic() <= deadline:
-            return RestartResult("online", evidence + "\nAlle Service-Sollzustände erfüllt\n" + details(), includes_service_states=True)
-        report("waiting_service", evidence + "\n" + details())
-        cancel.wait(max(0, min(poll_interval, deadline - monotonic())))
-    return RestartResult("timeout", evidence + "\nService-Wartezeit abgelaufen\n" + details(), includes_service_states=True)
-
-
 class RestartScheduler:
     """Admission and failure gates share a lock, including worker completion."""
-    def __init__(self, targets, limit, on_error, work, *, record_error=None):
+    def __init__(self, targets, limit, on_error, work, *, record_error=None, daemon=True, cancel=None):
         self.pending = list(targets)
         self.limit, self.on_error, self.work = limit, on_error, work
         self.record_error = record_error
+        self.daemon = daemon
+        self.cancel = cancel
         self.active = 0
         self.paused = False
         self.stopped = False
@@ -388,11 +375,12 @@ class RestartScheduler:
                 for target in self.pending:
                     self.events.put((target, RestartResult("not_started", "Neustart wurde nicht ausgelöst")))
                 self.pending.clear()
-            while self.pending and not self.paused and not self.stopped and self.active < self.limit:
+            while (self.pending and not self.paused and not self.stopped and self.active < self.limit
+                   and (self.cancel is None or not self.cancel.is_set())):
                 target = self.pending.pop(0)
                 self.active += 1
                 try:
-                    threading.Thread(target=self._run, args=(target,), daemon=True).start()
+                    threading.Thread(target=self._run, args=(target,), daemon=self.daemon).start()
                 except (RuntimeError, OSError):
                     self._complete(target, RestartResult("error", "Hintergrundaufgabe konnte nicht gestartet werden."))
 

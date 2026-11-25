@@ -44,6 +44,19 @@ def app(monkeypatch):
     gc.collect()
 
 
+@pytest.fixture
+def successful_preflight(monkeypatch, tmp_path):
+    from hashlib import sha256
+    from ssh_manager_app.mass_restart import RestartIdentity, RestartPreflight
+
+    def check(session, *args):
+        fingerprint = sha256(session.key.encode()).hexdigest()
+        return RestartPreflight("online", "simulated", identity=RestartIdentity(fingerprint[:32], fingerprint[32:]))
+
+    monkeypatch.setattr("ssh_manager_app.mass_restart.check_restart_target", check)
+    monkeypatch.setattr("ssh_manager_app.mass_restart.restart_lock_directory", lambda: tmp_path)
+
+
 def screenshot(window, name):
     directory = os.environ.get("SSH_RESTART_PREVIEW_DIR")
     if not directory:
@@ -141,7 +154,7 @@ def test_per_host_browser_merges_multi_selection_and_keeps_existing_state(app, m
     assert selected == ["a.service", "b.service"]
 
 
-def test_execution_pause_keeps_monitoring_active_and_stop_skips_pending(app, monkeypatch):
+def test_execution_pause_keeps_monitoring_active_and_stop_skips_pending(app, monkeypatch, successful_preflight):
     import threading
     from ssh_manager_app.restart_runtime import RestartResult
     from ssh_manager_app.actions_restart_templates import run_template
@@ -159,7 +172,7 @@ def test_execution_pause_keeps_monitoring_active_and_stop_skips_pending(app, mon
             return RestartResult("error", "simulated error")
         assert release.wait(3)
         return RestartResult("online", "simulated success")
-    monkeypatch.setattr("ssh_manager_app.actions_restart_templates.monitor_template_restart", monitor)
+    monkeypatch.setattr("ssh_manager_app.mass_restart.run_prepared_restart", monitor)
     def observe():
         for window in app.winfo_children():
             if isinstance(window, ServerRestartProgressDialog):
@@ -328,7 +341,7 @@ def test_unreadable_password_preserved_until_explicit_edit(app):
     window.destroy()
 
 
-def test_password_assignment_reaches_each_restart_worker(app, monkeypatch):
+def test_password_assignment_reaches_each_restart_worker(app, monkeypatch, successful_preflight):
     from ssh_manager_app.restart_runtime import RestartResult
     from ssh_manager_app.actions_restart_templates import run_template
     from ssh_manager_app.restart_templates import new_template
@@ -339,10 +352,10 @@ def test_password_assignment_reaches_each_restart_worker(app, monkeypatch):
     for target in item["targets"]:
         target.update(user="admin", password_protected=seal(expected[target["key"]]))
     seen = {}
-    def monitor(session, user, password, *args, **kwargs):
-        seen[session.key] = password
+    def monitor(session, user, checks, take_password, *args):
+        seen[session.key] = take_password()
         return RestartResult("online", "simulated")
-    monkeypatch.setattr("ssh_manager_app.actions_restart_templates.monitor_template_restart", monitor)
+    monkeypatch.setattr("ssh_manager_app.mass_restart.run_prepared_restart", monitor)
     progress = run_template(app, item, resolve_targets(item, app._app_sessions)[::-1], "ignored")
     def finish():
         if progress._finished:
@@ -354,6 +367,29 @@ def test_password_assignment_reaches_each_restart_worker(app, monkeypatch):
     app.wait_window(progress)
     app.after_cancel(watchdog)
     assert seen == expected
+
+
+def test_all_parallel_preview_requires_additional_confirmation(app, monkeypatch):
+    from ssh_manager_app.restart_templates import new_template
+
+    template = new_template(app._app_sessions[:1])
+    template["mode"] = "all_parallel"
+    preview = RestartPreview(app, template, resolve_targets(template, app._app_sessions))
+    answers = iter([False, True])
+    messages = []
+
+    def confirm(title, text, **options):
+        messages.append(text)
+        assert options["parent"] is preview
+        return next(answers)
+
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.messagebox.askyesno", confirm)
+    preview.password.set("one-time")
+    preview.accept()
+    assert preview.winfo_exists() and preview.result is None
+    preview.accept()
+    assert preview.result == "one-time" and not preview.winfo_exists()
+    assert len(messages) == 2 and "Alle 1 Server" in messages[0]
 
 
 def test_remove_and_add_server_does_not_reuse_password(app, monkeypatch):

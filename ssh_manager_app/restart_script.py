@@ -4,25 +4,36 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from getpass import GetPassWarning, getpass
-import queue
 import shutil
+import signal
 import sys
 import threading
+import time
 import warnings
 
-from .restart_runtime import (MODE_LABELS, RestartResult, RestartScheduler, execution_policy,
-                              monitor_template_restart, service_check, validate_execution_options)
+from .mass_restart import MassRestartRun, duplicate_restart_targets, validate_sudo_password
+from .restart_runtime import (MODE_LABELS, RestartResult, execution_policy, service_check,
+                              validate_execution_options)
 from .ssh_utils import connection_value, valid_port
 
 
 def main(plan, raw_targets):
     parser = argparse.ArgumentParser(description="Massen-Neustart über OpenSSH", allow_abbrev=False)
     parser.add_argument("--execute", action="store_true", help="Neustarts tatsächlich ausführen")
+    parser.add_argument("--sudo", choices=("common", "per-connection", "none"),
+                        help="sudo-Abfragemodus für diesen Lauf wählen")
+    parser.add_argument("--confirm-all", action="store_true", help="Alle parallelen Starts ausdrücklich bestätigen")
     args = parser.parse_args()
     try:
         targets = validate_plan(plan, raw_targets)
     except ValueError as error:
         parser.error(str(error))
+    if args.sudo:
+        plan = {**plan, "password_per_connection": args.sudo == "per-connection",
+                "sudo_password_required": args.sudo == "common"}
+        if args.sudo == "per-connection":
+            for target in targets:
+                target.sudo_password_required = True
     limit, on_error = execution_policy({**plan, "targets": targets})
     show_plan(plan, targets, limit, on_error)
     if not args.execute:
@@ -33,16 +44,23 @@ def main(plan, raw_targets):
     if (on_error == "pause" or any(password_required(plan, target) for target in targets)) and not sys.stdin.isatty():
         parser.error("sudo-Passwortabfrage oder Fehlerpause benötigt ein interaktives Terminal.")
     try:
+        if plan["mode"] == "all_parallel" and not args.confirm_all:
+            if not sys.stdin.isatty():
+                parser.error("Für alle parallelen Starts --confirm-all angeben.")
+            answer = input(f"Alle {len(targets)} Server parallel neu starten? Zielanzahl eingeben: ").strip()
+            if answer != str(len(targets)):
+                print("Abgebrochen. Kein Neustart gestartet.")
+                return 1
         passwords = read_passwords(plan, targets)
     except (EOFError, GetPassWarning):
-        parser.error("Verdeckte sudo-Eingabe nicht verfügbar. Kein Neustart gestartet.")
+        parser.error("Erforderliche Terminaleingabe abgebrochen. Kein Neustart gestartet.")
     except ValueError as error:
         parser.error(str(error))
     except KeyboardInterrupt:
         print("\nAbgebrochen. Kein Neustart gestartet.")
         return 130
 
-    results, interrupted = run_targets(plan, targets, passwords, limit, on_error)
+    results, interrupted = run_targets(plan, targets, passwords)
     show_results(targets, results)
     if interrupted:
         return 130
@@ -110,6 +128,7 @@ def validate_plan(plan, targets):
         if type(needs_password) is not bool:
             raise ValueError(f"Ziel {index}: sudo_password_required muss True oder False sein.")
         validated.append(RestartTarget(label, user, host, port, alias, checks, needs_password))
+    duplicate_restart_targets([(target, target.user, target.checks) for target in validated])
     return validated
 
 
@@ -154,6 +173,8 @@ def read_passwords(plan, targets):
             return [""] * len(targets)
     if any(password_required(plan, target) and not password for target, password in zip(targets, passwords)):
         raise ValueError("Ein benötigtes sudo-Passwort fehlt. Kein Neustart gestartet.")
+    for password in passwords:
+        validate_sudo_password(password)
     return passwords
 
 
@@ -166,44 +187,62 @@ def continue_after_failure(failures, targets):
         return False
 
 
-def run_targets(plan, targets, passwords, limit, on_error):
-    """Admit new work centrally; running targets monitor themselves during a pause."""
+def run_targets(plan, targets, passwords):
+    """Display worker events and make admission decisions in one console thread."""
     cancel = threading.Event()
-
-    def restart(index):
-        target = targets[index]
-        return monitor_template_restart(
-            target, target.user, passwords[index], target.checks,
-            plan["reboot_timeout"], plan["service_timeout"], cancel, lambda _state, _detail: None,
-        )
-
-    scheduler = RestartScheduler(range(len(targets)), limit, on_error, restart)
-    results = {}
+    run = MassRestartRun(plan, [(target, target.user, target.checks) for target in targets], passwords, cancel)
     interrupted = False
+    asking = False
+    announced = False
+
+    def stop_run(_signum, _frame):
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            cancel.set()
+        if asking:
+            raise KeyboardInterrupt
+
+    # Keep Ctrl+C from interrupting scheduler bookkeeping during thread startup.
+    previous_handler = signal.signal(signal.SIGINT, stop_run)
     try:
-        while len(results) < len(targets):
-            scheduler.tick()
-            with scheduler.lock:
-                failures = list(scheduler.failures) if scheduler.paused and scheduler.pending else []
-            if failures:
-                scheduler.decide(continue_after_failure(failures, targets))
-            try:
-                index, result = scheduler.events.get(timeout=.1)
-            except queue.Empty:
-                continue
-            results[index] = result
-    except KeyboardInterrupt:
-        cancel.set()
-        interrupted = True
-        with scheduler.lock:
-            scheduler.decide(False)
-            while not scheduler.events.empty():
-                index, result = scheduler.events.get_nowait()
-                results[index] = result
-            for index in scheduler.pending:
-                results[index] = RestartResult("not_started", "Neustart wurde nicht ausgelöst")
-        print("Lauf abgebrochen. Bereits ausgelöste Neustarts laufen auf den Servern weiter.")
-    return results, interrupted
+        while True:
+            if interrupted and not announced:
+                print("\nAbbruch angefordert. Warte auf das Ende der lokalen SSH-Aufrufe.", flush=True)
+                announced = True
+            run.tick()
+            while not run.events.empty():
+                timestamp, index, _state, detail = run.events.get_nowait()
+                print_restart_event(timestamp, targets[index], detail)
+            if run.done:
+                return run.results, interrupted
+            failures = run.pause_failures()
+            if failures and not interrupted:
+                try:
+                    asking = True
+                    if not interrupted:
+                        run.decide(continue_after_failure(failures, targets))
+                except KeyboardInterrupt:
+                    asking = False
+                    stop_run(None, None)
+                finally:
+                    asking = False
+            time.sleep(.08)
+    finally:
+        try:
+            if not run.done:
+                cancel.set()
+                while not run.done:
+                    run.tick()
+                    time.sleep(.08)
+        finally:
+            signal.signal(signal.SIGINT, previous_handler)
+
+
+def print_restart_event(timestamp, target, detail):
+    label = console_text(target.label).replace("\n", " ")
+    for line in console_text(detail).splitlines():
+        print(f"{timestamp:%H:%M:%S} [{label}] {line}", flush=True)
 
 
 def show_results(targets, results):

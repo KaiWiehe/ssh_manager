@@ -534,14 +534,22 @@ sudo-Passwörter werden in beiden Fällen mit Windows-DPAPI verschlüsselt.
 
 Parallel mit einstellbarer Grenze oder nacheinander in Tabellenreihenfolge starten.
 Bei Fehlern weiterlaufen, weitere Starts stoppen oder pausieren und nachfragen.
-Laufende Neustarts werden während einer Pause weiter überwacht. Separate Fristen
-gelten für Neustart/SSH und anschließend die Serviceprüfungen. Erfolg benötigt
-Neustartnachweis, SSH-Rückkehr und alle Sollzustände. Inaktiv heißt vorhanden und
-sauber gestoppt; `failed` zählt nicht als inaktiv. Dienste werden nur geprüft.
-Fehlende Units verhindern den Reboot dieses Ziels bereits in der Vorprüfung.
+Laufende Neustarts werden während einer Pause weiter überwacht. Vor dem ersten
+Reboot prüft der Massen-Neustart alle Ziele auf SSH-Vertrauen, eine eindeutige
+Maschinenidentität und gültige Boot-ID, Dienst-Prüfbarkeit und die sudo-Regel für
+den konkreten Reboot-Befehl. Bei einem Vorprüfungsfehler startet der gesamte Plan
+keinen Reboot. Gemeinsame lokale Sperren schützen Zielüberschneidungen zwischen
+App und Skript unter demselben Benutzerkonto. Vor jedem Reboot wird die
+vorher geprüfte Identität einschließlich Boot-ID erneut verglichen.
+
+Separate Fristen gelten für Neustart/SSH und anschließend die Serviceprüfungen.
+Der Neustartnachweis braucht zwei erfolgreiche SSH-Abfragen mit derselben
+geänderten Boot-ID derselben Maschine. Inaktiv heißt vorhanden und sauber
+gestoppt. `failed` zählt nicht als inaktiv. Dienste werden nur geprüft.
 
 Mit **Alle parallel durchstarten** werden alle Zielserver ohne Parallelitätsgrenze
-und ohne Fehlerpause angestoßen. „Max. gleichzeitig“ und „Bei Fehlern“ sind in diesem
+und ohne Fehlerpause angestoßen. Die GUI zeigt die Zielanzahl in einer zusätzlichen Bestätigung.
+„Max. gleichzeitig“ und „Bei Fehlern“ sind in diesem
 Modus deaktiviert; beim Wechsel zurück bleiben die Werte erhalten. Die SSH-Anmeldung
 und Vorprüfung bleiben pro Server erhalten, daher sind die Reboots nicht exakt synchron.
 
@@ -572,21 +580,31 @@ als `.py`-Datei. Die Vorlagenbibliothek wird dabei nicht gespeichert.
 
 Auf dem ausführenden Rechner werden Python 3 und OpenSSH (`ssh` im PATH) benötigt.
 Direkte Ziele enthalten den Host und den eingestellten Port. SSH-Aliase verwenden
-die lokale OpenSSH-Konfiguration, zum Beispiel für einen Jumphost. Die Ziele und
-der Ablauf lassen sich am Anfang der Datei lesen und bearbeiten.
+die lokale OpenSSH-Konfiguration, zum Beispiel für einen Jumphost. Die strikte
+Hostschlüsselprüfung setzt vorab vertrauenswürdig hinterlegte Schlüssel voraus.
+Sprunghosts müssen entsprechend in ihrer eigenen SSH-Konfiguration geprüft werden.
+Die Ziele und der Ablauf lassen sich am Anfang der Datei lesen und bearbeiten.
 
 ```bash
 python massen-neustart.py
 python massen-neustart.py --execute
+python massen-neustart.py --execute --sudo common
 ```
 
 Der erste Aufruf zeigt den Plan ohne SSH-Verbindungen. Der zweite führt den Lauf
 aus und meldet je Server das Ergebnis und die geprüften Dienstzustände. Das Skript
-enthält nur Angaben zur Passwortabfrage. Erforderliche sudo-Passwörter werden vor
-dem ersten Neustart verdeckt abgefragt. Passwortabfragen und Fehlerpausen benötigen
-ein interaktives Terminal. Strg+C beendet die Überwachung und verhindert weitere
-Starts. Bereits ausgelöste Neustarts laufen serverseitig weiter. Fehler,
-Zeitüberschreitungen und Abbrüche liefern einen Exitcode ungleich null.
+enthält nur Angaben zur Passwortabfrage. `--sudo common` fragt einmal verdeckt
+nach einem gemeinsamen Passwort. `--sudo per-connection` fragt für jedes Ziel
+und `--sudo none` startet ohne Passwortabfrage. Ohne `--sudo` gelten die
+exportierten Einstellungen. Passwortabfragen und Fehlerpausen benötigen ein
+interaktives Terminal. **Alle parallel** verlangt zusätzlich die Eingabe der
+Zielanzahl oder das ausdrückliche Argument `--confirm-all`.
+
+Die Live-Ausgabe zeigt Zeit, Server und Zustandswechsel. Während der Eingabe in
+der Fehlerpause werden laufende Ziele weiter überwacht und Meldungen gepuffert.
+Strg+C verhindert weitere Starts und beendet die lokalen SSH-Aufrufe. Bereits
+angeforderte Reboots können serverseitig weiterlaufen. Fehler, Zeitüberschreitungen
+und Abbrüche liefern einen Exitcode ungleich null.
 
 ### Massendienststatus mit denselben Vorlagen
 

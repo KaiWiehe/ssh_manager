@@ -20,11 +20,18 @@ def _helpers(filename, *names):
     source, statements = _source(filename)
     definitions = {}
     for statement in statements:
-        if isinstance(statement, ast.FunctionDef):
+        if isinstance(statement, (ast.FunctionDef, ast.ClassDef)):
             definitions[statement.name] = statement
         elif isinstance(statement, ast.Assign) and isinstance(statement.targets[0], ast.Name):
             definitions[statement.targets[0].id] = statement
-    return "\n\n\n".join(ast.get_source_segment(source, definitions[name]) for name in names)
+    lines = source.splitlines()
+    parts = []
+    for name in names:
+        node = definitions[name]
+        decorators = getattr(node, "decorator_list", ())
+        start = decorators[0].lineno if decorators else node.lineno
+        parts.append("\n".join(lines[start - 1:node.end_lineno]))
+    return "\n\n\n".join(parts)
 
 
 def _standalone_module(filename):
@@ -59,9 +66,14 @@ def render_restart_script(template, resolved, *, common_password_required, targe
         targets.append(target)
     validate_plan(plan, targets)
 
-    runtime_imports, runtime = _standalone_module("restart_runtime.py")
+    runtime_imports, _ = _standalone_module("restart_runtime.py")
+    runtime = _helpers("restart_runtime.py", "UNIT", "MODE_LABELS", "validate_execution_options", "execution_policy",
+                       "service_check", "MASS_RESTART_SSH_OPTIONS", "SshTarget", "RestartResult", "_ssh_args",
+                       "service_probe_result", "RestartScheduler")
     console_imports, console = _standalone_module("restart_script.py")
-    imports = "\n".join(sorted(set(runtime_imports + console_imports)))
+    mass_imports, mass_runtime = _standalone_module("mass_restart.py")
+    windows_imports, windows_jobs = _standalone_module("restart_winjob.py")
+    imports = "\n".join(sorted(set(runtime_imports + console_imports + mass_imports + windows_imports)))
     identifiers = _helpers("ssh_utils.py", "connection_value", "valid_port")
     authentication = _helpers("ssh_failures.py", "SSH_AUTHENTICATION_HELP", "ssh_authentication_failed")
     target_lines = "\n".join(indent(_mapping_literal(target), "    ") + "," for target in targets)
@@ -70,7 +82,9 @@ def render_restart_script(template, resolved, *, common_password_required, targe
 # Massen-Neustart aus SSH Manager. Benötigt Python 3 und OpenSSH (ssh).
 # python massen-neustart.py             # lokale Vorschau
 # python massen-neustart.py --execute   # Neustarts auslösen
+# python massen-neustart.py --execute --sudo common   # Ein Passwort für alle
 # Alias-Ziele verwenden die SSH-Konfiguration des ausführenden Rechners.
+# Hostschlüssel müssen vor dem Lauf vertrauenswürdig hinterlegt sein.
 # sudo_password_required steuert die verdeckte Abfrage beim Ausführen.
 from __future__ import annotations
 
@@ -100,6 +114,13 @@ TARGETS = [
 
 
 {runtime}
+
+
+{mass_runtime}
+
+
+# Prozessverwaltung für Windows
+{windows_jobs}
 
 
 if __name__ == "__main__":

@@ -4,13 +4,15 @@ import io
 import json
 import subprocess
 import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from ssh_manager_app import storage
-from ssh_manager_app.restart_runtime import RestartResult, RestartScheduler, _ssh_args, monitor_template_restart, probe_unit, execution_policy
+from ssh_manager_app.mass_restart import RestartIdentity, check_restart_target, run_prepared_restart, wait_for_restart_services
+from ssh_manager_app.restart_runtime import RestartResult, RestartScheduler, _ssh_args, probe_unit, execution_policy
 from ssh_manager_app.models import Session, default_settings, settings_to_dict
 from ssh_manager_app.restart_templates import (new_template, resolve_targets,
     service_check, target_fingerprint, validate_library, validate_template)
@@ -128,42 +130,42 @@ def test_unit_probe_distinguishes_failed_inactive_missing_and_connection():
 
 
 def test_preflight_failure_never_reboots():
-    with patch("ssh_manager_app.restart_runtime.probe_unit", return_value=("error", "Dienst nicht vorhanden")), \
-         patch("ssh_manager_app.restart_runtime.monitor_server_restart") as reboot:
-        result = monitor_template_restart(session(), "ops", "", [service_check("missing")], 10, 5,
-                                          threading.Event(), lambda *_: None)
+    with patch("ssh_manager_app.mass_restart.read_restart_identity", return_value=("identity", RestartIdentity("a", "old"))), \
+         patch("ssh_manager_app.mass_restart._probe_restart_unit", return_value=("error", "Dienst nicht vorhanden")), \
+         patch("ssh_manager_app.mass_restart.mass_ssh") as remote:
+        result = check_restart_target(session(), "ops", [service_check("missing")], "", threading.Event(), lambda *_: None)
     assert result.status == "error"
-    assert "kein Neustart" in result.detail
-    reboot.assert_not_called()
+    assert "Dienst nicht vorhanden" in result.detail
+    remote.assert_not_called()
 
 
 def test_multiple_services_failed_does_not_satisfy_inactive_but_can_recover():
     checks = [service_check("a"), service_check("b", "inactive")]
-    # two preflights, then failed/active, then active/inactive
-    values = [("state", "inactive"), ("state", "active"), ("state", "failed"),
+    values = [("state", "failed"),
               ("state", "failed"), ("state", "active"), ("state", "inactive")]
     reports = []
-    with patch("ssh_manager_app.restart_runtime.probe_unit", side_effect=values), \
-         patch("ssh_manager_app.restart_runtime.monitor_server_restart", return_value=RestartResult("online", "Boot-ID geändert")):
-        result = monitor_template_restart(session(), "ops", "", checks, 20, 10, threading.Event(),
-            lambda *args: reports.append(args), poll_interval=0)
+    with patch("ssh_manager_app.mass_restart._probe_restart_unit", side_effect=values):
+        result = wait_for_restart_services(session(), "ops", checks, RestartIdentity("a", "new"), 10, threading.Event(),
+            lambda *args: reports.append(args), time.monotonic, 0)
     assert result.status == "online"
     assert "b.service: Soll inactive, Ist inactive" in result.detail
-    assert any("Ist failed" in detail for _, detail in reports)
+    assert any("a.service: failed" in detail for _, detail in reports)
 
 
 def test_service_deadline_starts_after_reboot_and_reports_every_unit():
     clock = [0]
     def reboot(*args, **kwargs):
         clock[0] = 1000  # service deadline must be relative to this moment
-        return RestartResult("online", "Boot-ID geändert")
+        return RestartIdentity("a", "new"), None
     def probe(*args, **kwargs):
         clock[0] += 1
         return "state", "failed"
-    with patch("ssh_manager_app.restart_runtime.probe_unit", side_effect=probe), \
-         patch("ssh_manager_app.restart_runtime.monitor_server_restart", side_effect=reboot):
-        result = monitor_template_restart(session(), "ops", "", [service_check("a"), service_check("b", "inactive")],
-            10, 3, threading.Event(), lambda *_: None, monotonic=lambda: clock[0], poll_interval=0)
+    with patch("ssh_manager_app.mass_restart._probe_restart_unit", side_effect=probe), \
+         patch("ssh_manager_app.mass_restart._request_verified_reboot", return_value=None), \
+         patch("ssh_manager_app.mass_restart.wait_for_new_boot", side_effect=reboot):
+        result = run_prepared_restart(session(), "ops", [service_check("a"), service_check("b", "inactive")],
+            lambda: "", RestartIdentity("a", "old"), 10, 3, threading.Event(), lambda *_: None,
+            monotonic=lambda: clock[0], poll_interval=0)
     assert result.status == "timeout"
     assert "a.service" in result.detail and "b.service" in result.detail
     assert clock[0] >= 1003

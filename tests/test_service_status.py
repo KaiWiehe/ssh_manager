@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from test_restart_templates_ui import app, screenshot
+from test_restart_templates_ui import app, screenshot, successful_preflight
 from ssh_manager_app.models import Session
 from ssh_manager_app.restart_templates import new_template, validate_template, resolve_targets
 from ssh_manager_app.restart_runtime import execution_policy
@@ -104,7 +104,7 @@ def test_changed_shared_template_blocks_stale_status_and_reload_reads_latest(app
     status.destroy()
 
 
-def test_all_parallel_admits_every_host_despite_first_failure(app, monkeypatch):
+def test_all_parallel_admits_every_host_despite_first_failure(app, monkeypatch, successful_preflight):
     from ssh_manager_app.restart_runtime import RestartResult
     from ssh_manager_app.actions_restart_templates import run_template
     item = new_template(app._app_sessions)
@@ -112,7 +112,7 @@ def test_all_parallel_admits_every_host_despite_first_failure(app, monkeypatch):
     for target in item["targets"]:
         target["user"] = "admin"
     seen = []
-    monkeypatch.setattr("ssh_manager_app.actions_restart_templates.monitor_template_restart",
+    monkeypatch.setattr("ssh_manager_app.mass_restart.run_prepared_restart",
         lambda session, *a, **k: (seen.append(session.key), RestartResult("error", "synthetic failure"))[1])
     progress = run_template(app, validate_template(item), resolve_targets(item, app._app_sessions), "")
     finish_window(app, progress)

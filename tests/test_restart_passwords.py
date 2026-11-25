@@ -59,7 +59,7 @@ def test_unreadable_credentials_block_before_progress_or_reboot(monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("Must fail before any progress dialog or SSH work")
     monkeypatch.setattr(actions, "ServerRestartProgressDialog", forbidden)
-    monkeypatch.setattr(actions, "monitor_template_restart", forbidden)
+    monkeypatch.setattr(actions, "MassRestartRun", forbidden)
     with pytest.raises(ValueError, match="Windows-Konto"):
         actions.run_template(None, item, resolve_targets(item, sessions), "")
     assert validate_template(deepcopy(item)) == item  # Backups need no decryption.

@@ -6,6 +6,7 @@ import binascii
 import ctypes
 from ctypes import wintypes
 
+from .mass_restart import validate_sudo_password
 from .secret_scripts import protect
 
 PREFIX = "dpapi-user-v1:"
@@ -52,8 +53,7 @@ def unseal(value):
 
 
 def seal(password, previous=""):
-    if not isinstance(password, str) or len(password) > 4096 or any(c in password for c in "\r\n\x00"):
-        raise ValueError("sudo-Passwort: maximal 4096 Zeichen, keine Zeilenumbrüche oder Nullzeichen.")
+    validate_sudo_password(password)
     if not password:
         return ""
     if previous:

@@ -5,7 +5,8 @@ from unittest.mock import patch
 import pytest
 
 from ssh_manager_app.restart_runtime import _issue_reboot, monitor_server_restart, RestartResult
-from ssh_manager_app.restart_runtime import monitor_template_restart, probe_unit
+from ssh_manager_app.mass_restart import RestartIdentity, wait_for_restart_services
+from ssh_manager_app.restart_runtime import probe_unit
 from ssh_manager_app.models import Session
 from ssh_manager_app.remote_browser import list_services
 from ssh_manager_app.service_status import check_unit
@@ -71,9 +72,7 @@ def test_restart_stops_when_authentication_is_rejected_after_reboot():
 
 
 def test_template_service_monitor_stops_on_authentication_failure_after_reboot():
-    with patch("ssh_manager_app.restart_runtime.probe_unit", side_effect=[
-        ("state", "active"), ("error", SSH_AUTHENTICATION_HELP)]), \
-         patch("ssh_manager_app.restart_runtime.monitor_server_restart", return_value=RestartResult("online", "Boot-ID geändert")):
-        result = monitor_template_restart(session(), "ops", "", [{"unit": "a.service", "expected": "active"}],
-            30, 30, threading.Event(), lambda *_: None)
+    with patch("ssh_manager_app.mass_restart.mass_ssh", return_value=denied()):
+        result = wait_for_restart_services(session(), "ops", [{"unit": "a.service", "expected": "active"}],
+            RestartIdentity("a", "new"), 30, threading.Event(), lambda *_: None, lambda: 0, 0)
     assert result.status == "error" and SSH_AUTHENTICATION_HELP in result.detail

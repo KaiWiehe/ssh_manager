@@ -298,6 +298,7 @@ class RestartPreview(AppWindow):
     def __init__(self, parent, template, targets):
         super().__init__(parent)
         self.result = None
+        self.confirm_all_count = len(targets) if template["mode"] == "all_parallel" else 0
         per_connection = template.get("password_per_connection", False)
         self.password = tk.StringVar(value="" if per_connection else unseal(template.get("password_protected", "")))
         self._password_var = self.password
@@ -335,10 +336,20 @@ class RestartPreview(AppWindow):
         ttk.Button(buttons, text="Abbrechen", command=self.destroy).pack(side="right", padx=8)
         modal(self, parent, "Massen-Neustart – Startvorschau", 880, 650)
 
+    @single_pending
     def accept(self):
+        if self.confirm_all_count and not messagebox.askyesno(
+            "Alle parallelen Neustarts bestätigen",
+            f"Alle {self.confirm_all_count} Server parallel neu starten? Vor dem ersten Neustart wird der gesamte Plan geprüft.",
+            parent=self,
+        ):
+            return
         self.result = self.password.get()
-        self.password.set("")
         self.destroy()
+
+    def destroy(self):
+        self.password.set("")
+        super().destroy()
 
 
 class RestartScriptPreview(AppWindow):
@@ -967,6 +978,8 @@ class RestartTemplatesDialog(AppWindow):
         try:
             template = validate_template(self.template, runnable=True)
             targets = resolve_targets(template, all_connections(self.app))
+            from .mass_restart import duplicate_restart_targets
+            duplicate_restart_targets(targets)
             passwords_for_run(template, targets, unseal(template.get("password_protected", ""))
                               if not template.get("password_per_connection", False) else "")
             fingerprint = target_fingerprint(targets)
