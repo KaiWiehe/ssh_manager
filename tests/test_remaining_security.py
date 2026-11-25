@@ -70,7 +70,8 @@ def test_folder_rename_rejects_invalid_names(name):
 def test_restart_limit_bounds_running_hosts_and_cancel_skips_waiting(cancel):
     import threading
     import time
-    from ssh_manager_app.actions_restart import restart_servers, RestartResult
+    from ssh_manager_app.actions_restart import restart_servers
+    from ssh_manager_app.restart_runtime import RestartResult
     from ssh_manager_app.models import AppSettings
     sessions = [Session(str(i), str(i), [], f"host{i}") for i in range(5)]
     users = [(session, "ops") for session in sessions]

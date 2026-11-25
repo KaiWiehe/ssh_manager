@@ -1,34 +1,12 @@
-"""Validated restart plans and a scheduler that never dequeues work in workers."""
+"""Validate restart templates and resolve their current connection references."""
 from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
-import queue
-import re
-import threading
 import uuid
 
-from .models import Session
+from .restart_runtime import validate_execution_options, service_check
 from .ssh_utils import connection_value
-
-UNIT = re.compile(r"(?!-)[A-Za-z0-9_.:@-]{1,200}\.service\Z")
-MODE_LABELS = {"parallel": "parallel", "serial": "nacheinander", "all_parallel": "Alle parallel durchstarten"}
-
-
-def execution_policy(template):
-    if template["mode"] == "all_parallel":
-        return len(template["targets"]), "continue"
-    return (1 if template["mode"] == "serial" else template["max_parallel"]), template["on_error"]
-
-
-def service_check(name, expected="active"):
-    name = name.strip()
-    if not name.endswith(".service"):
-        name += ".service"
-    if not UNIT.fullmatch(name) or expected not in ("active", "inactive"):
-        raise ValueError("Gültigen systemd-Dienst und Sollzustand aktiv/inaktiv angeben.")
-    return {"unit": name, "expected": expected}
-
 
 def new_template(sessions):
     seen = set()
@@ -60,15 +38,9 @@ def validate_template(item, *, runnable=False):
         if not isinstance(value, str) or not value.strip() or len(value) > 200 or any(c in value for c in "\r\n\x00"):
             raise ValueError("Vorlagen-ID und Name müssen ausgefüllt sein (maximal 200 Zeichen).")
         result[field] = value.strip()
-    for field, allowed in (("mode", tuple(MODE_LABELS)), ("on_error", ("continue", "stop", "pause"))):
-        if item.get(field) not in allowed:
-            raise ValueError("Ungültiger Ablauf oder Fehlerverhalten.")
+    validate_execution_options(item)
+    for field in ("mode", "on_error", "max_parallel", "reboot_timeout", "service_timeout"):
         result[field] = item[field]
-    for field, maximum in (("max_parallel", 128), ("reboot_timeout", 3600), ("service_timeout", 3600)):
-        value = item.get(field)
-        if type(value) is not int or not 1 <= value <= maximum:
-            raise ValueError(f"{field}: ganze Zahl zwischen 1 und {maximum} erforderlich.")
-        result[field] = value
     targets = item.get("targets")
     if not isinstance(targets, list) or not 1 <= len(targets) <= 1000:
         raise ValueError("Eine Vorlage benötigt 1 bis 1000 Server.")
@@ -142,61 +114,3 @@ def resolve_targets(template, sessions):
 
 def target_fingerprint(resolved):
     return [(s.key, s.display_name, s.hostname, s.port, s.source, user, checks) for s, user, checks in resolved]
-
-
-class RestartScheduler:
-    """Admission and failure gates share a lock, including worker completion."""
-    def __init__(self, targets, limit, on_error, work):
-        self.pending = list(targets)
-        self.limit, self.on_error, self.work = limit, on_error, work
-        self.active = 0
-        self.paused = False
-        self.stopped = False
-        self.failures = []
-        self.events = queue.Queue()
-        self.lock = threading.RLock()
-
-    def _complete(self, target, result):
-        with self.lock:
-            self.active -= 1
-            if result.status in ("error", "timeout"):
-                self.failures.append((target, result))
-                self.paused |= self.on_error == "pause"
-                self.stopped |= self.on_error == "stop"
-            self.events.put((target, result))
-
-    def _run(self, target):
-        from .actions_restart import RestartResult
-        try:
-            result = self.work(target)
-        except Exception as error:
-            from .errors import record_failure
-            record_failure(error)
-            result = RestartResult("error", "Unerwarteter Prüffehler. Zustand manuell prüfen; kein automatischer Neustartversuch.")
-        self._complete(target, result)
-
-    def tick(self):
-        from .actions_restart import RestartResult
-        with self.lock:
-            if self.stopped:
-                for target in self.pending:
-                    self.events.put((target, RestartResult("not_started", "Neustart wurde nicht ausgelöst")))
-                self.pending.clear()
-            while self.pending and not self.paused and not self.stopped and self.active < self.limit:
-                target = self.pending.pop(0)
-                self.active += 1
-                try:
-                    threading.Thread(target=self._run, args=(target,), daemon=True).start()
-                except (RuntimeError, OSError):
-                    self._complete(target, RestartResult("error", "Hintergrundaufgabe konnte nicht gestartet werden."))
-
-    def decide(self, continue_run):
-        with self.lock:
-            self.paused = False
-            self.stopped |= not continue_run
-            self.failures.clear()
-
-    @property
-    def done(self):
-        with self.lock:
-            return not self.pending and not self.active

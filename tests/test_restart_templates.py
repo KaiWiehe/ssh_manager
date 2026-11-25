@@ -10,10 +10,9 @@ from unittest.mock import patch
 import pytest
 
 from ssh_manager_app import storage
-from ssh_manager_app.actions_restart import RestartResult, _ssh_args
-from ssh_manager_app.actions_restart_templates import monitor_template_restart, probe_unit
+from ssh_manager_app.restart_runtime import RestartResult, RestartScheduler, _ssh_args, monitor_template_restart, probe_unit, execution_policy
 from ssh_manager_app.models import Session, default_settings, settings_to_dict
-from ssh_manager_app.restart_templates import (RestartScheduler, new_template, resolve_targets,
+from ssh_manager_app.restart_templates import (new_template, resolve_targets,
     service_check, target_fingerprint, validate_library, validate_template)
 from ssh_manager_app.result_table import table_text
 from ssh_manager_app.ssh_utils import ssh_argv
@@ -119,7 +118,7 @@ def test_current_ui_state_keeps_templates():
 def test_unit_probe_distinguishes_failed_inactive_missing_and_connection():
     def completed(out, code=0):
         return subprocess.CompletedProcess([], code, out, "")
-    with patch("ssh_manager_app.actions_restart_templates._run_ssh", side_effect=[
+    with patch("ssh_manager_app.restart_runtime._run_ssh", side_effect=[
         completed("LoadState=loaded\nActiveState=failed\n"), completed("LoadState=loaded\nActiveState=inactive\n"),
         completed("LoadState=not-found\nActiveState=inactive\n", 1), completed("", 255)]):
         assert probe_unit(session(), "ops", "a.service") == ("state", "failed")
@@ -129,8 +128,8 @@ def test_unit_probe_distinguishes_failed_inactive_missing_and_connection():
 
 
 def test_preflight_failure_never_reboots():
-    with patch("ssh_manager_app.actions_restart_templates.probe_unit", return_value=("error", "Dienst nicht vorhanden")), \
-         patch("ssh_manager_app.actions_restart_templates.monitor_server_restart") as reboot:
+    with patch("ssh_manager_app.restart_runtime.probe_unit", return_value=("error", "Dienst nicht vorhanden")), \
+         patch("ssh_manager_app.restart_runtime.monitor_server_restart") as reboot:
         result = monitor_template_restart(session(), "ops", "", [service_check("missing")], 10, 5,
                                           threading.Event(), lambda *_: None)
     assert result.status == "error"
@@ -144,8 +143,8 @@ def test_multiple_services_failed_does_not_satisfy_inactive_but_can_recover():
     values = [("state", "inactive"), ("state", "active"), ("state", "failed"),
               ("state", "failed"), ("state", "active"), ("state", "inactive")]
     reports = []
-    with patch("ssh_manager_app.actions_restart_templates.probe_unit", side_effect=values), \
-         patch("ssh_manager_app.actions_restart_templates.monitor_server_restart", return_value=RestartResult("online", "Boot-ID geändert")):
+    with patch("ssh_manager_app.restart_runtime.probe_unit", side_effect=values), \
+         patch("ssh_manager_app.restart_runtime.monitor_server_restart", return_value=RestartResult("online", "Boot-ID geändert")):
         result = monitor_template_restart(session(), "ops", "", checks, 20, 10, threading.Event(),
             lambda *args: reports.append(args), poll_interval=0)
     assert result.status == "online"
@@ -161,8 +160,8 @@ def test_service_deadline_starts_after_reboot_and_reports_every_unit():
     def probe(*args, **kwargs):
         clock[0] += 1
         return "state", "failed"
-    with patch("ssh_manager_app.actions_restart_templates.probe_unit", side_effect=probe), \
-         patch("ssh_manager_app.actions_restart_templates.monitor_server_restart", side_effect=reboot):
+    with patch("ssh_manager_app.restart_runtime.probe_unit", side_effect=probe), \
+         patch("ssh_manager_app.restart_runtime.monitor_server_restart", side_effect=reboot):
         result = monitor_template_restart(session(), "ops", "", [service_check("a"), service_check("b", "inactive")],
             10, 3, threading.Event(), lambda *_: None, monotonic=lambda: clock[0], poll_interval=0)
     assert result.status == "timeout"
@@ -235,7 +234,7 @@ def test_copy_keeps_complete_multiline_fields():
 
 
 def test_template_boot_deadline_rejects_probe_returning_late():
-    from ssh_manager_app.actions_restart import monitor_server_restart
+    from ssh_manager_app.restart_runtime import monitor_server_restart
     clock = [0]
     reads = iter([(True, "old", ""), (True, "new", ""), (True, "new", "")])
     timeouts = []
@@ -245,8 +244,8 @@ def test_template_boot_deadline_rejects_probe_returning_late():
             timeouts.append(kwargs["timeout"])
             clock[0] += .5 if len(timeouts) == 1 else 8
         return value
-    with patch("ssh_manager_app.actions_restart._read_boot_id", side_effect=read), \
-         patch("ssh_manager_app.actions_restart._issue_reboot", return_value=(True, False, "")) as issue:
+    with patch("ssh_manager_app.restart_runtime._read_boot_id", side_effect=read), \
+         patch("ssh_manager_app.restart_runtime._issue_reboot", return_value=(True, False, "")) as issue:
         result = monitor_server_restart(session(), "ops", "", "", 1, threading.Event(), lambda *_: None,
             evidence_detail=True, monotonic=lambda: clock[0], poll_interval_seconds=0)
     assert result.status == "timeout"

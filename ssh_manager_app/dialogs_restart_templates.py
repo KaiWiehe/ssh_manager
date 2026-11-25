@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
+from pathlib import Path
 import tkinter as tk
 from .window_policy import AppWindow, single_pending
 from tkinter import ttk
@@ -10,7 +11,8 @@ from .window_policy import messagebox
 import uuid
 
 from .restart_templates import (all_connections, new_template, resolve_targets, service_check,
-                                target_fingerprint, validate_library, validate_template, MODE_LABELS)
+                                target_fingerprint, validate_library, validate_template)
+from .restart_runtime import MODE_LABELS
 from .ui_components import fit_window_to_parent, install_context_help
 from .workers import run_worker
 from .restart_passwords import seal, unseal, passwords_for_run
@@ -339,6 +341,68 @@ class RestartPreview(AppWindow):
         self.destroy()
 
 
+class RestartScriptPreview(AppWindow):
+    def __init__(self, parent, name, script):
+        super().__init__(parent)
+        self.script = script
+        self.bind("<Escape>", lambda _event: self.destroy())
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        heading = ttk.Frame(frame)
+        heading.pack(fill="x")
+        title = ttk.Label(heading, text=name, style="DialogTitle.TLabel", justify="left")
+        title.pack(fill="x")
+        hint = ttk.Label(heading, text="Zum Ausführen im Terminal --execute angeben. sudo-Passwörter werden bei Bedarf abgefragt.",
+                         justify="left")
+        hint.pack(fill="x", pady=(4, 10))
+
+        def wrap_heading(event):
+            title.configure(wraplength=event.width)
+            hint.configure(wraplength=event.width)
+
+        heading.bind("<Configure>", wrap_heading)
+
+        source = ttk.Frame(frame)
+        source.pack(fill="both", expand=True)
+        source.columnconfigure(0, weight=1)
+        source.rowconfigure(0, weight=1)
+        self.text = tk.Text(source, wrap="none", font="TkFixedFont", height=20, width=75)
+        vertical = ttk.Scrollbar(source, orient="vertical", command=self.text.yview)
+        horizontal = ttk.Scrollbar(source, orient="horizontal", command=self.text.xview)
+        self.text.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+        self.text.grid(row=0, column=0, sticky="nsew")
+        vertical.grid(row=0, column=1, sticky="ns")
+        horizontal.grid(row=1, column=0, sticky="ew")
+        self.text.insert("1.0", script)
+        self.text.configure(state="disabled")
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(side="bottom", fill="x", pady=(12, 0), before=source)
+        ttk.Button(buttons, text="Python-Datei speichern…", command=self.save,
+                   style="Accent.TButton").pack(side="right")
+        ttk.Button(buttons, text="Schließen", command=self.destroy).pack(side="right", padx=8)
+        modal(self, parent, "Massen-Neustart – Skriptvorschau", 890, 660)
+
+    @single_pending
+    def save(self):
+        from .file_picker import asksaveasfilename
+        from .storage import atomic_write_text
+
+        path = asksaveasfilename(parent=self, title="Python-Skript speichern", initialfile="massen-neustart.py",
+                                 defaultextension=".py", filetypes=[("Python-Dateien", "*.py")])
+        if not path:
+            return
+        try:
+            output = Path(path)
+            if output.suffix.lower() != ".py":
+                raise ValueError("Bitte die Dateiendung .py verwenden.")
+            atomic_write_text(output, self.script)
+        except (OSError, ValueError) as error:
+            messagebox.showerror("Skript nicht gespeichert", str(error), parent=self)
+            return
+        self.destroy()
+
+
 class RestartTemplatesDialog(AppWindow):
     def __init__(self, app, selection, *, status_only=False):
         super().__init__(app)
@@ -499,8 +563,6 @@ class RestartTemplatesDialog(AppWindow):
         self.append_target_rows(self.template["targets"])
         self.toggle_password_mode()
         options = ttk.LabelFrame(self.editor, text="Ablauf", padding=8)
-        if not self.status_only:
-            options.pack(fill="x", pady=10)
         self.options = {}
         self.option_widgets = {}
         fields = (("mode", "Ablauf", tuple(MODE_LABELS.values())), ("max_parallel", "Max. gleichzeitig", None),
@@ -525,12 +587,30 @@ class RestartTemplatesDialog(AppWindow):
         self.options["mode"].trace_add("write", lambda *_: self.update_execution_mode())
         self.update_execution_mode()
         footer = ttk.Frame(self.editor)
-        footer.pack(fill="x")
-        ttk.Button(footer, text="Speichern…", command=self.save).pack(side="right", padx=6)
+        # Reserve the controls before giving the connection table the remaining height.
+        footer.pack(side="bottom", fill="x", before=scroll)
         if not self.status_only:
-            ttk.Button(footer, text="Vorschau und starten…", command=self.preview, style="Accent.TButton").pack(side="right")
-        ttk.Button(footer, text="Dienststatus prüfen", command=self.check_status,
+            options.pack(side="bottom", fill="x", pady=10, before=scroll)
+        left, right = ttk.Frame(footer), ttk.Frame(footer)
+        footer.columnconfigure(1, weight=1)
+        left.grid(row=0, column=0, sticky="w")
+        right.grid(row=0, column=1, sticky="e")
+        ttk.Button(left, text="Dienststatus prüfen", command=self.check_status,
                    style="Accent.TButton" if self.status_only else "TButton").pack(side="left")
+        ttk.Button(right, text="Speichern…", command=self.save).pack(side="right", padx=(6, 0))
+        if not self.status_only:
+            ttk.Button(left, text="Als Skript exportieren…", command=self.export_script).pack(side="left", padx=6)
+            ttk.Button(right, text="Vorschau und starten…", command=self.preview, style="Accent.TButton").pack(side="right")
+
+        def fit_footer(event):
+            compact = event.width < left.winfo_reqwidth() + right.winfo_reqwidth()
+            if right.grid_info()["row"] != int(compact):
+                if compact:
+                    right.grid_configure(row=1, column=0, columnspan=2, pady=(6, 0))
+                else:
+                    right.grid_configure(row=0, column=1, columnspan=1, pady=0)
+
+        footer.bind("<Configure>", fit_footer)
 
     def append_target_rows(self, targets):
         connections = {}
@@ -679,14 +759,19 @@ class RestartTemplatesDialog(AppWindow):
                 variable.set(password)
 
     def collect(self):
-        item = deepcopy(self.template)
-        item["name"] = self.name.get().strip()
-        item["password_per_connection"] = self.password_per_connection.get()
+        item = self.collect_settings()
         item["password_protected"] = self.collect_password(self.common_password)
         for target, password in zip(item["targets"], self.password_fields):
             target["password_protected"] = self.collect_password(password)
-        for target, (user, checks) in zip(item["targets"], self.rows):
-            target["user"], target["checks"] = user.get().strip(), checks.values()
+        return item
+
+    def collect_settings(self):
+        item = {"id": self.template["id"], "name": self.name.get().strip(),
+                "max_parallel": self.template["max_parallel"], "password_per_connection": self.password_per_connection.get()}
+        item["targets"] = [
+            {"key": target["key"], "label": target["label"], "user": user.get().strip(), "checks": checks.values()}
+            for target, (user, checks) in zip(self.template["targets"], self.rows)
+        ]
         item["mode"] = next(key for key, label in MODE_LABELS.items() if label == self.options["mode"].get())
         item["on_error"] = {"pausieren und nachfragen": "pause", "weitere stoppen": "stop", "weiterlaufen": "continue"}[self.options["on_error"].get()]
         for key in ("max_parallel", "reboot_timeout", "service_timeout"):
@@ -703,6 +788,29 @@ class RestartTemplatesDialog(AppWindow):
             except ValueError as error:
                 raise ValueError("Parallelität und Wartezeiten müssen ganze Zahlen sein.") from error
         return item
+
+    @single_pending
+    def export_script(self):
+        from .restart_export import render_restart_script
+
+        def needs_password(variable):
+            if variable._unreadable and not variable._edited:
+                return bool(variable._sealed)
+            return bool(variable.get())
+
+        try:
+            template = validate_template(self.collect_settings(), runnable=True)
+            targets = resolve_targets(template, all_connections(self.app))
+            per_connection = template["password_per_connection"]
+            script = render_restart_script(
+                template, targets,
+                common_password_required=not per_connection and needs_password(self.common_password),
+                target_passwords_required=[per_connection and needs_password(field) for field in self.password_fields],
+            )
+        except (OSError, ValueError, SyntaxError) as error:
+            messagebox.showwarning("Skript konnte nicht erstellt werden", str(error), parent=self)
+            return
+        self.wait_window(RestartScriptPreview(self, template["name"], script))
 
     @single_pending
     def check_status(self):

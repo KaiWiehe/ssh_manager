@@ -8,6 +8,10 @@ PACKAGE_DATA = (
     + copy_metadata('ttkbootstrap')
     + copy_metadata('Pillow')
 )
+RESTART_EXPORT_SOURCES = [
+    (str(ROOT / 'ssh_manager_app' / name), 'restart_export_sources')
+    for name in ('restart_runtime.py', 'restart_script.py', 'ssh_utils.py', 'ssh_failures.py')
+]
 
 
 a = Analysis(
@@ -17,7 +21,7 @@ a = Analysis(
     datas=[
         (str(ROOT / 'assets' / 'ssh-manager.ico'), 'assets'),
         (str(ROOT / 'assets' / 'ssh-manager.png'), 'assets'),
-    ] + PACKAGE_DATA,
+    ] + PACKAGE_DATA + RESTART_EXPORT_SOURCES,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

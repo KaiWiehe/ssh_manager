@@ -9,7 +9,7 @@ import tkinter as tk
 from .window_policy import AppWindow
 from tkinter import ttk
 
-from .actions_restart_templates import probe_unit
+from .restart_runtime import probe_unit
 from .result_table import ResultTableTools
 from .ui_components import fit_window_to_parent
 

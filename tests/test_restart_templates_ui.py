@@ -143,7 +143,7 @@ def test_per_host_browser_merges_multi_selection_and_keeps_existing_state(app, m
 
 def test_execution_pause_keeps_monitoring_active_and_stop_skips_pending(app, monkeypatch):
     import threading
-    from ssh_manager_app.actions_restart import RestartResult
+    from ssh_manager_app.restart_runtime import RestartResult
     from ssh_manager_app.actions_restart_templates import run_template
     from ssh_manager_app.restart_templates import new_template
     release = threading.Event()
@@ -236,7 +236,8 @@ def test_results_and_template_manager_leave_main_window_usable(app):
 
 
 def test_direct_restart_returns_without_waiting_for_results(app, monkeypatch):
-    from ssh_manager_app.actions_restart import RestartResult, restart_servers
+    from ssh_manager_app.actions_restart import restart_servers
+    from ssh_manager_app.restart_runtime import RestartResult
     dialogs_waited = []
     original_wait = app.wait_window
     def wait(window):
@@ -328,7 +329,7 @@ def test_unreadable_password_preserved_until_explicit_edit(app):
 
 
 def test_password_assignment_reaches_each_restart_worker(app, monkeypatch):
-    from ssh_manager_app.actions_restart import RestartResult
+    from ssh_manager_app.restart_runtime import RestartResult
     from ssh_manager_app.actions_restart_templates import run_template
     from ssh_manager_app.restart_templates import new_template
     from ssh_manager_app.restart_passwords import seal

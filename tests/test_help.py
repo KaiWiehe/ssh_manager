@@ -351,7 +351,7 @@ def test_restart_input_leaves_main_search_and_copy_usable(app, monkeypatch):
     session = Session("copy-host", "Copy host", [], "copy.invalid", "admin", source="app")
     app._app_sessions = [session]
     rebuild_sessions(app)
-    monkeypatch.setattr("ssh_manager_app.actions_restart._issue_reboot", lambda *a, **kw: pytest.fail("No reboot authorized"))
+    monkeypatch.setattr("ssh_manager_app.restart_runtime._issue_reboot", lambda *a, **kw: pytest.fail("No reboot authorized"))
     window = ServerRestartDialog(app, [(session, "admin")])
     app.update()
     assert app.grab_current() is None and not window.transient()

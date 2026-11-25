@@ -7,7 +7,8 @@ import pytest
 
 from test_restart_templates_ui import app, screenshot
 from ssh_manager_app.models import Session
-from ssh_manager_app.restart_templates import new_template, validate_template, resolve_targets, execution_policy
+from ssh_manager_app.restart_templates import new_template, validate_template, resolve_targets
+from ssh_manager_app.restart_runtime import execution_policy
 from ssh_manager_app.dialogs_restart_templates import RestartTemplatesDialog
 from ssh_manager_app.service_status import check_unit, run_service_status
 
@@ -20,7 +21,7 @@ def test_status_only_runs_systemctl_show(monkeypatch, actual, expected, outcome)
     def ssh(session, user, command, **kwargs):
         commands.append(command)
         return subprocess.CompletedProcess([], 0, f"LoadState=loaded\nActiveState={actual}\n", "")
-    monkeypatch.setattr("ssh_manager_app.actions_restart_templates._run_ssh", ssh)
+    monkeypatch.setattr("ssh_manager_app.restart_runtime._run_ssh", ssh)
     result = check_unit(Session("one", "one", [], "one.example"), "admin", {"unit": "a.service", "expected": expected})
     assert result.actual == actual and result.outcome == outcome
     assert commands == ["systemctl show --property=LoadState --property=ActiveState -- a.service"]
@@ -29,7 +30,7 @@ def test_status_only_runs_systemctl_show(monkeypatch, actual, expected, outcome)
 @pytest.mark.parametrize("stdout,code,actual", [("", 255, "nicht geprüft"),
     ("LoadState=not-found\nActiveState=inactive\n", 1, "nicht vorhanden"), ("invalid", 0, "nicht geprüft")])
 def test_missing_and_ssh_errors_are_not_inactive(monkeypatch, stdout, code, actual):
-    monkeypatch.setattr("ssh_manager_app.actions_restart_templates._run_ssh",
+    monkeypatch.setattr("ssh_manager_app.restart_runtime._run_ssh",
         lambda *a, **k: subprocess.CompletedProcess([], code, stdout, ""))
     result = check_unit(Session("one", "one", [], "one.example"), "admin", {"unit": "a.service", "expected": "inactive"})
     assert result.actual == actual and result.outcome == "Fehler"
@@ -104,7 +105,7 @@ def test_changed_shared_template_blocks_stale_status_and_reload_reads_latest(app
 
 
 def test_all_parallel_admits_every_host_despite_first_failure(app, monkeypatch):
-    from ssh_manager_app.actions_restart import RestartResult
+    from ssh_manager_app.restart_runtime import RestartResult
     from ssh_manager_app.actions_restart_templates import run_template
     item = new_template(app._app_sessions)
     item.update(mode="all_parallel", max_parallel=1, on_error="stop")
@@ -131,7 +132,7 @@ def test_status_results_each_service_no_checks_and_copy(app, monkeypatch):
         calls.append((session.key, unit))
         return "state", {"a.service": "active", "b.service": "failed", "c.service": "inactive"}[unit]
     monkeypatch.setattr("ssh_manager_app.service_status.probe_unit", probe)
-    monkeypatch.setattr("ssh_manager_app.actions_restart._issue_reboot", lambda *a, **k: pytest.fail("Reboot forbidden"))
+    monkeypatch.setattr("ssh_manager_app.restart_runtime._issue_reboot", lambda *a, **k: pytest.fail("Reboot forbidden"))
     window = run_service_status(app, "Shared template", resolve_targets(item, app._app_sessions))
     assert not str(window.transient()) and app.grab_current() is None
     finish_window(app, window)

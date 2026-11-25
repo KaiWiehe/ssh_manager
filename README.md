@@ -522,14 +522,15 @@ Eine isolierte Vorschau mit Beispieldaten lässt sich ohne Zugriff auf Registry 
 Server im Hauptfenster anhaken und **Aktionen → Massen-Neustarts…** öffnen.
 „Aus Auswahl erstellen“ übernimmt die Ziele in eine Tabelle. Vorhandene Benutzer
 bleiben vorbelegt; Quick-Access-User und „Leere Benutzer füllen“ ergänzen fehlende
-Benutzer. Pro Server Dienste frei eingeben (+), entfernen, den Sollzustand
-aktiv/inaktiv wählen oder direkt auf diesem Host mehrere Dienste durchsuchen.
+Benutzer. Pro Server Dienste über den Servicebrowser auswählen, entfernen
+oder den Sollzustand aktiv/inaktiv wählen.
 Benutzer gelten nur für die Vorlage, auch bei SSH-Aliasen.
 
 Vorlagen lassen sich später ohne Häkchen-Auswahl öffnen. Geänderte Vorlagen als
 Kopie speichern oder ausdrücklich überschreiben. Hostnamen/Ports kommen aus den
 aktuellen Verbindungen; fehlende Verbindungen ersetzen oder entfernen. Vorlagen
-sind lokal im UI-State gespeichert und im App-Backup enthalten, ohne Passwörter.
+sind lokal im UI-State gespeichert und im App-Backup enthalten. Hinterlegte
+sudo-Passwörter werden in beiden Fällen mit Windows-DPAPI verschlüsselt.
 
 Parallel mit einstellbarer Grenze oder nacheinander in Tabellenreihenfolge starten.
 Bei Fehlern weiterlaufen, weitere Starts stoppen oder pausieren und nachfragen.
@@ -561,6 +562,31 @@ etwas eingeben und wieder löschen). Unlesbare gespeicherte Werte bleiben erhalt
 und blockieren den Start im betroffenen Modus. Änderungen am gemeinsamen Passwort
 in der Startvorschau gelten nur für diesen Lauf. Diese Felder dienen sudo;
 die SSH-Anmeldung verwendet weiterhin Schlüssel/Agent.
+
+### Massen-Neustart als Python-Skript exportieren
+
+Im geöffneten Massen-Neustart-Editor **Als Skript exportieren…** anklicken.
+Die Skriptvorschau übernimmt die sichtbaren Einstellungen einschließlich der
+ungespeicherten Änderungen. **Python-Datei speichern…** schreibt diese Fassung
+als `.py`-Datei. Die Vorlagenbibliothek wird dabei nicht gespeichert.
+
+Auf dem ausführenden Rechner werden Python 3 und OpenSSH (`ssh` im PATH) benötigt.
+Direkte Ziele enthalten den Host und den eingestellten Port. SSH-Aliase verwenden
+die lokale OpenSSH-Konfiguration, zum Beispiel für einen Jumphost. Die Ziele und
+der Ablauf lassen sich am Anfang der Datei lesen und bearbeiten.
+
+```bash
+python massen-neustart.py
+python massen-neustart.py --execute
+```
+
+Der erste Aufruf zeigt den Plan ohne SSH-Verbindungen. Der zweite führt den Lauf
+aus und meldet je Server das Ergebnis und die geprüften Dienstzustände. Das Skript
+enthält nur Angaben zur Passwortabfrage. Erforderliche sudo-Passwörter werden vor
+dem ersten Neustart verdeckt abgefragt. Passwortabfragen und Fehlerpausen benötigen
+ein interaktives Terminal. Strg+C beendet die Überwachung und verhindert weitere
+Starts. Bereits ausgelöste Neustarts laufen serverseitig weiter. Fehler,
+Zeitüberschreitungen und Abbrüche liefern einen Exitcode ungleich null.
 
 ### Massendienststatus mit denselben Vorlagen
 
