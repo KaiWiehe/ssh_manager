@@ -134,17 +134,80 @@ def test_duplicate_diagnostic_preserves_other_preflight_errors(monkeypatch):
     assert not run.passwords
 
 
-def test_duplicate_machine_and_boot_conflicts_both_appear(monkeypatch):
-    identities = {"one": mass.RestartIdentity("a", "x"), "two": mass.RestartIdentity("b", "y"),
-                  "three": mass.RestartIdentity("a", "y")}
+def test_boot_duplicate_blocks_even_with_different_machine_ids(monkeypatch):
+    identities = {"one": mass.RestartIdentity("a", "x", "192.0.2.11 22"),
+                  "two": mass.RestartIdentity("b", "y", "192.0.2.12 22"),
+                  "three": mass.RestartIdentity("a", "y", "192.0.2.13 22")}
     monkeypatch.setattr(mass, "check_restart_target", lambda target, *_:
         mass.RestartPreflight("online", "passed", identity=identities[target.key]))
     goals = [(session(key, f"{key}.example.invalid"), "ops", []) for key in identities]
     run = mass.MassRestartRun({"mode": "serial", "on_error": "continue"}, goals, [""] * 3, Event())
     results = drive(run)
-    assert "Eintrag 1 und 3" in results[0].detail
+    assert results[0].status == "not_started"
     assert "Eintrag 2 und 3" in results[1].detail
-    assert "Eintrag 1 und 3" in results[2].detail and "Eintrag 2 und 3" in results[2].detail
+    assert "gleiche Boot-ID" in results[2].detail and "Eintrag 2 und 3" in results[2].detail
+
+
+@pytest.mark.parametrize("change_during_recheck", [False, True])
+def test_cloned_machine_ids_require_stable_distinct_endpoints_and_boots(monkeypatch, change_during_recheck):
+    shared = {f"node-{i}": mass.RestartIdentity("cloned", f"boot-{i}", f"192.0.2.{i} 22") for i in range(3, 6)}
+    distinct = {f"node-{i}": mass.RestartIdentity(f"machine-{i}", f"boot-{i}", f"192.0.2.{i} 22") for i in (1, 2)}
+    identities = {**distinct, **shared}
+    goals = [(session(key, f"{key}.example.invalid"), "ops", []) for key in identities]
+    checks, starts = [], []
+
+    def recheck(target, *_):
+        checks.append(target.key)
+        if change_during_recheck and target.key == "node-3":
+            return "identity", shared["node-4"]
+        return "identity", shared[target.key]
+
+    def restart(target, _user, _checks, _password, identity, *_):
+        assert set(checks) == set(shared)
+        assert identity.endpoint == (shared[target.key].endpoint if target.key in shared else "")
+        starts.append(target.key)
+        return RestartResult("online", "done")
+
+    monkeypatch.setattr(mass, "check_restart_target", lambda target, *_:
+        mass.RestartPreflight("online", "passed", identity=identities[target.key]))
+    monkeypatch.setattr(mass, "read_restart_identity", recheck)
+    monkeypatch.setattr(mass, "run_prepared_restart", restart)
+    plan = {"mode": "all_parallel", "reboot_timeout": 10, "service_timeout": 10}
+    run = mass.MassRestartRun(plan, goals, [""] * 5, Event())
+    results = drive(run)
+    if change_during_recheck:
+        assert not starts
+        assert "seit der Vorprüfung geändert" in results[2].detail
+    else:
+        assert set(starts) == set(identities)
+        assert {result.status for result in results.values()} == {"online"}
+
+
+def test_shared_machine_id_with_same_server_address_cannot_start(monkeypatch):
+    identities = {"one": mass.RestartIdentity("a", "x", "192.0.2.40 22"),
+                  "two": mass.RestartIdentity("a", "y", "::ffff:192.0.2.40 2222")}
+    monkeypatch.setattr(mass, "check_restart_target", lambda target, *_:
+        mass.RestartPreflight("online", "passed", identity=identities[target.key]))
+    goals = [(session(key, f"{key}.example.invalid"), "ops", []) for key in identities]
+    run = mass.MassRestartRun({"mode": "serial", "on_error": "continue"}, goals, ["", ""], Event())
+    assert all("getrennte SSH-Zieladressen fehlen" in result.detail for result in drive(run).values())
+
+
+def test_shared_machine_id_does_not_confirm_boot_from_different_endpoint(monkeypatch):
+    original = mass.RestartIdentity("a", "old", "192.0.2.21 22")
+    different_target = mass.RestartIdentity("a", "new", "192.0.2.22 22")
+    monkeypatch.setattr(mass, "read_restart_identity", lambda *_args, **_opts: ("identity", different_target))
+    value, failure = mass.wait_for_new_boot(session(), "ops", original, 10, Event(), lambda *_: None, lambda: 0, 0)
+    assert value is None and "SSH-Zieladresse oder Port" in failure.detail
+
+
+def test_shared_machine_and_endpoint_cannot_confirm_other_targets_existing_boot(monkeypatch):
+    original = mass.RestartIdentity("a", "old", "192.0.2.21 22")
+    foreign = mass.RestartIdentity("a", "sibling", original.endpoint)
+    monkeypatch.setattr(mass, "read_restart_identity", lambda *_args, **_opts: ("identity", foreign))
+    value, failure = mass.wait_for_new_boot(session(), "ops", original, 10, Event(), lambda *_: None, lambda: 0, 0,
+                                            {"old", "sibling"})
+    assert value is None and "anderen Plan-Ziels" in failure.detail
 
 
 def test_preflight_lock_blocks_overlap_even_before_units_and_sudo(tmp_path, monkeypatch):

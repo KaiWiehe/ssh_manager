@@ -538,9 +538,13 @@ Laufende Neustarts werden während einer Pause weiter überwacht. Vor dem ersten
 Reboot prüft der Massen-Neustart alle Ziele auf SSH-Vertrauen, eine eindeutige
 Maschinenidentität und gültige Boot-ID, Dienst-Prüfbarkeit und die sudo-Regel für
 den konkreten Reboot-Befehl. Bei einem Vorprüfungsfehler startet der gesamte Plan
-keinen Reboot. Gemeinsame lokale Sperren schützen Zielüberschneidungen zwischen
-App und Skript unter demselben Benutzerkonto. Vor jedem Reboot wird die
-vorher geprüfte Identität einschließlich Boot-ID erneut verglichen.
+keinen Reboot. Eine gleiche Boot-ID blockiert doppelte Ziele auch bei verschiedenen
+Aliasen. Bei gemeinsamer Maschinen-ID prüft die App nochmals die getrennten
+SSH-Zieladressen und Boot-IDs, bevor ein Reboot startet. Die bestätigte SSH-Adresse
+bleibt für diese Ziele bis zum Abschluss Teil der Prüfung. Die vorherige Boot-ID
+eines anderen Planziels gilt nicht als Neustartnachweis. Gemeinsame lokale Sperren
+schützen Zielüberschneidungen zwischen App und Skript unter demselben Benutzerkonto.
+Vor jedem Reboot wird die vorher geprüfte Identität einschließlich Boot-ID erneut verglichen.
 
 Separate Fristen gelten für Neustart/SSH und anschließend die Serviceprüfungen.
 Der Neustartnachweis braucht zwei erfolgreiche SSH-Abfragen mit derselben

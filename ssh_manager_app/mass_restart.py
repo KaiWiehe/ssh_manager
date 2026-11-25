@@ -5,6 +5,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
+from ipaddress import ip_address
 import os
 from pathlib import Path
 import queue
@@ -31,7 +32,7 @@ RESTART_BOOT_ID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 EMPTY_BOOT_ID = "00000000-0000-0000-0000-000000000000"
 IDENTITY_COMMAND = (
     f"machine=$(cat {MACHINE_ID_FILE}) && boot=$(cat {BOOT_ID_FILE}) "
-    f"&& printf '{IDENTITY_MARKER}:%s:%s\\n' \"$machine\" \"$boot\""
+    f"&& printf '{IDENTITY_MARKER}:%s:%s:%s\\n' \"$machine\" \"$boot\" \"${{SSH_CONNECTION-}}\""
 )
 IDENTITY_CHANGED = 79
 REBOOT_COMMAND = "reboot"
@@ -43,6 +44,7 @@ REBOOT_REQUEST_TIMEOUT = 20
 class RestartIdentity:
     machine_id: str
     boot_id: str
+    endpoint: str = ""
 
 
 @dataclass(frozen=True)
@@ -203,19 +205,31 @@ def read_restart_identity(session, user, cancel, *, timeout=PROBE_TIMEOUT):
         return "error", failure
     if result.returncode == 255:
         return "connection", "SSH nicht erreichbar"
-    rows = [line.split(":") for line in result.stdout.splitlines() if line.startswith(IDENTITY_MARKER + ":")]
-    if (result.returncode or len(rows) != 1 or len(rows[0]) != 3
+    rows = [line.split(":", 3) for line in result.stdout.splitlines() if line.startswith(IDENTITY_MARKER + ":")]
+    if (result.returncode or len(rows) != 1 or len(rows[0]) < 3
             or not MACHINE_ID.fullmatch(rows[0][1]) or rows[0][1] == "0" * 32
             or not RESTART_BOOT_ID.fullmatch(rows[0][2]) or rows[0][2] == EMPTY_BOOT_ID):
         return "missing", "Gültige Maschinen- oder Boot-ID nicht ermittelbar."
-    return "identity", RestartIdentity(rows[0][1], rows[0][2])
+    connection = rows[0][3] if len(rows[0]) == 4 else ""
+    fields = connection.split(" ")
+    endpoint = ""
+    if len(fields) == 4:
+        try:
+            ip_address(fields[2])
+            if fields[3].isascii() and fields[3].isdigit() and len(fields[3]) <= 5 and 1 <= int(fields[3]) <= 65535:
+                endpoint = f"{fields[2]} {fields[3]}"
+        except ValueError:
+            pass
+    return "identity", RestartIdentity(rows[0][1], rows[0][2], endpoint)
 
 
 def _guarded_command(identity, command, ready=""):
     announce = f"printf '%s\\n' {ready}; " if ready else ""
-    return (f'test "$(cat {MACHINE_ID_FILE})" = {identity.machine_id} '
-            f'&& test "$(cat {BOOT_ID_FILE})" = {identity.boot_id} || exit {IDENTITY_CHANGED}; '
-            + announce + command)
+    guard = (f'test "$(cat {MACHINE_ID_FILE})" = {identity.machine_id} '
+             f'&& test "$(cat {BOOT_ID_FILE})" = {identity.boot_id}')
+    if identity.endpoint:
+        guard += ' && test "${SSH_CONNECTION#* * }" = ' + shlex.quote(identity.endpoint)
+    return f"{guard} || exit {IDENTITY_CHANGED}; " + announce + command
 
 
 def _sudo_command(password, *, permission_check=False):
@@ -266,15 +280,16 @@ def check_restart_target(session, user, checks, password, cancel, report, reserv
         conflict = reserve_identity(identity)
         if conflict:
             return failed(conflict)
+    boot = RestartIdentity(identity.machine_id, identity.boot_id)
     failures = []
     for check in checks:
-        kind, state = _probe_restart_unit(session, user, check["unit"], identity, cancel)
+        kind, state = _probe_restart_unit(session, user, check["unit"], boot, cancel)
         if kind != "state":
             failures.append(f"{check['unit']}: {state}")
     if failures:
         return failed("Vorprüfung der Dienste fehlgeschlagen\n" + "\n".join(failures))
     try:
-        result, confirmed = _call_restart_sudo(session, user, password, identity, cancel, permission_check=True)
+        result, confirmed = _call_restart_sudo(session, user, password, boot, cancel, permission_check=True)
     except (OSError, subprocess.TimeoutExpired):
         return failed("sudo-Berechtigung für reboot nicht verifiziert. SSH-Verbindung prüfen.")
     failure = _ssh_verification_error(result)
@@ -310,7 +325,7 @@ def _request_verified_reboot(session, user, password, identity, cancel, timeout,
     return None
 
 
-def wait_for_new_boot(session, user, original, deadline, cancel, report, monotonic, poll_interval):
+def wait_for_new_boot(session, user, original, deadline, cancel, report, monotonic, poll_interval, known_boot_ids=()):
     previous = None
     while (remaining := deadline - monotonic()) > 0 and not cancel.is_set():
         kind, current = read_restart_identity(session, user, cancel, timeout=min(PROBE_TIMEOUT, remaining))
@@ -320,7 +335,12 @@ def wait_for_new_boot(session, user, original, deadline, cancel, report, monoton
             return None, RestartResult("error", current)
         if kind == "identity" and current.machine_id != original.machine_id:
             return None, RestartResult("error", "SSH führt zu einer anderen Maschine. Neustart nicht bestätigt.")
+        if kind == "identity" and original.endpoint and current.endpoint != original.endpoint:
+            return None, RestartResult("error", "SSH-Zieladresse oder Port hat sich geändert. Neustart nicht bestätigt.")
         if kind == "identity" and current.boot_id != original.boot_id:
+            if current.boot_id in known_boot_ids:
+                return None, RestartResult("error", "SSH meldet die Boot-ID eines anderen Plan-Ziels. Neustart nicht bestätigt.")
+            current = RestartIdentity(current.machine_id, current.boot_id, original.endpoint)
             if previous == current:
                 report("waiting_ssh", "SSH online und Boot-ID geändert")
                 return current, None
@@ -369,7 +389,7 @@ def wait_for_restart_services(session, user, checks, identity, timeout, cancel, 
 
 
 def run_prepared_restart(session, user, checks, take_password, original, reboot_timeout, service_timeout,
-                         cancel, report, *, monotonic=time.monotonic, poll_interval=2):
+                         cancel, report, known_boot_ids=(), *, monotonic=time.monotonic, poll_interval=2):
     if cancel.is_set():
         return RestartResult("not_started", "Neustart wurde nicht ausgelöst")
     deadline = monotonic() + reboot_timeout
@@ -379,7 +399,8 @@ def run_prepared_restart(session, user, checks, take_password, original, reboot_
                                            min(REBOOT_REQUEST_TIMEOUT, reboot_timeout), report)
         if failure:
             return failure
-        identity, failure = wait_for_new_boot(session, user, original, deadline, cancel, report, monotonic, poll_interval)
+        identity, failure = wait_for_new_boot(session, user, original, deadline, cancel, report, monotonic, poll_interval,
+                                              known_boot_ids)
         if failure:
             return failure
     except RestartCancelled:
@@ -437,13 +458,15 @@ class MassRestartRun:
         self.targets, self.plan, self.passwords, self.cancel = targets, plan, passwords, cancel
         self.record_error = record_error
         self.limit, self.error_policy = execution_policy({**plan, "targets": targets})
-        self.preflights, self.results = {}, {}
+        self.preflights, self.identity_checks, self.results = {}, {}, {}
+        self.known_boot_ids = frozenset()
         self.events = queue.Queue()
         self.notices = {}
         self.locks = ExitStack()
         self.locked_machines = set()
         self.reserve_lock = threading.Lock()
-        self.running = False
+        self.phase = "preflight"
+        self.identity_check_count = 0
         self.scheduler = RestartScheduler(range(len(targets)), self.limit, "continue", self._preflight,
                                           daemon=False, cancel=cancel)
 
@@ -476,7 +499,7 @@ class MassRestartRun:
     def _reserve(self, identity):
         with self.reserve_lock:
             if identity.machine_id in self.locked_machines:
-                return ""  # Report duplicate entries together after collecting all preflights.
+                return ""  # Shared machine IDs retain one lock for the whole plan.
             try:
                 directory = restart_lock_directory()
                 directory.mkdir(parents=True, exist_ok=True)
@@ -497,29 +520,81 @@ class MassRestartRun:
             return password
 
         try:
-            return run_prepared_restart(*self.targets[index], take_password, self.preflights[index].identity,
+            original = self.preflights[index].identity
+            if index not in self.identity_checks:
+                original = RestartIdentity(original.machine_id, original.boot_id)
+            return run_prepared_restart(*self.targets[index], take_password, original,
                                         self.plan["reboot_timeout"], self.plan["service_timeout"], self.cancel,
-                                        lambda state, detail: self._report(index, state, detail))
+                                        lambda state, detail: self._report(index, state, detail), self.known_boot_ids)
         except Exception as error:
             return self._unexpected(index, "Neustartüberwachung", error)
 
+    def _recheck_identity(self, index):
+        session, user, _checks = self.targets[index]
+        self._report(index, "preflight", "Maschinen-ID mehrfach vorhanden; prüfe SSH-Zieladresse und Boot-ID erneut")
+        try:
+            kind, identity = read_restart_identity(session, user, self.cancel)
+        except RestartCancelled:
+            return RestartResult("not_started", "Identitätsprüfung abgebrochen")
+        except Exception as error:
+            return self._unexpected(index, "Identitätsprüfung", error)
+        if kind != "identity":
+            return RestartResult("error", f"SSH-Zielidentität konnte nicht erneut geprüft werden: {identity}")
+        if identity != self.preflights[index].identity:
+            return RestartResult("error", "SSH-Zieladresse, Maschinen-ID oder Boot-ID hat sich seit der Vorprüfung geändert.")
+        self._report(index, "preflight", "Getrenntes SSH-Ziel und eigene Boot-ID bestätigt")
+        return RestartResult("online", "Identität erneut bestätigt")
+
     def _finish_preflight(self):
         errors = {index: result for index, result in self.preflights.items() if result.status != "online"}
+        checks = []
         if not self.cancel.is_set():
-            seen_machines, seen_boots = {}, {}
+            machines, seen_boots = {}, {}
             for index, result in sorted(self.preflights.items()):
                 if not isinstance(result, RestartPreflight) or result.identity is None:
                     continue
                 identity = result.identity
-                previous_matches = {seen_machines.get(identity.machine_id), seen_boots.get(identity.boot_id)} - {None}
-                for previous in sorted(previous_matches):
-                    message = f"Doppelte Zielidentität bei Eintrag {previous + 1} und {index + 1}."
-                    for duplicate in (previous, index):
-                        detail = errors[duplicate].detail + "\n" + message if duplicate in errors else message
-                        errors[duplicate] = RestartResult("error", detail)
-                seen_machines[identity.machine_id] = seen_boots[identity.boot_id] = index
+                previous = seen_boots.get(identity.boot_id)
+                if previous is not None:
+                    message = f"Doppelte Zielidentität: gleiche Boot-ID bei Eintrag {previous + 1} und {index + 1}."
+                    self._add_preflight_error(errors, (previous, index), message)
+                seen_boots[identity.boot_id] = index
+                machines.setdefault(identity.machine_id, []).append(index)
+            for group in machines.values():
+                if len(group) < 2:
+                    continue
+                identities = [self.preflights[index].identity for index in group]
+                if len({identity.boot_id for identity in identities}) < len(group):
+                    continue  # The duplicate boot already blocks the plan.
+                addresses = set()
+                for identity in identities:
+                    if identity.endpoint:
+                        address = ip_address(identity.endpoint.split(" ", 1)[0].split("%", 1)[0])
+                        addresses.add(getattr(address, "ipv4_mapped", None) or address)
+                if len(addresses) != len(group):
+                    entries = ", ".join(str(index + 1) for index in group)
+                    message = f"Maschinen-ID mehrfach vorhanden; getrennte SSH-Zieladressen fehlen bei Einträgen {entries}."
+                    self._add_preflight_error(errors, group, message)
+                else:
+                    checks.extend(group)
+        if checks and not errors and not self.cancel.is_set():
+            self.phase = "identity"
+            self.identity_check_count = len(checks)
+            self.scheduler = RestartScheduler(sorted(checks), self.limit, "continue", self._recheck_identity,
+                                              daemon=False, cancel=self.cancel)
+            return
+        self._finish_checks(errors)
+
+    @staticmethod
+    def _add_preflight_error(errors, indexes, message):
+        for index in indexes:
+            detail = errors[index].detail + "\n" + message if index in errors else message
+            errors[index] = RestartResult("error", detail)
+
+    def _finish_checks(self, errors):
         if not errors and not self.cancel.is_set():
-            self.running = True
+            self.phase = "restart"
+            self.known_boot_ids = frozenset(result.identity.boot_id for result in self.preflights.values())
             for index in range(len(self.targets)):
                 self._report(index, "pending", "Gesamtvorprüfung bestanden; wartet auf Neustart")
             self.scheduler = RestartScheduler(range(len(self.targets)), self.limit, self.error_policy,
@@ -536,19 +611,20 @@ class MassRestartRun:
         if self.cancel.is_set():
             self.scheduler.decide(False)
         self.scheduler.tick()
-        completed = self.results if self.running else self.preflights
+        completed = {"preflight": self.preflights, "identity": self.identity_checks, "restart": self.results}[self.phase]
         while True:
             try:
                 index, result = self.scheduler.events.get_nowait()
             except queue.Empty:
                 break
             completed[index] = result
-            if self.running:
+            if self.phase == "restart" or result.status != "online":
                 self.passwords[index] = ""
-            if self.running or result.status != "online":
                 self._report(index, result.status, result.detail)
-        if not self.running and len(self.preflights) == len(self.targets):
+        if self.phase == "preflight" and len(self.preflights) == len(self.targets):
             self._finish_preflight()
+        elif self.phase == "identity" and len(self.identity_checks) == self.identity_check_count:
+            self._finish_checks({index: result for index, result in self.identity_checks.items() if result.status != "online"})
         if self.done:
             self.passwords.clear()
             self.locks.close()
@@ -559,7 +635,7 @@ class MassRestartRun:
 
     def pause_failures(self):
         with self.scheduler.lock:
-            if self.running and self.scheduler.paused and self.scheduler.pending and not self.scheduler.stopped:
+            if self.phase == "restart" and self.scheduler.paused and self.scheduler.pending and not self.scheduler.stopped:
                 return list(self.scheduler.failures)
         return []
 

@@ -55,7 +55,8 @@ def load_script(path):
     return runpy.run_path(str(path))["main"].__globals__
 
 
-def test_execute_confirms_reboot_and_service_states_using_matching_ssh_arguments(exported_script, monkeypatch, capsys):
+@pytest.mark.parametrize("shared_machine_id", [False, True])
+def test_execute_confirms_reboot_and_service_states_using_matching_ssh_arguments(exported_script, monkeypatch, capsys, shared_machine_id):
     script = load_script(exported_script())
     original_monitor = script["run_prepared_restart"]
     monkeypatch.setitem(script, "run_prepared_restart", lambda *args: original_monitor(*args, poll_interval=0))
@@ -81,8 +82,11 @@ def test_execute_confirms_reboot_and_service_states_using_matching_ssh_arguments
             return subprocess.CompletedProcess(args, 255, "", "Connection closed")
         boot_id = ("22222222" if destination in reboots else "11111111") if destination.startswith("ops@") else (
             "44444444" if destination in reboots else "33333333")
-        machine = "1" * 32 if destination.startswith("ops@") else "2" * 32
-        return subprocess.CompletedProcess(args, 0, f"{script['IDENTITY_MARKER']}:{machine}:{boot_id}-1111-1111-1111-111111111111\n", "")
+        direct = destination.startswith("ops@")
+        machine = "1" * 32 if direct or shared_machine_id else "2" * 32
+        address = "192.0.2.21" if direct else "2001:db8::22"
+        identity = f"{script['IDENTITY_MARKER']}:{machine}:{boot_id}-1111-1111-1111-111111111111:192.0.2.5 50200 {address} 22\n"
+        return subprocess.CompletedProcess(args, 0, identity, "")
 
     class FakePopen:
         def __init__(self, args, **options):
@@ -104,10 +108,12 @@ def test_execute_confirms_reboot_and_service_states_using_matching_ssh_arguments
     assert next(args for args, _ in calls if args[-2] == "via-jump")[-5:-1] == ["-l", "deploy", "--", "via-jump"]
     for destination in reboots:
         invocations = [args for args, _ in calls if args[-2] == destination]
-        assert len(invocations) == 7
+        assert len(invocations) == 7 + int(shared_machine_id)
         assert all(option in invocation for invocation in invocations for option in script["MASS_RESTART_SSH_OPTIONS"])
         assert "systemctl show" in invocations[1][-1] and "systemctl show" in invocations[-1][-1]
-        assert "sudo -n -p '' -- reboot && printf" in invocations[3][-1]
+        reboot = invocations[3 + int(shared_machine_id)][-1]
+        assert "sudo -n -p '' -- reboot && printf" in reboot
+        assert ("SSH_CONNECTION#" in reboot) is shared_machine_id
     output = capsys.readouterr().out
     assert "[Direkt] SSH online und Boot-ID geändert" in output
     assert "[via-jump] Vorprüfung gestartet" in output
@@ -277,7 +283,7 @@ def test_ctrl_c_waits_for_active_worker_and_skips_next_target(exported_script, m
         identity = script["RestartIdentity"](target.label, target.label)
         return script["RestartPreflight"]("online", "OK", identity=identity)
 
-    def restart(target, _user, _checks, read_password, _identity, _reboot, _services, cancel, _report):
+    def restart(target, _user, _checks, read_password, _identity, _reboot, _services, cancel, _report, _known_boot_ids):
         assert target.label == "Direkt" and read_password() == ""
         started.set()
         assert cancel.wait(3)
