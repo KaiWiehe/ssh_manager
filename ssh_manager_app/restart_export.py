@@ -71,9 +71,10 @@ def render_restart_script(template, resolved, *, common_password_required, targe
                        "service_check", "MASS_RESTART_SSH_OPTIONS", "SshTarget", "RestartResult", "_ssh_args",
                        "service_probe_result", "RestartScheduler")
     console_imports, console = _standalone_module("restart_script.py")
+    terminal_imports, terminal = _standalone_module("restart_terminal.py")
     mass_imports, mass_runtime = _standalone_module("mass_restart.py")
     windows_imports, windows_jobs = _standalone_module("restart_winjob.py")
-    imports = "\n".join(sorted(set(runtime_imports + console_imports + mass_imports + windows_imports)))
+    imports = "\n".join(sorted(set(runtime_imports + console_imports + terminal_imports + mass_imports + windows_imports)))
     identifiers = _helpers("ssh_utils.py", "connection_value", "valid_port")
     authentication = _helpers("ssh_failures.py", "SSH_AUTHENTICATION_HELP", "ssh_authentication_failed")
     target_lines = "\n".join(indent(_mapping_literal(target), "    ") + "," for target in targets)
@@ -83,6 +84,7 @@ def render_restart_script(template, resolved, *, common_password_required, targe
 # python massen-neustart.py             # lokale Vorschau
 # python massen-neustart.py --execute   # Neustarts auslösen
 # python massen-neustart.py --execute --sudo common   # Ein Passwort für alle
+# python massen-neustart.py --execute --log           # Ausführliches Textprotokoll
 # Alias-Ziele verwenden die SSH-Konfiguration des ausführenden Rechners.
 # Hostschlüssel müssen vor dem Lauf vertrauenswürdig hinterlegt sein.
 # sudo_password_required steuert die verdeckte Abfrage beim Ausführen.
@@ -104,6 +106,10 @@ TARGETS = [
 
 
 {console}
+
+
+# Live-Ansicht im Terminal
+{terminal}
 
 
 # SSH, Neustartnachweis, Dienstprüfungen und parallele Starts

@@ -12,6 +12,7 @@ import time
 import warnings
 
 from .mass_restart import MassRestartRun, duplicate_restart_targets, validate_sudo_password
+from .restart_terminal import restart_live_terminal, restart_terminal_view
 from .restart_runtime import (MODE_LABELS, RestartResult, execution_policy, service_check,
                               validate_execution_options)
 from .ssh_utils import connection_value, valid_port
@@ -23,6 +24,7 @@ def main(plan, raw_targets):
     parser.add_argument("--sudo", choices=("common", "per-connection", "none"),
                         help="sudo-Abfragemodus für diesen Lauf wählen")
     parser.add_argument("--confirm-all", action="store_true", help="Alle parallelen Starts ausdrücklich bestätigen")
+    parser.add_argument("--log", action="store_true", help="Ausführliches Textprotokoll ausgeben")
     args = parser.parse_args()
     try:
         targets = validate_plan(plan, raw_targets)
@@ -35,6 +37,7 @@ def main(plan, raw_targets):
             for target in targets:
                 target.sudo_password_required = True
     limit, on_error = execution_policy({**plan, "targets": targets})
+    live = args.execute and not args.log and restart_live_terminal()
     show_plan(plan, targets, limit, on_error)
     if not args.execute:
         print("\nVorschau. Zum Ausführen --execute angeben.")
@@ -60,8 +63,13 @@ def main(plan, raw_targets):
         print("\nAbgebrochen. Kein Neustart gestartet.")
         return 130
 
-    results, interrupted = run_targets(plan, targets, passwords)
-    show_results(targets, results)
+    with restart_terminal_view(plan, targets, enabled=live) as display:
+        if display:
+            results, interrupted = run_targets(plan, targets, passwords, display=display)
+            display.show_result(results)
+        else:
+            results, interrupted = run_targets(plan, targets, passwords)
+            show_results(targets, results)
     if interrupted:
         return 130
     return 0 if all(result.status == "online" for result in results.values()) else 1
@@ -187,7 +195,7 @@ def continue_after_failure(failures, targets):
         return False
 
 
-def run_targets(plan, targets, passwords):
+def run_targets(plan, targets, passwords, *, display=None):
     """Display worker events and make admission decisions in one console thread."""
     cancel = threading.Event()
     run = MassRestartRun(plan, [(target, target.user, target.checks) for target in targets], passwords, cancel)
@@ -207,17 +215,33 @@ def run_targets(plan, targets, passwords):
     previous_handler = signal.signal(signal.SIGINT, stop_run)
     try:
         while True:
-            if interrupted and not announced:
+            if interrupted and not announced and not display:
                 print("\nAbbruch angefordert. Warte auf das Ende der lokalen SSH-Aufrufe.", flush=True)
                 announced = True
             run.tick()
             while not run.events.empty():
-                timestamp, index, _state, detail = run.events.get_nowait()
-                print_restart_event(timestamp, targets[index], detail)
+                timestamp, index, state, detail = run.events.get_nowait()
+                if display:
+                    display.update(timestamp, index, state, detail)
+                else:
+                    print_restart_event(timestamp, targets[index], detail)
             if run.done:
                 return run.results, interrupted
             failures = run.pause_failures()
-            if failures and not interrupted:
+            if display:
+                visible_failures = failures if not interrupted else ()
+                display.draw(failures=visible_failures, interrupted=interrupted)
+                try:
+                    decision = display.read_decision(failures=visible_failures)
+                except KeyboardInterrupt:
+                    stop_run(None, None)
+                else:
+                    if visible_failures and not interrupted:
+                        if decision:
+                            run.continue_after_failures(visible_failures)
+                        elif decision is False:
+                            run.decide(False)
+            elif failures and not interrupted:
                 try:
                     asking = True
                     if not interrupted:

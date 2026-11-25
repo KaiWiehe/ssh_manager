@@ -641,3 +641,8 @@ class MassRestartRun:
 
     def decide(self, keep_going):
         self.scheduler.decide(keep_going)
+
+    def continue_after_failures(self, failures):
+        with self.scheduler.lock:
+            if not self.cancel.is_set() and self.scheduler.paused and self.scheduler.failures == failures:
+                self.scheduler.decide(True)

@@ -604,8 +604,12 @@ exportierten Einstellungen. Passwortabfragen und Fehlerpausen benötigen ein
 interaktives Terminal. **Alle parallel** verlangt zusätzlich die Eingabe der
 Zielanzahl oder das ausdrückliche Argument `--confirm-all`.
 
-Die Live-Ausgabe zeigt Zeit, Server und Zustandswechsel. Während der Eingabe in
-der Fehlerpause werden laufende Ziele weiter überwacht und Meldungen gepuffert.
+Im interaktiven Terminal zeigt der Export eine farbige Live-Tabelle mit dem
+aktuellen Status je Server. Bei vielen Zielen blättern `P` und `N` durch die
+Tabelle. Während einer Fehlerpause wird der Status laufender Ziele weiter
+aktualisiert. Nach dem Lauf bleibt eine Übersicht im Terminal stehen.
+Mit `--log` oder bei umgeleiteter Ausgabe erscheint das ausführliche
+Textprotokoll. `NO_COLOR=1` schaltet die Statusfarben aus.
 Strg+C verhindert weitere Starts und beendet die lokalen SSH-Aufrufe. Bereits
 angeforderte Reboots können serverseitig weiterlaufen. Fehler, Zeitüberschreitungen
 und Abbrüche liefern einen Exitcode ungleich null.
