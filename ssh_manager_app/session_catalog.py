@@ -3,10 +3,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from .constants import _SSH_CONFIG_DEFAULT_FOLDER
 from .models import AppSettings, Session
 
 SOURCE_LABELS = {"winscp": "WinSCP", "ssh_config": "SSH Config",
                  "filezilla_config": "FileZilla", "app": "Eigene Verbindungen"}
+
+
+def sort_connections(sessions, ssh_config_folder=_SSH_CONFIG_DEFAULT_FOLDER):
+    return sorted(sessions, key=lambda session: (
+        session.folder_key != ssh_config_folder, session.folder_key.lower(), session.display_name.lower(),
+    ))
 
 
 def effective_session(session: Session, settings: AppSettings, overrides: dict) -> Session:

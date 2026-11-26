@@ -14,7 +14,7 @@ import pytest
 from ssh_manager_app.dialogs_restart import ServerRestartProgressDialog
 from ssh_manager_app.dialogs_restart_templates import RestartTemplatesDialog, RestartPreview, ServicePicker
 from ssh_manager_app.models import Session, default_settings
-from ssh_manager_app.restart_templates import resolve_targets, validate_template
+from ssh_manager_app.restart_templates import TEMPLATE_COLORS, new_template, resolve_targets, validate_template
 from ssh_manager_app.themes import palette_for_theme
 from ssh_manager_app.ui import _apply_palette_styles
 
@@ -66,6 +66,169 @@ def screenshot(window, name):
     window.lift()
     window.update()
     ImageGrab.grab(window=window.winfo_id()).save(Path(directory) / name)
+
+
+def test_organize_library_with_nested_folders_colors_and_multiple_templates(app, monkeypatch):
+    from ssh_manager_app.shortcuts import ShortcutAction, ShortcutManager
+
+    first, second = [new_template([session]) for session in app._app_sessions[:2]]
+    first.update(name="Testfarm")
+    second.update(name="Backend", color=TEMPLATE_COLORS["Rot (Live)"])
+    app._initial_toolbar_search_texts["restart_templates"] = {"schema": 1, "items": [first, second]}
+    status = RestartTemplatesDialog(app, [], status_only=True)
+    window = RestartTemplatesDialog(app, [])
+    app.update()
+    delete_main_connection = MagicMock()
+    global_delete = ShortcutManager(app)._make_handler(
+        ShortcutAction("delete", "Löschen", "Delete", delete_main_connection, skip_in_entry=False)
+    )
+    global_delete(SimpleNamespace(widget=window.list))
+
+    def create_folder(name, color):
+        def choose(dialog):
+            assert not dialog.grab_current()
+            global_delete(SimpleNamespace(widget=dialog))
+            dialog.name.set(name)
+            dialog.color.set(color)
+            dialog.accept("parent")
+        monkeypatch.setattr(window, "wait_window", choose)
+        window.create_folder()
+        return window.list.selection()[0]
+
+    live_row = create_folder("Live", "Rot (Live)")
+    essen_row = create_folder("Essen", "Blau")
+    essen = window.list.folder_rows[essen_row]
+    assert window.list.parent(essen_row) == live_row
+    assert window.list.item(live_row, "image")
+    assert window.list.item(live_row, "image") != window.list.item(essen_row, "image")
+
+    window.list.selection_set(first["id"])
+    window.open_selected()
+    window.name.set("Ungespeicherter Name")
+    window.notebook.select(window.library_frame)
+    def move(dialog):
+        dialog.destination.current(next(i for i, (key, _) in enumerate(dialog.destinations) if key == essen))
+        if dialog.color:
+            dialog.color.set("Grün (Test)")
+        dialog.accept("folder")
+
+    monkeypatch.setattr(window, "wait_window", move)
+    window.organize_selected()
+    assert window.name.get() == "Ungespeicherter Name"
+    assert window.collect_settings()["color"] == TEMPLATE_COLORS["Grün (Test)"]
+    window.list.selection_set(first["id"], second["id"])
+    window.organize_selected()
+    items = {item["id"]: item for item in window.current_library()["items"]}
+    assert items[first["id"]]["name"] == "Testfarm"
+    assert items[first["id"]]["color"] == TEMPLATE_COLORS["Grün (Test)"]
+    assert items[second["id"]]["color"] == TEMPLATE_COLORS["Rot (Live)"]
+    assert all(item["folder"] == essen for item in items.values())
+    assert window.list.get_children(essen_row) == (second["id"], first["id"])
+    window.list.selection_remove(*window.list.selection())
+    screenshot(window, "restart-library-organization.png")
+
+    status.sync_library()
+    assert status.list.parent(first["id"]) == essen_row
+    status.list.selection_set(second["id"])
+    status.open_selected()
+    assert status.template["folder"] == essen
+    assert status.template["color"] == TEMPLATE_COLORS["Rot (Live)"]
+    delete_main_connection.assert_not_called()
+
+
+@pytest.mark.parametrize("status_only", [False, True])
+def test_add_servers_from_real_session_tree_search(app, monkeypatch, status_only):
+    first, second, third = app._app_sessions
+    first.folder_path = ["Neubrandenburg", "Live"]
+    second.folder_path = ["Neubrandenburg", "Test"]
+    third.folder_path = ["Essen", "Live"]
+    second.display_name = third.display_name = "Backend"
+    app._notes = {second.key: "App-Notiz"}
+    app._tree.get_open_folders.return_value = {"Neubrandenburg", "Neubrandenburg/Test"}
+    app._tree.get_session_colors.return_value = {second.key: TEMPLATE_COLORS["Grün (Test)"]}
+    app._filezilla_sessions = [Session("filezilla", "Alt", ["FileZilla Config"], "old.invalid", source="filezilla_config")]
+    window = RestartTemplatesDialog(app, [first], status_only=status_only)
+    window.name.set("Lokaler Entwurf")
+    window.rows[0][0].set("vorlagen-benutzer")
+
+    def choose(picker):
+        assert picker.grab_current() is None
+        tree, view = picker.tree, picker.tree._tv
+        assert set(tree._item_to_folder_key.values()) == {
+            "Neubrandenburg", "Neubrandenburg/Test", "Essen", "Essen/Live", "FileZilla Config",
+        }
+        assert not view.bind("<ButtonRelease-3>")
+        picker.query.set("Test")
+        (test_row,) = tree._item_to_session
+        assert tree._item_to_session[test_row].key == second.key
+        assert view.item(test_row, "values")[-1] == "App-Notiz"
+        tree._toggle(test_row)
+        picker.query.set("three.EXAMPLE")
+        (live_row,) = tree._item_to_session
+        assert tree._item_to_session[live_row].key == third.key
+        tree._toggle(live_row)
+        assert picker.accept_button.cget("text") == "Server übernehmen (2, 1 verborgen)"
+        picker.query.set("")
+        tree.expand_all()
+        if not status_only:
+            screenshot(picker, "restart-server-picker.png")
+        picker.query.set("Test")
+        (test_row,) = tree._item_to_session
+        monkeypatch.setattr(view, "identify_row", lambda _: test_row)
+        monkeypatch.setattr(view, "identify_column", lambda _: "#0")
+        tree._on_tree_motion(SimpleNamespace(x=0, y=0, x_root=0, y_root=0))
+        tooltip_timer = tree._tooltip_after_id
+        assert tooltip_timer is not None
+        picker.accept()
+        assert tooltip_timer not in app.tk.splitlist(app.tk.call("after", "info"))
+
+    monkeypatch.setattr(window, "wait_window", choose)
+    window.add_targets()
+    assert [target["key"] for target in window.template["targets"]] == [first.key, third.key, second.key]
+    assert window.name.get() == "Lokaler Entwurf"
+    assert window.rows[0][0].get() == "vorlagen-benutzer"
+    app._tree.get_selected_sessions.assert_not_called()
+
+
+def test_adding_server_rejects_changed_folder_context(app, monkeypatch):
+    first, second, _third = app._app_sessions
+    second.folder_path = ["Neubrandenburg", "Test"]
+    window = RestartTemplatesDialog(app, [first])
+    warning = MagicMock()
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.messagebox.showwarning", warning)
+
+    def choose(picker):
+        row = next(row for row, session in picker.tree._item_to_session.items() if session.key == second.key)
+        picker.tree._toggle(row)
+        second.folder_path[:] = ["Essen", "Live"]
+        picker.accept()
+
+    monkeypatch.setattr(window, "wait_window", choose)
+    window.add_targets()
+    assert [target["key"] for target in window.template["targets"]] == [first.key]
+    warning.assert_called_once()
+
+
+def test_organizing_template_rejects_changed_destination_path(app, monkeypatch):
+    item = new_template(app._app_sessions[:1])
+    library = {"schema": 1, "items": [item], "folders": [
+        {"id": "site", "name": "Test"}, {"id": "backend", "name": "Backend", "parent": "site"},
+    ]}
+    app._initial_toolbar_search_texts["restart_templates"] = library
+    window = RestartTemplatesDialog(app, [])
+    window.list.selection_set(item["id"])
+    error = MagicMock()
+    monkeypatch.setattr("ssh_manager_app.dialogs_restart_templates.messagebox.showerror", error)
+
+    def choose(dialog):
+        dialog.destination.current(next(i for i, (key, _) in enumerate(dialog.destinations) if key == "backend"))
+        library["folders"][0]["name"] = "Live"
+        dialog.accept("folder")
+
+    monkeypatch.setattr(window, "wait_window", choose)
+    window.organize_selected()
+    assert "folder" not in window.current_library()["items"][0]
+    error.assert_called_once()
 
 
 def test_actual_editor_save_copy_users_service_controls_and_preview(app, monkeypatch):

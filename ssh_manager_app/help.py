@@ -373,6 +373,12 @@ Die Beschriftung des Kontextmenüs nennt den Geltungsbereich. Im Menü Aktionen 
     HelpTopic("restart_templates", "Massen-Neustarts, Dienststatus und Vorlagen", """Vorlagen erstellen
 Server links anhaken und Aktionen → Massen-Neustarts öffnen. „Aus Auswahl erstellen“ übernimmt die Server in eine direkt editierbare Tabelle. Benutzer werden aus den aktuellen Verbindungen vorbelegt. Quick-Access-User und „Leere Benutzer füllen“ ergänzen nur fehlende Angaben. Benutzeränderungen gelten ausschließlich für die Vorlage, auch bei SSH-Aliasen.
 
+Vorlagen organisieren
+Unter „Vorlagen“ mit „Neuer Ordner…“ einen Bereich erstellen. Einen übergeordneten Ordner auswählen, um einen Unterordner anzulegen. Mit „Organisieren…“ Ordner umbenennen und verschieben oder eine Vorlage einem Ordner zuweisen. Ordner und Vorlagen haben je eine eigene Farbe, zum Beispiel Grün für Test oder Rot für Live. Mit Strg oder Umschalt mehrere Vorlagen für „Verschieben…“ markieren. Vorlagen ohne Ordner liegen auf der obersten Ebene. Die Ordner und Farben stehen in beiden Vorlagenansichten und im App-Backup zur Verfügung.
+
+Server hinzufügen
+„Server hinzufügen…“ öffnet den Verbindungsbaum mit den ursprünglichen Ordnerpfaden. Das Suchfeld findet Namen, Hostnamen und Ordner. Server anhaken und gesammelt übernehmen. Die Häkchen bleiben bei wechselnden Suchbegriffen erhalten. Im Hauptfenster bleibt deine eigene Auswahl bestehen.
+
 Serviceprüfungen je Server
 Auf einen Dienstnamen oder „Dienste auswählen…“ klicken, auf diesem Server mehrere Dienste lesend durchsuchen und übernehmen. Dienstnamen sind nicht frei editierbar. Sollzustand aktiv/inaktiv wählen; × entfernt einen Dienst. Server oben rechts hinzufügen oder in der Zeile entfernen; Ersetzen und Umsortieren entfallen. Inaktiv bedeutet vorhanden und sauber gestoppt; failed und fehlende Units sind kein erfüllter Sollzustand. Die Prüfung verändert keine Dienste. Eine leere Liste prüft nur Neustart und SSH-Rückkehr.
 

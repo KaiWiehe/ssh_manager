@@ -14,7 +14,7 @@ from ssh_manager_app import storage
 from ssh_manager_app.mass_restart import RestartIdentity, check_restart_target, run_prepared_restart, wait_for_restart_services
 from ssh_manager_app.restart_runtime import RestartResult, RestartScheduler, _ssh_args, probe_unit, execution_policy
 from ssh_manager_app.models import Session, default_settings, settings_to_dict
-from ssh_manager_app.restart_templates import (new_template, resolve_targets,
+from ssh_manager_app.restart_templates import (TEMPLATE_COLORS, new_template, resolve_targets,
     service_check, target_fingerprint, validate_library, validate_template)
 from ssh_manager_app.result_table import table_text
 from ssh_manager_app.ssh_utils import ssh_argv
@@ -91,11 +91,18 @@ def test_latest_targets_explicit_user_and_alias_are_preserved():
     assert "-l" not in _ssh_args(alias, "ignored")
 
 
-def test_templates_roundtrip_and_backup_validation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("organized", [False, True])
+def test_templates_roundtrip_and_backup_validation(tmp_path, monkeypatch, organized):
     for field, name in (("_STATE_FILE", "ui_state.json"), ("_SETTINGS_FILE", "settings.json"),
                         ("_APP_SESSIONS_FILE", "app_sessions.json"), ("_NOTES_FILE", "notes.json")):
         monkeypatch.setattr(storage, field, tmp_path / name)
     library = {"schema": 1, "items": [template()]}
+    if organized:
+        library["folders"] = [
+            {"id": "live", "name": "Live", "color": TEMPLATE_COLORS["Rot (Live)"]},
+            {"id": "essen", "name": "Essen", "parent": "live"},
+        ]
+        library["items"][0].update(folder="essen", color=TEMPLATE_COLORS["Blau"])
     storage.save_ui_state(set(), {}, {"restart_templates": library})
     assert storage.load_ui_state()[2]["restart_templates"] == library
     storage.save_settings(default_settings())
@@ -104,9 +111,28 @@ def test_templates_roundtrip_and_backup_validation(tmp_path, monkeypatch):
     storage.create_app_backup(tmp_path / "backup.json")
     payload = storage.read_app_backup(tmp_path / "backup.json")
     assert payload["documents"]["ui_state.json"]["toolbar_search_texts"]["restart_templates"] == library
+    storage.save_ui_state(set(), {}, {})
+    storage.restore_app_backup(payload)
+    assert storage.load_ui_state()[2]["restart_templates"] == library
     payload["documents"]["ui_state.json"]["toolbar_search_texts"]["restart_templates"]["schema"] = 99
     with pytest.raises(ValueError):
         storage.validate_app_backup(payload)
+
+
+def test_library_rejects_orphan_templates_cycles_and_duplicate_sibling_names():
+    item = template()
+    item["folder"] = "essen"
+    library = {"schema": 1, "items": [item], "folders": [{"id": "live", "name": "Live"}]}
+    with pytest.raises(ValueError, match="Ordner einer Vorlage"):
+        validate_library(library)
+    library["folders"].append({"id": "essen", "name": "Essen", "parent": "live"})
+    library["folders"][0]["parent"] = "essen"
+    with pytest.raises(ValueError, match="sich selbst"):
+        validate_library(library)
+    library["folders"][0].pop("parent")
+    library["folders"].append({"id": "dupe", "name": "essen", "parent": "live"})
+    with pytest.raises(ValueError, match="derselben Ebene"):
+        validate_library(library)
 
 
 def test_current_ui_state_keeps_templates():

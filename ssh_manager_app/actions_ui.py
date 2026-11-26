@@ -276,6 +276,8 @@ def _with_effective_username(app, session: Session) -> Session:
 
 
 def build_visible_sessions(app) -> list[Session]:
+    from .session_catalog import sort_connections
+
     base: list[Session] = []
     if app.settings.source_visibility.show_winscp:
         base.extend(_with_effective_username(app, s) for s in app._winscp_sessions)
@@ -288,10 +290,7 @@ def build_visible_sessions(app) -> list[Session]:
 
     by_key = {s.key: s for s in base}
     favorites = getattr(app, "_favorite_sessions", {})
-    sorted_normal = sorted(
-        base,
-        key=lambda s: (0 if s.folder_key == app._ssh_config_default_folder else 1, s.folder_key.lower(), s.display_name.lower()),
-    )
+    sorted_normal = sort_connections(base, app._ssh_config_default_folder)
 
     special: list[Session] = []
     if app.settings.source_visibility.show_favorites:

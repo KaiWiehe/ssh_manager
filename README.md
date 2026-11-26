@@ -526,6 +526,16 @@ Benutzer. Pro Server Dienste über den Servicebrowser auswählen, entfernen
 oder den Sollzustand aktiv/inaktiv wählen.
 Benutzer gelten nur für die Vorlage, auch bei SSH-Aliasen.
 
+Unter **Vorlagen** legst du mit **Neuer Ordner…** Bereiche wie Neubrandenburg,
+Essen oder Test an. **Organisieren…** verschiebt einen Ordner oder eine Vorlage und
+weist ihr eine Farbe zu, etwa Grün für Test oder Rot für Live. Ordner können
+Unterordner enthalten. Markiere mehrere Vorlagen mit Strg oder Umschalt und
+verschiebe sie gemeinsam. Ohne Ordner erscheinen Vorlagen auf der obersten Ebene.
+
+**Server hinzufügen…** öffnet den Verbindungsbaum mit den vorhandenen Ordnerpfaden.
+Suche nach Name, Hostname oder Ordner, hake die Server an und übernimm sie gesammelt.
+Häkchen bleiben beim Wechsel des Suchbegriffs erhalten.
+
 Vorlagen lassen sich später ohne Häkchen-Auswahl öffnen. Geänderte Vorlagen als
 Kopie speichern oder ausdrücklich überschreiben. Hostnamen/Ports kommen aus den
 aktuellen Verbindungen; fehlende Verbindungen ersetzen oder entfernen. Vorlagen

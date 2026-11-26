@@ -94,6 +94,7 @@ class SessionTree(ttk.Frame):
         favorite_keys_getter=None,          # Callable[[], set[str]] | None
         on_hide_column=None,                # Callable[[str], None] | None
         toolbar_settings: ToolbarSettings | None = None,
+        selection_only: bool = False,
     ):
         super().__init__(parent)
         self._sessions = sessions
@@ -139,6 +140,7 @@ class SessionTree(ttk.Frame):
         self._favorite_keys_getter = favorite_keys_getter or (lambda: set())
         self._on_hide_column = on_hide_column
         self._toolbar_settings = toolbar_settings or ToolbarSettings()
+        self._selection_only = selection_only
         self._tooltip: TooltipPopup | None = None
         self._tooltip_after_id = None
         self._last_tooltip_item: str | None = None
@@ -165,6 +167,11 @@ class SessionTree(ttk.Frame):
 
         self._build()
         self.populate(sessions, open_folders=self._open_folders)
+
+    def destroy(self) -> None:
+        self._cancel_header_x_hide_timer()
+        self._hide_tooltip()
+        super().destroy()
 
     def _build(self) -> None:
         """Erstellt Treeview + Scrollbar."""
@@ -234,15 +241,16 @@ class SessionTree(ttk.Frame):
         # Events
         self._tv.bind("<ButtonPress-1>", self._on_left_press)
         self._tv.bind("<ButtonRelease-1>", self._on_left_click)
-        self._tv.bind("<Double-Button-1>", self._on_double_click)
-        self._tv.bind("<ButtonRelease-3>", self._on_right_click)
+        if not self._selection_only:
+            self._tv.bind("<Double-Button-1>", self._on_double_click)
+            self._tv.bind("<ButtonRelease-3>", self._on_right_click)
+            self._tv.bind("<Shift-F10>", self._on_key_context_menu)
+            self._tv.bind("<Menu>", self._on_key_context_menu)
         self._tv.bind("<Up>", self._on_key_up)
         self._tv.bind("<Down>", self._on_key_down)
         self._tv.bind("<Left>", self._on_key_left)
         self._tv.bind("<Right>", self._on_key_right)
         self._tv.bind("<space>", self._on_key_space)
-        self._tv.bind("<Shift-F10>", self._on_key_context_menu)
-        self._tv.bind("<Menu>", self._on_key_context_menu)
         self._tv.bind("<FocusIn>", self._on_tree_focus_in)
         self._tv.bind("<<TreeviewOpen>>", lambda e: self._on_tree_folder_open_changed(e, True))
         self._tv.bind("<<TreeviewClose>>", lambda e: self._on_tree_folder_open_changed(e, False))
@@ -253,7 +261,8 @@ class SessionTree(ttk.Frame):
         self._configure_color_tags()
         self._configure_visual_tags()
         self._apply_column_visibility()
-        self._build_header_hide_overlay()
+        if not self._selection_only:
+            self._build_header_hide_overlay()
         # Redistribute column widths whenever the tree itself is resized so
         # the visible columns always fill the full treeview width.
         self._tv.bind("<Configure>", self._on_tree_configure, add="+")
@@ -272,8 +281,13 @@ class SessionTree(ttk.Frame):
         else:
             searching = bool(self._active_filter_query.strip() or self.__dict__.get("_structured_filters"))
             self._empty_title.set("Keine Suchtreffer" if searching else "Keine Verbindungen vorhanden")
-            self._empty_hint.set("Ändere oder leere die Suche, um deine Verbindungen wieder anzuzeigen." if searching else "Lege deine erste SSH-Verbindung an oder importiere später bestehende Quellen.")
             if searching:
+                self._empty_hint.set("Ändere oder leere die Suche, um deine Verbindungen wieder anzuzeigen.")
+            elif self._selection_only:
+                self._empty_hint.set("Es sind keine weiteren eindeutigen Verbindungen verfügbar.")
+            else:
+                self._empty_hint.set("Lege deine erste SSH-Verbindung an oder importiere später bestehende Quellen.")
+            if searching or self._selection_only:
                 self._empty_add_button.grid_remove()
             else:
                 self._empty_add_button.grid()
@@ -352,7 +366,7 @@ class SessionTree(ttk.Frame):
         self._redistribute_column_widths(ordered)
         # The hide-X overlay position is tied to actual column widths; keep
         # it in sync after a resize.
-        if self._header_x_visible_for:
+        if self._on_hide_column and self._header_x_visible_for:
             self._show_header_x_for(self._header_x_visible_for)
 
     def _redistribute_column_widths(self, visible_data_columns) -> None:
@@ -369,14 +383,8 @@ class SessionTree(ttk.Frame):
             total = int(self._tv.winfo_width())
         except Exception:
             return
-        # Widget not realized yet → retry once the geometry is known.
+        # The Configure binding handles the first real size when the tree is mapped.
         if total <= 1:
-            try:
-                self._tv.after(50,
-                    lambda: self._redistribute_column_widths(visible_data_columns)
-                )
-            except Exception:
-                pass
             return
 
         defaults = self._DEFAULT_COLUMN_WIDTHS
@@ -662,7 +670,8 @@ class SessionTree(ttk.Frame):
         self._hide_tooltip()
         # X nicht sofort verstecken: wenn der Mauszeiger das X-Label betritt,
         # erhaelt der Treeview ein <Leave>, aber das X soll bleiben.
-        self._schedule_header_x_hide()
+        if self._on_hide_column:
+            self._schedule_header_x_hide()
 
     def _on_tree_motion(self, event: tk.Event) -> None:
         # Header-Hide-X aktualisieren (unabhaengig vom Notes-Tooltip)

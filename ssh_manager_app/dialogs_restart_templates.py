@@ -1,21 +1,25 @@
 """Editable restart tables, saved templates and read-only per-host service browsing."""
 from __future__ import annotations
 
+from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 import tkinter as tk
-from .window_policy import AppWindow, single_pending
+from .window_policy import AppWindow, owner_alive, single_pending, wait_for_window
 from tkinter import ttk
 from .window_policy import messagebox
 import uuid
 
-from .restart_templates import (all_connections, new_template, resolve_targets, service_check,
+from .restart_templates import (all_connections, folder_paths, new_template, resolve_targets, service_check,
                                 target_fingerprint, validate_library, validate_template)
 from .restart_runtime import MODE_LABELS
 from .ui_components import fit_window_to_parent, install_context_help
 from .workers import run_worker
 from .restart_passwords import seal, unseal, passwords_for_run
+from .restart_template_library_ui import TemplateLibraryTree, TemplateOrganizationDialog
+from .session_catalog import sort_connections
+from .tree import SessionTree
 
 
 def modal(window, parent, title, width=820, height=520, *, blocking=True):
@@ -46,31 +50,61 @@ class SaveTemplateChoice(AppWindow):
 
 
 class ConnectionPicker(AppWindow):
-    def __init__(self, parent, sessions, multiple=False):
+    _blocks_app_shortcuts = True
+
+    def __init__(self, parent, app, excluded_keys):
         super().__init__(parent)
-        self.sessions = list(sessions)
         self.result = None
+        sessions = all_connections(app)
+        counts = Counter(session.key for session in sessions)
+        ambiguous = sum(count > 1 for key, count in counts.items() if key not in excluded_keys)
+        self.available = deepcopy(sort_connections(
+            session for session in sessions if session.key not in excluded_keys and counts[session.key] == 1
+        ))
         frame = ttk.Frame(self, padding=14)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="Aktuelle Verbindung auswählen" + (" (Strg/Umschalt für mehrere)" if multiple else "")).pack(anchor="w")
-        self.tree = ttk.Treeview(frame, columns=("host", "source"), selectmode="extended" if multiple else "browse")
-        self.tree.heading("#0", text="Server")
-        self.tree.heading("host", text="Hostname / Port")
-        self.tree.heading("source", text="Quelle")
-        self.tree.column("source", width=110)
-        bar = ttk.Scrollbar(frame, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=bar.set)
-        bar.pack(side="right", fill="y")
+        ttk.Label(frame, text="Name, Hostname oder Ordner suchen").pack(anchor="w")
+        self.query = tk.StringVar(self)
+        entry = ttk.Entry(frame, textvariable=self.query)
+        entry.pack(fill="x", pady=(4, 0))
+        images = (getattr(app, "_img_unchecked", None), getattr(app, "_img_checked", None))
+        if None in images:
+            from .core import _create_checkbox_images
+            images = _create_checkbox_images(self)
+        notes = getattr(app, "_notes", {})
+        self.tree = SessionTree(
+            frame, self.available, *images, self.selection_changed,
+            initial_open_folders=app._tree.get_open_folders(),
+            initial_session_colors=app._tree.get_session_colors(),
+            notes_getter=lambda key: notes.get(key, ""),
+            toolbar_settings=app.settings.toolbar, selection_only=True,
+        )
         self.tree.pack(fill="both", expand=True, pady=10)
-        for i, session in enumerate(self.sessions):
-            self.tree.insert("", "end", iid=str(i), text=session.display_name, values=(f"{session.hostname}:{session.port}", session.source))
-        ttk.Button(frame, text="Übernehmen", command=self.accept).pack(side="right")
-        ttk.Button(frame, text="Abbrechen", command=self.destroy).pack(side="right", padx=8)
-        modal(self, parent, "Verbindungen auswählen")
+        if ambiguous:
+            ttk.Label(frame, text=f"Mehrdeutige Verbindungsreferenzen ausgeblendet: {ambiguous}",
+                      style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
+        bar = ttk.Frame(frame)
+        bar.pack(fill="x")
+        ttk.Button(bar, text="Alle Ordner aufklappen", command=self.tree.expand_all).pack(side="left")
+        self.accept_button = ttk.Button(bar, text="Server übernehmen", command=self.accept, state="disabled")
+        self.accept_button.pack(side="right")
+        ttk.Button(bar, text="Abbrechen", command=self.destroy).pack(side="right", padx=8)
+        self.query.trace_add("write", lambda *_: self.tree.filter(self.query.get()))
+        self.bind("<Escape>", lambda _: self.destroy())
+        self.bind("<Control-f>", lambda _: entry.focus_set())
+        modal(self, parent, "Server hinzufügen", 950, 620)
+        entry.focus_set()
+
+    def selection_changed(self, count):
+        hidden = len(self.tree.hidden_selected_keys())
+        suffix = f", {hidden} verborgen" if hidden else ""
+        self.accept_button.configure(text=f"Server übernehmen ({count}{suffix})" if count else "Server übernehmen",
+                                     state="normal" if count else "disabled")
 
     def accept(self):
-        if self.tree.selection():
-            self.result = [self.sessions[int(i)] for i in self.tree.selection()]
+        selected = {session.key for session in self.tree.get_selected_sessions()}
+        if selected:
+            self.result = [session for session in self.available if session.key in selected]
             self.destroy()
 
 
@@ -415,6 +449,8 @@ class RestartScriptPreview(AppWindow):
 
 
 class RestartTemplatesDialog(AppWindow):
+    _blocks_app_shortcuts = True
+
     def __init__(self, app, selection, *, status_only=False):
         super().__init__(app)
         self.status_only = status_only
@@ -438,10 +474,15 @@ class RestartTemplatesDialog(AppWindow):
         self.notebook.add(self.editor, text="Vorlage bearbeiten")
         self._build_library()
         self.status = tk.StringVar()
-        ttk.Label(self, textvariable=self.status, style="Muted.TLabel", padding=(14, 4)).pack(fill="x")
+        footer = ttk.Frame(self, padding=(14, 4))
+        footer.pack(fill="x")
+        ttk.Button(footer, text="Schließen", command=self.close).pack(side="right")
+        ttk.Label(footer, textvariable=self.status, style="Muted.TLabel").pack(side="left", fill="x", expand=True)
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", lambda _: self.close())
         self.refresh_library()
+        self.notebook.bind("<<NotebookTabChanged>>", self.sync_library, add="+")
+        self.bind("<FocusIn>", self.sync_library, add="+")
         modal(self, app, "Massendienststatus" if status_only else "Massen-Neustarts", 1150, 800, blocking=False)
         if selection:
             self.create(selection)
@@ -449,23 +490,167 @@ class RestartTemplatesDialog(AppWindow):
             ttk.Label(self.editor, text="Eine Vorlage öffnen oder aus ausgewählten Servern erstellen.").pack(pady=30)
 
     def _build_library(self):
-        ttk.Label(self.library_frame, text="Gemeinsame Vorlagen für Neustarts und Dienststatus öffnen.", style="DialogTitle.TLabel").pack(anchor="w", pady=(0, 10))
-        self.list = ttk.Treeview(self.library_frame, columns=("count", "mode"), selectmode="browse")
-        for col, label in (("#0", "Vorlage"), ("count", "Server"), ("mode", "Ablauf")):
-            self.list.heading(col, text=label)
-        self.list.pack(fill="both", expand=True)
-        self.list.bind("<Double-1>", lambda _: self.open_selected())
+        ttk.Label(self.library_frame, text="Vorlagen für Neustarts und Dienststatus", style="DialogTitle.TLabel").pack(anchor="w", pady=(0, 10))
+        pane = ttk.Frame(self.library_frame)
+        pane.pack(fill="both", expand=True)
+        self.list = TemplateLibraryTree(pane)
+        scroll = ttk.Scrollbar(pane, orient="vertical", command=self.list.yview)
+        scroll.pack(side="right", fill="y")
+        self.list.configure(yscrollcommand=scroll.set)
+        self.list.pack(side="left", fill="both", expand=True)
+        self.list.bind("<Double-1>", self._open_clicked)
+        self.list.bind("<Return>", lambda _: self.open_selected())
         buttons = ttk.Frame(self.library_frame)
-        buttons.pack(fill="x", pady=12)
-        for label, callback in (("Aus Auswahl erstellen", self.create), ("Öffnen / bearbeiten", self.open_selected),
-                                ("Vorlage löschen", self.delete_template), ("Schließen", self.close)):
-            ttk.Button(buttons, text=label, command=callback).pack(side="left", padx=(0, 8))
+        buttons.pack(fill="x", pady=(10, 6))
+        ttk.Button(buttons, text="Aus Auswahl erstellen", command=self.create).pack(side="left", padx=(0, 8))
+        self.open_button = ttk.Button(buttons, text="Öffnen / bearbeiten", command=self.open_selected)
+        self.open_button.pack(side="left")
+        organization = ttk.Frame(self.library_frame)
+        organization.pack(fill="x")
+        ttk.Button(organization, text="Neuer Ordner…", command=self.create_folder).pack(side="left", padx=(0, 8))
+        self.organize_button = ttk.Button(organization, text="Organisieren…", command=self.organize_selected)
+        self.organize_button.pack(side="left", padx=(0, 8))
+        self.delete_button = ttk.Button(organization, text="Löschen…", command=self.delete_selected)
+        self.delete_button.pack(side="left")
+        self.list.bind("<<TreeviewSelect>>", self.update_library_buttons)
 
-    def refresh_library(self):
-        self.list.delete(*self.list.get_children())
-        for item in self.library["items"]:
-            self.list.insert("", "end", iid=item["id"], text=item["name"],
-                values=(len(item["targets"]), MODE_LABELS[item["mode"]]))
+    def _open_clicked(self, event):
+        row = self.list.identify_row(event.y)
+        if row and self.list.selection() == (row,):
+            self.open_selected()
+
+    def selected_folder(self):
+        selected = self.list.selection()
+        return self.list.folder_rows.get(selected[0]) if len(selected) == 1 else None
+
+    def selected_templates(self):
+        selected = self.list.selection()
+        return selected if all(row not in self.list.folder_rows for row in selected) else ()
+
+    def update_library_buttons(self, _event=None):
+        templates = self.selected_templates()
+        folder = self.selected_folder()
+        self.open_button.configure(state="normal" if len(templates) == 1 else "disabled")
+        self.organize_button.configure(state="normal" if folder or templates else "disabled",
+                                       text="Verschieben…" if len(templates) > 1 else "Organisieren…")
+        self.delete_button.configure(state="normal" if folder or len(templates) == 1 else "disabled")
+
+    def refresh_library(self, *, reveal=()):
+        self.list.refresh(self.library, reveal=reveal)
+        self.update_library_buttons()
+
+    def sync_library(self, _event=None):
+        if self.notebook.select() != str(self.library_frame):
+            return
+        if self.app._initial_toolbar_search_texts.get("restart_templates", {"schema": 1, "items": []}) == self.library:
+            return
+        try:
+            current = self.current_library()
+        except ValueError:
+            return  # Actions report validation errors with their own context.
+        if self.library != current:
+            self.library = current
+            self.refresh_library()
+
+    @single_pending
+    def create_folder(self):
+        folder = {"id": uuid.uuid4().hex, "name": "", "parent": self.selected_folder() or ""}
+        self.edit_organization(folder=folder, new_folder=True)
+
+    @single_pending
+    def organize_selected(self):
+        folder_id = self.selected_folder()
+        selected = set(self.selected_templates())
+        if not folder_id and not selected:
+            return
+        try:
+            library = self.current_library()
+            if folder_id:
+                folder = next((entry for entry in library.get("folders", []) if entry["id"] == folder_id), None)
+                if folder is None:
+                    raise ValueError("Der Ordner wurde in einem anderen Fenster gelöscht.")
+                self.edit_organization(folder=folder)
+            else:
+                templates = [item for item in library["items"] if item["id"] in selected]
+                if len(templates) != len(selected):
+                    raise ValueError("Eine ausgewählte Vorlage wurde in einem anderen Fenster gelöscht.")
+                self.edit_organization(templates=templates)
+        except ValueError as error:
+            messagebox.showwarning("Auswahl aktualisieren", str(error), parent=self)
+
+    def edit_organization(self, *, folder=None, new_folder=False, templates=()):
+        try:
+            library = self.current_library()
+            folders = library.get("folders", [])
+            if new_folder and folder["parent"] and not any(entry["id"] == folder["parent"] for entry in folders):
+                raise ValueError("Der übergeordnete Ordner wurde inzwischen gelöscht.")
+            dialog = TemplateOrganizationDialog(self, folders, folder=folder, templates=templates)
+            if not wait_for_window(self, dialog) or dialog.result is None:
+                return
+            library = self.current_library()
+            destination = dialog.result["folder" if folder is None else "parent"]
+            if destination and folder_paths(folders).get(destination) != folder_paths(library.get("folders", [])).get(destination):
+                raise ValueError("Der gewählte Ordner wurde inzwischen umbenannt, verschoben oder gelöscht. Bitte erneut auswählen.")
+            if folder is not None:
+                folders = library.setdefault("folders", [])
+                if not new_folder and folder not in folders:
+                    raise ValueError("Der Ordner wurde inzwischen geändert oder gelöscht.")
+                library["folders"] = [entry for entry in folders if entry["id"] != folder["id"]]
+                library["folders"].append({**folder, **dialog.result})
+                self.persist(library, reveal=((folder["id"], True),))
+                self.status.set("Ordner gespeichert.")
+            else:
+                if any(item not in library["items"] for item in templates):
+                    raise ValueError("Eine ausgewählte Vorlage wurde inzwischen geändert oder gelöscht.")
+                selected = {item["id"]: item for item in templates}
+                library["items"] = [{**item, **dialog.result} if item["id"] in selected else item
+                                    for item in library["items"]]
+                self.persist(library, reveal=tuple((key, False) for key in selected))
+                if self.original is not None and selected.get(self.original["id"]) == self.original:
+                    updated = next(item for item in self.library["items"] if item["id"] == self.original["id"])
+                    for field in ("folder", "color"):
+                        if field in updated:
+                            self.template[field] = updated[field]
+                        else:
+                            self.template.pop(field, None)
+                    self.original = deepcopy(updated)
+                self.status.set("Vorlage organisiert." if len(selected) == 1 else f"{len(selected)} Vorlagen verschoben.")
+        except (ValueError, OSError) as error:
+            messagebox.showerror("Änderung nicht gespeichert", str(error), parent=self)
+
+    def delete_selected(self):
+        folder_id = self.selected_folder()
+        if folder_id:
+            self.delete_folder(folder_id)
+        else:
+            self.delete_template()
+
+    @single_pending
+    def delete_folder(self, folder_id):
+        try:
+            def find_empty_folder(library):
+                folders = library.get("folders", [])
+                folder = next((entry for entry in folders if entry["id"] == folder_id), None)
+                if folder is None:
+                    raise ValueError("Der Ordner wurde inzwischen gelöscht.")
+                if (any(entry.get("parent") == folder_id for entry in folders)
+                        or any(item.get("folder") == folder_id for item in library["items"])):
+                    raise ValueError("Der Ordner ist belegt. Zuerst seine Vorlagen und Unterordner verschieben.")
+                return folder
+
+            folder = find_empty_folder(self.current_library())
+            if not messagebox.askyesno("Ordner löschen", f'Leeren Ordner „{folder["name"]}“ löschen?', parent=self):
+                return
+            if not owner_alive(self):
+                return
+            library = self.current_library()
+            if find_empty_folder(library) != folder:
+                raise ValueError("Der Ordner wurde inzwischen geändert.")
+            library["folders"].remove(folder)
+            self.persist(library)
+            self.status.set("Ordner gelöscht.")
+        except (ValueError, OSError) as error:
+            messagebox.showwarning("Ordner nicht gelöscht", str(error), parent=self)
 
     def discard_ok(self):
         if self.template is None:
@@ -502,8 +687,8 @@ class RestartTemplatesDialog(AppWindow):
             self.load(new_template(selected), existing=False)
 
     def open_selected(self):
-        selected = self.list.selection()
-        if selected and self.discard_ok():
+        selected = self.selected_templates()
+        if len(selected) == 1 and self.discard_ok():
             try:
                 self.library = self.current_library()
                 current = next((i for i in self.library["items"] if i["id"] == selected[0]), None)
@@ -779,6 +964,7 @@ class RestartTemplatesDialog(AppWindow):
     def collect_settings(self):
         item = {"id": self.template["id"], "name": self.name.get().strip(),
                 "max_parallel": self.template["max_parallel"], "password_per_connection": self.password_per_connection.get()}
+        item.update({field: self.template[field] for field in ("folder", "color") if field in self.template})
         item["targets"] = [
             {"key": target["key"], "label": target["label"], "user": user.get().strip(), "checks": checks.values()}
             for target, (user, checks) in zip(self.template["targets"], self.rows)
@@ -844,16 +1030,26 @@ class RestartTemplatesDialog(AppWindow):
         for number, row in enumerate(self.target_table.rows[index:], index + 1):
             row.server_name.configure(text=f"{number}. {row.server_label}")
 
-    def pick(self, multiple=False):
-        picker = ConnectionPicker(self, all_connections(self.app), multiple)
-        self.wait_window(picker)
-        return picker.result
+    def pick(self):
+        keys = {target["key"] for target in self.template["targets"]}
+        picker = ConnectionPicker(self, self.app, keys)
+        if wait_for_window(self, picker):
+            return picker.result
 
     @single_pending
     def add_targets(self):
         table = self.target_table
-        selected = self.pick(multiple=True)
-        if not selected or not table.canvas.winfo_exists() or table is not self.target_table:
+        selected = self.pick()
+        if not selected or not owner_alive(table.canvas) or table is not self.target_table:
+            return
+        current = {session.key: [] for session in selected}
+        for session in all_connections(self.app):
+            if session.key in current:
+                current[session.key].append(session)
+        if any(current[session.key] != [session] for session in selected):
+            messagebox.showwarning("Serverauswahl aktualisieren",
+                                   "Eine ausgewählte Verbindung wurde geändert, verschoben oder gelöscht. "
+                                   "Bitte Server erneut auswählen.", parent=self)
             return
         known = {target["key"] for target in self.template["targets"]}
         targets = [target for target in new_template(selected)["targets"] if target["key"] not in known]
@@ -883,7 +1079,7 @@ class RestartTemplatesDialog(AppWindow):
         picker = ServicePicker(self, session, user.get().strip(), apply)
         self.wait_window(picker)
 
-    def persist(self, library):
+    def persist(self, library, *, reveal=()):
         from .actions_ui import persist_ui_state
         library = validate_library(library)
         store = self.app._initial_toolbar_search_texts
@@ -898,7 +1094,7 @@ class RestartTemplatesDialog(AppWindow):
                 store["restart_templates"] = old
             raise
         self.library = library
-        self.refresh_library()
+        self.refresh_library(reveal=reveal)
 
     def current_library(self):
         return validate_library(deepcopy(self.app._initial_toolbar_search_texts.get("restart_templates", {"schema": 1, "items": []})))
@@ -948,8 +1144,8 @@ class RestartTemplatesDialog(AppWindow):
 
     @single_pending
     def delete_template(self):
-        selected = self.list.selection()
-        if not selected:
+        selected = self.selected_templates()
+        if len(selected) != 1:
             return
         try:
             baseline = deepcopy(next((i for i in self.current_library()["items"] if i["id"] == selected[0]), None))
