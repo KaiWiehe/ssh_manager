@@ -13,9 +13,10 @@ import warnings
 
 from .mass_restart import MassRestartRun, duplicate_restart_targets, validate_sudo_password
 from .restart_terminal import restart_live_terminal, restart_terminal_view
-from .restart_runtime import (MODE_LABELS, RestartResult, execution_policy, service_check,
+from .restart_runtime import (MODE_LABELS, RestartResult, configured_service_check, execution_policy, service_check,
                               validate_execution_options)
 from .ssh_utils import connection_value, valid_port
+from .wildfly_deployments import wildfly_plan_text
 
 
 def main(plan, raw_targets):
@@ -129,7 +130,16 @@ def validate_plan(plan, targets):
         services = target.get("services", {})
         if not isinstance(services, dict) or len(services) > 100:
             raise ValueError(f"Ziel {index}: bis zu 100 Dienste mit Sollzustand angeben.")
-        checks = [service_check(unit, expected) for unit, expected in services.items() if isinstance(unit, str)]
+        checks = []
+        for unit, options in services.items():
+            if not isinstance(unit, str):
+                continue
+            if isinstance(options, dict):
+                if set(options) != {"expected", "wildfly"}:
+                    raise ValueError(f"Ziel {index}: WildFly-Prüfung erwartet expected und wildfly.")
+                checks.append(configured_service_check(unit, options))
+            else:
+                checks.append(service_check(unit, options))
         if len(checks) != len(services) or len({check["unit"] for check in checks}) != len(checks):
             raise ValueError(f"Ziel {index}: Dienstnamen müssen gültig und eindeutig sein.")
         needs_password = target.get("sudo_password_required", False)
@@ -166,6 +176,9 @@ def show_plan(plan, targets, limit, on_error):
         print(f"{number:>3}. {target_text(target)} · sudo {sudo}")
         for check in target.checks:
             print(f"     {check['unit']}: {check['expected']}")
+            if "wildfly" in check:
+                for line in wildfly_plan_text(check["wildfly"]).splitlines():
+                    print(f"       {console_text(line)}")
 
 
 def read_passwords(plan, targets):

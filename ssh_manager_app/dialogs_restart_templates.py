@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 import tkinter as tk
 from .window_policy import AppWindow, owner_alive, single_pending, wait_for_window
@@ -20,6 +21,7 @@ from .restart_passwords import seal, unseal, passwords_for_run
 from .restart_template_library_ui import TemplateLibraryTree, TemplateOrganizationDialog
 from .session_catalog import sort_connections
 from .tree import SessionTree
+from .wildfly_deployments import wildfly_plan_text
 
 
 def modal(window, parent, title, width=820, height=520, *, blocking=True):
@@ -168,18 +170,20 @@ class ServicePicker(AppWindow):
 
 class ServiceChecks(ttk.Frame):
     """Service names come exclusively from the server browser."""
-    def __init__(self, parent, checks, on_browse, on_resize=None):
+    def __init__(self, parent, checks, on_browse, on_resize=None, *, on_wildfly):
         super().__init__(parent)
         self.fields = []
+        self.wildfly = {}
         self.on_browse = on_browse
+        self.on_wildfly = on_wildfly
         self.on_resize = on_resize
         self.columnconfigure(0, weight=1)
         self.addrow = ttk.Button(self, text="Dienste auswählen…", command=on_browse)
         self.addrow.grid(row=0, column=0, sticky="ew", pady=3)
         for check in checks:
-            self.add(check["unit"], check["expected"])
+            self.add(check["unit"], check["expected"], check.get("wildfly"))
 
-    def add(self, name, expected="active"):
+    def add(self, name, expected="active", wildfly=None):
         row = ttk.Frame(self)
         row.grid(row=len(self.fields), column=0, sticky="ew", pady=2)
         row.columnconfigure(0, weight=1)
@@ -187,16 +191,22 @@ class ServiceChecks(ttk.Frame):
         label = ttk.Label(row, textvariable=unit, width=25, cursor="hand2", padding=(4, 5))
         label.grid(row=0, column=0, sticky="ew")
         label.bind("<Button-1>", lambda _: self.on_browse())
-        ttk.Combobox(row, textvariable=want, values=("aktiv", "inaktiv"), state="readonly", width=7).grid(row=0, column=1, padx=4)
         field = (row, unit, want)
-        ttk.Button(row, text="×", width=3, command=lambda: self.remove(field)).grid(row=0, column=2)
+        want_picker = ttk.Combobox(row, textvariable=want, values=("aktiv", "inaktiv"), state="readonly", width=7)
+        want_picker.grid(row=0, column=1, padx=4)
+        want_picker.bind("<<ComboboxSelected>>", lambda _: self.update_wildfly_button(field))
+        row.wildfly_button = ttk.Button(row, width=10, command=lambda: self.on_wildfly(field))
+        row.wildfly_button.grid(row=0, column=2, padx=(0, 4))
+        ttk.Button(row, text="×", width=3, command=lambda: self.remove(field)).grid(row=0, column=3)
         self.fields.append(field)
+        self.set_wildfly(field, wildfly)
         self.addrow.grid_configure(row=len(self.fields))
         if self.on_resize:
             self.on_resize()
 
     def remove(self, field):
         self.fields.remove(field)
+        self.wildfly.pop(field[0], None)
         field[0].destroy()
         for i, (row, _, _) in enumerate(self.fields):
             row.grid_configure(row=i)
@@ -204,8 +214,28 @@ class ServiceChecks(ttk.Frame):
         if self.on_resize:
             self.on_resize()
 
+    def update_wildfly_button(self, field):
+        row, _, want = field
+        active = want.get() == "aktiv"
+        row.wildfly_button.configure(text="WildFly ✓" if active and row in self.wildfly else "WildFly…",
+                                      state="normal" if active else "disabled")
+
+    def set_wildfly(self, field, settings):
+        row, _, _ = field
+        if settings is None:
+            self.wildfly.pop(row, None)
+        else:
+            self.wildfly[row] = settings
+        self.update_wildfly_button(field)
+
     def values(self):
-        return [service_check(unit.get(), "active" if want.get() == "aktiv" else "inactive") for _, unit, want in self.fields]
+        values = []
+        for row, unit, want in self.fields:
+            check = service_check(unit.get(), "active" if want.get() == "aktiv" else "inactive")
+            if check["expected"] == "active" and row in self.wildfly:
+                check["wildfly"] = deepcopy(self.wildfly[row])
+            values.append(check)
+        return values
 
 
 class RestartTargetTable:
@@ -353,7 +383,13 @@ class RestartPreview(AppWindow):
             if per_connection:
                 stored = next(t for t in template["targets"] if t["key"] == session.key)
                 text.insert("end", "    sudo-Passwort: " + ("hinterlegt" if stored.get("password_protected") else "leer (ohne Passwort)") + "\n")
-            text.insert("end", "\n".join(f"    {c['unit']} → {'aktiv' if c['expected'] == 'active' else 'inaktiv'}" for c in checks) or "    Nur Neustartbestätigung und SSH")
+            if not checks:
+                text.insert("end", "    Nur Neustartbestätigung und SSH")
+            for check in checks:
+                text.insert("end", f"    {check['unit']} → {'aktiv' if check['expected'] == 'active' else 'inaktiv'}\n")
+                if "wildfly" in check:
+                    for line in wildfly_plan_text(check["wildfly"]).splitlines():
+                        text.insert("end", f"      {line}\n")
             text.insert("end", "\n\n")
         text.configure(state="disabled")
         if per_connection:
@@ -840,7 +876,8 @@ class RestartTemplatesDialog(AppWindow):
                 password_frame.pack(fill="x", pady=(6, 0))
             checks = ServiceChecks(row, target["checks"],
                                    lambda row=row: self.browse(self.target_table.rows.index(row)),
-                                   self.target_table.schedule_layout)
+                                   self.target_table.schedule_layout,
+                                   on_wildfly=lambda field, row=row: self.configure_wildfly(row, field))
             checks.grid(row=0, column=2, sticky="new", padx=6, pady=6)
             actions = ttk.Frame(row, padding=4)
             actions.grid(row=0, column=3, sticky="ne")
@@ -1056,6 +1093,37 @@ class RestartTemplatesDialog(AppWindow):
         if targets:
             self.template["targets"].extend(targets)
             self.append_target_rows(targets)
+
+    @single_pending
+    def configure_wildfly(self, row, field):
+        from .dialogs_wildfly_check import WildFlyCheckDialog
+        from .mass_restart import inspect_wildfly_deployments
+        from .ssh_utils import connection_value
+
+        index = self.target_table.rows.index(row)
+        user, checks = self.rows[index]
+        target_key = self.template["targets"][index]["key"]
+        field_row, unit, want = field
+        unit_name = unit.get()
+
+        def still_current():
+            return owner_alive(row) and row in self.target_table.rows and field in checks.fields and want.get() == "aktiv"
+
+        def prepare_probe(settings):
+            if not still_current():
+                raise ValueError("Dienst oder Vorlage wurde geändert. Bitte Einstellungen erneut öffnen.")
+            matches = [session for session in all_connections(self.app) if session.key == target_key]
+            if len(matches) != 1:
+                raise ValueError("Für die Abfrage wird eine eindeutige aktuelle SSH-Verbindung benötigt.")
+            username = connection_value(user.get().strip(), "Benutzer")
+            session = deepcopy(matches[0])
+            if session.is_ssh_config_session:
+                session.ssh_user_override = username
+            return partial(inspect_wildfly_deployments, session, username, unit_name, settings)
+
+        dialog = WildFlyCheckDialog(self, unit_name, checks.wildfly.get(field_row), prepare_probe)
+        if wait_for_window(self, dialog) and dialog.saved and still_current():
+            checks.set_wildfly(field, dialog.result)
 
     @single_pending
     def browse(self, index):

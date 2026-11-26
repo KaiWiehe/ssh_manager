@@ -60,7 +60,10 @@ def render_restart_script(template, resolved, *, common_password_required, targe
             target["alias"] = session.display_name
         else:
             target.update(host=session.hostname, port=session.port)
-        target["services"] = {check["unit"]: check["expected"] for check in checks}
+        target["services"] = {
+            check["unit"]: {"expected": check["expected"], "wildfly": check["wildfly"]}
+            if "wildfly" in check else check["expected"] for check in checks
+        }
         if plan["password_per_connection"]:
             target["sudo_password_required"] = required
         targets.append(target)
@@ -68,13 +71,15 @@ def render_restart_script(template, resolved, *, common_password_required, targe
 
     runtime_imports, _ = _standalone_module("restart_runtime.py")
     runtime = _helpers("restart_runtime.py", "UNIT", "MODE_LABELS", "validate_execution_options", "execution_policy",
-                       "service_check", "MASS_RESTART_SSH_OPTIONS", "SshTarget", "RestartResult", "_ssh_args",
+                       "service_check", "configured_service_check", "MASS_RESTART_SSH_OPTIONS", "SshTarget", "RestartResult", "_ssh_args",
                        "service_probe_result", "RestartScheduler")
     console_imports, console = _standalone_module("restart_script.py")
     terminal_imports, terminal = _standalone_module("restart_terminal.py")
     mass_imports, mass_runtime = _standalone_module("mass_restart.py")
+    wildfly_imports, wildfly_runtime = _standalone_module("wildfly_deployments.py")
     windows_imports, windows_jobs = _standalone_module("restart_winjob.py")
-    imports = "\n".join(sorted(set(runtime_imports + console_imports + terminal_imports + mass_imports + windows_imports)))
+    imports = "\n".join(sorted(set(runtime_imports + console_imports + terminal_imports + mass_imports
+                                   + windows_imports + wildfly_imports)))
     identifiers = _helpers("ssh_utils.py", "connection_value", "valid_port")
     authentication = _helpers("ssh_failures.py", "SSH_AUTHENTICATION_HELP", "ssh_authentication_failed")
     target_lines = "\n".join(indent(_mapping_literal(target), "    ") + "," for target in targets)
@@ -120,6 +125,10 @@ TARGETS = [
 
 
 {runtime}
+
+
+# Lesende WildFly-Prüfung
+{wildfly_runtime}
 
 
 {mass_runtime}

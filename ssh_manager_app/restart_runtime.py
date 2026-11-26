@@ -12,6 +12,7 @@ from typing import Protocol
 
 from .ssh_failures import SSH_AUTHENTICATION_HELP, ssh_authentication_failed
 from .ssh_utils import connection_value
+from .wildfly_deployments import validate_wildfly_settings
 
 
 UNIT = re.compile(r"(?!-)[A-Za-z0-9_.:@-]{1,200}\.service\Z")
@@ -40,6 +41,15 @@ def service_check(name, expected="active"):
     if not UNIT.fullmatch(name) or expected not in ("active", "inactive"):
         raise ValueError("Gültigen systemd-Dienst und Sollzustand aktiv/inaktiv angeben.")
     return {"unit": name, "expected": expected}
+
+
+def configured_service_check(name, options):
+    check = service_check(name, options.get("expected"))
+    if "wildfly" in options:
+        if check["expected"] != "active":
+            raise ValueError("WildFly-Deployments benötigen den Dienst-Sollzustand aktiv.")
+        check["wildfly"] = validate_wildfly_settings(options["wildfly"])
+    return check
 
 
 POLL_INTERVAL_SECONDS = 2.0

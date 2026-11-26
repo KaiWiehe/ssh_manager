@@ -280,7 +280,7 @@ class RestartTerminalView:
         for index, result in sorted(results.items()):
             checks = self.targets[index].checks
             details = result.detail.splitlines()
-            if result.status == "online":
+            if result.status == "online" and not any("wildfly" in check for check in checks):
                 details = details[-len(checks):] if checks and result.includes_service_states else []
             if not result.includes_service_states:
                 details.extend(f"{check['unit']}: Soll {check['expected']}, Ist nicht geprüft" for check in checks)

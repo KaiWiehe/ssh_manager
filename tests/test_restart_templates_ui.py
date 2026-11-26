@@ -231,6 +231,47 @@ def test_organizing_template_rejects_changed_destination_path(app, monkeypatch):
     error.assert_called_once()
 
 
+def test_wildfly_settings_editor_test_button_and_template_reopen(app, monkeypatch):
+    from ssh_manager_app.dialogs_wildfly_check import WildFlyCheckDialog
+    from test_wildfly_deployments import wildfly_settings
+
+    settings = wildfly_settings(scanner=True)
+    window = RestartTemplatesDialog(app, app._app_sessions[:1])
+    checks = window.rows[0][1]
+    checks.add("custom-app.service")
+    row, _, _ = checks.fields[0]
+    probe = MagicMock(return_value=("mismatch", "active", "backend.war · FAILED"))
+    monkeypatch.setattr("ssh_manager_app.mass_restart.inspect_wildfly_deployments", probe)
+    monkeypatch.setattr("ssh_manager_app.dialogs_wildfly_check.run_worker",
+                        lambda _owner, work, done, _failed: done(work()))
+
+    def choose(dialog):
+        assert isinstance(dialog, WildFlyCheckDialog) and not dialog.grab_current()
+        for key, variable in dialog.fields.items():
+            variable.set(settings[key])
+        for key, widget in dialog.lists.items():
+            widget.insert("1.0", "\n".join(settings[key]))
+        dialog.test_button.invoke()
+        assert "Abweichung · systemd active" in dialog.output.get("1.0", "end")
+        assert "backend.war · FAILED" in dialog.output.get("1.0", "end")
+        screenshot(dialog, "restart-wildfly-settings.png")
+        dialog.save_button.invoke()
+
+    monkeypatch.setattr(window, "wait_window", choose)
+    row.wildfly_button.invoke()
+    args = probe.call_args.args
+    assert args[0].key == app._app_sessions[0].key
+    assert args[1:4] == ("admin", "custom-app.service", settings)
+    assert row.wildfly_button.cget("text") == "WildFly ✓"
+    assert window.save()
+    saved = window.current_library()["items"][0]
+    assert saved["targets"][0]["checks"][0]["wildfly"] == settings
+    reopened = RestartTemplatesDialog(app, [], status_only=True)
+    reopened.list.selection_set(saved["id"])
+    reopened.open_selected()
+    assert reopened.rows[0][1].values()[0]["wildfly"] == settings
+
+
 def test_actual_editor_save_copy_users_service_controls_and_preview(app, monkeypatch):
     window = RestartTemplatesDialog(app, app._app_sessions)
     app.update()

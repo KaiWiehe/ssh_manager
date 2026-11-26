@@ -93,6 +93,8 @@ def test_latest_targets_explicit_user_and_alias_are_preserved():
 
 @pytest.mark.parametrize("organized", [False, True])
 def test_templates_roundtrip_and_backup_validation(tmp_path, monkeypatch, organized):
+    from test_wildfly_deployments import wildfly_settings
+
     for field, name in (("_STATE_FILE", "ui_state.json"), ("_SETTINGS_FILE", "settings.json"),
                         ("_APP_SESSIONS_FILE", "app_sessions.json"), ("_NOTES_FILE", "notes.json")):
         monkeypatch.setattr(storage, field, tmp_path / name)
@@ -103,6 +105,9 @@ def test_templates_roundtrip_and_backup_validation(tmp_path, monkeypatch, organi
             {"id": "essen", "name": "Essen", "parent": "live"},
         ]
         library["items"][0].update(folder="essen", color=TEMPLATE_COLORS["Blau"])
+        library["items"][0]["targets"][0]["checks"] = [{
+            "unit": "instance.service", "expected": "active", "wildfly": wildfly_settings(scanner=True),
+        }]
     storage.save_ui_state(set(), {}, {"restart_templates": library})
     assert storage.load_ui_state()[2]["restart_templates"] == library
     storage.save_settings(default_settings())

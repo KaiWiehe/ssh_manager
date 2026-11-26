@@ -536,6 +536,26 @@ verschiebe sie gemeinsam. Ohne Ordner erscheinen Vorlagen auf der obersten Ebene
 Suche nach Name, Hostname oder Ordner, hake die Server an und übernimm sie gesammelt.
 Häkchen bleiben beim Wechsel des Suchbegriffs erhalten.
 
+**WildFly-Deployments prüfen**
+
+Beim Dienst mit Soll **aktiv** über **WildFly…** die optionale
+Deployment-Prüfung einschalten. Für Standalone-WildFly den Pfad zu
+`jboss-cli.sh`, das Basisverzeichnis der systemd-Unit und die lokale
+Management-IP samt Port angeben. Die Management-Schnittstelle muss direkt
+auf diesem SSH-Host erreichbar sein. **Deployment-Prüfung testen** prüft
+Zugriff und JVM-Zuordnung zur systemd-Prozessgruppe und listet die Deployments.
+Bei aktiven Deployment-Scannern zusätzlich die erwarteten Namen und alle
+Scan-Verzeichnisse eintragen. Pfade werden absolut oder relativ zum
+WildFly-Basisverzeichnis in der Serverkonfiguration unterstützt.
+
+Vor dem Reboot prüft der Lauf den Zugriff und merkt sich die erwarteten
+Deployments. Nach bestätigtem Reboot und aktivem Dienst wartet er innerhalb
+der Service-Wartezeit auf `OK` für alle erwarteten und aktivierten Deployments.
+Fehlende oder fehlerhafte Deployments werden mit Namen gemeldet.
+**Massendienststatus** zeigt dieselbe Prüfung als Momentaufnahme.
+Ein mit dieser Version neu exportiertes Python-Skript verwendet dieselbe
+Prüfung und übernimmt die Einstellungen aus der Vorlage.
+
 Vorlagen lassen sich später ohne Häkchen-Auswahl öffnen. Geänderte Vorlagen als
 Kopie speichern oder ausdrücklich überschreiben. Hostnamen/Ports kommen aus den
 aktuellen Verbindungen; fehlende Verbindungen ersetzen oder entfernen. Vorlagen
@@ -632,9 +652,9 @@ Massen-Neustart-Editor. Beide Aktionen verwenden dieselbe Vorlagenbibliothek;
 es gibt keinen automatischen Zeitplan. Bei Konflikten zwischen geöffneten Fenstern
 die inzwischen geänderte Vorlage erneut öffnen. Änderungen anderer Vorlagen bleiben erhalten.
 
-Der Check liest einmalig `systemctl show` für die eingetragenen Dienste, mit
-standardmäßig acht Servern gleichzeitig; die Begrenzung ist je Lauf änderbar oder abschaltbar. Er führt keinen Neustart oder Dienststart/-stopp aus
-und benötigt keine sudo-Passwörter. Die nichtmodale Ergebnistabelle enthält Server,
+Der Check liest einmalig `systemctl show` für die eingetragenen Dienste und bei
+eingeschalteter WildFly-Prüfung die Deployment-Zustände. Die Abfragen laufen
+parallel und benötigen keine sudo-Passwörter. Die nichtmodale Ergebnistabelle enthält Server,
 Benutzer, Dienst, Soll, Ist und Ergebnis. Fehlende Dienste, SSH-/Abfragefehler und
 Sollabweichungen werden unterschieden. Server ohne Dienste werden ausdrücklich als
 nicht geprüft angezeigt. Abbrechen überspringt wartende Abfragen; laufende Abfragen

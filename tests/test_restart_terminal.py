@@ -52,6 +52,22 @@ def test_latest_status_replaces_the_previous_frame_and_final_table_stays_in_hist
     assert "Neustart wurde nicht ausgelöst" in output and "Ist nicht geprüft" in output
 
 
+def test_live_wildfly_result_keeps_service_and_deployment_details(monkeypatch):
+    view = make_view(monkeypatch, count=1, color=False)
+    view.targets[0].checks[0]["wildfly"] = {}
+    view.show_result({
+        0: RestartResult("online",
+                         "Boot-ID geändert\nAlle Sollzustände erfüllt\napp.service: Soll active, Ist active\n"
+                         "app.service · WildFly · 2 von 2 Deployments OK\nDeaktiviert: archive.war\n"
+                         "app.service · vor Neustart · 0 von 2 Deployments OK\nbackend.war · FAILED",
+                         includes_service_states=True),
+    })
+    output = view.stream.getvalue()
+    assert "Soll active, Ist active" in output
+    assert "2 von 2 Deployments OK" in output and "Deaktiviert: archive.war" in output
+    assert "vor Neustart" in output and "backend.war · FAILED" in output
+
+
 def test_live_table_pages_and_keeps_rows_inside_a_small_terminal(monkeypatch):
     view = make_view(monkeypatch, count=30, size=(38, 10), keys=["n", "p"], color=False)
     view.draw()

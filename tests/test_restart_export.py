@@ -14,19 +14,22 @@ from ssh_manager_app.models import Session
 from ssh_manager_app.restart_export import render_restart_script
 from ssh_manager_app.restart_templates import new_template, resolve_targets, validate_template
 from test_restart_templates_ui import app, screenshot
+from test_wildfly_deployments import deployment, wildfly_response, wildfly_settings
 
 
 @pytest.fixture
 def exported_script(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    def export(*, mode="serial", on_error="continue", common=False, individual=None):
+    def export(*, mode="serial", on_error="continue", common=False, individual=None, wildfly=None):
         connections = [Session("one", "Direkt", [], "direct.example.invalid", "ops", 2201, "app"),
                        Session("two", "via-jump", [], "only-in-ssh-config.invalid", "deploy", source="ssh_alias")]
         template = new_template(connections)
         template.update(name="Nächtliche Wartung", mode=mode, on_error=on_error,
                         reboot_timeout=11, service_timeout=7, password_per_connection=individual is not None)
         template["targets"][0]["checks"] = [{"unit": "app.service", "expected": "active"}]
+        if wildfly:
+            template["targets"][0]["checks"][0]["wildfly"] = wildfly
         template["targets"][1]["checks"] = [{"unit": "old.service", "expected": "inactive"}]
         template = validate_template(template, runnable=True)
         script = render_restart_script(template, resolve_targets(template, connections),
@@ -53,6 +56,58 @@ def test_standalone_preview_in_isolated_python(exported_script):
 
 def load_script(path):
     return runpy.run_path(str(path))["main"].__globals__
+
+
+@pytest.mark.parametrize("recovers", [False, True])
+def test_standalone_requires_deployment_success_after_active_systemd(exported_script, monkeypatch, capsys, recovers):
+    options = wildfly_settings()
+    script = load_script(exported_script(wildfly=options))
+    script["TARGETS"][:] = script["TARGETS"][:1]
+    script["PLAN"]["service_timeout"] = 1
+    targets = script["validate_plan"](script["PLAN"], script["TARGETS"])
+    assert targets[0].checks[0]["wildfly"] == options
+    rebooted = False
+    preflight_deployments = False
+    post_probes = 0
+    monitor = script["run_prepared_restart"]
+    monkeypatch.setitem(script, "run_prepared_restart", lambda *args, **kwargs: monitor(*args, poll_interval=.02, **kwargs))
+    monkeypatch.setattr(sys, "argv", ["neustart.py", "--execute", "--log"])
+    monkeypatch.setattr(script["shutil"], "which", lambda name: name)
+
+    def ssh(_target, _user, command, _cancel, **_options):
+        nonlocal rebooted, post_probes, preflight_deployments
+        if "jboss-cli.sh" in command:
+            assert "SSH_CONNECTION#" in command
+            token = re.search(r"SSH_MANAGER_WILDFLY_[0-9a-f]+", command)[0]
+            if rebooted:
+                post_probes += 1
+            else:
+                preflight_deployments = True
+            state = "OK" if recovers and post_probes >= 2 else "FAILED"
+            return subprocess.CompletedProcess([], 0, wildfly_response(token, {
+                "backend.war": deployment(state), "ui.war": deployment(state),
+            }), "")
+        if "systemctl" in command:
+            return subprocess.CompletedProcess([], 0, "LoadState=loaded\nActiveState=active\n", "")
+        if "sudo" in command:
+            assert preflight_deployments
+            if "-l -- reboot" not in command:
+                assert not rebooted
+                rebooted = True
+            markers = re.findall(r"__SSH_MANAGER_SUDO_(?:READY|DONE)_[a-f0-9]+", command)
+            return subprocess.CompletedProcess([], 0, "\n".join(markers) + "\n", "")
+        boot = ("2" if rebooted else "1") * 8 + "-1111-1111-1111-111111111111"
+        return subprocess.CompletedProcess([], 0,
+            f"{script['IDENTITY_MARKER']}:{'a' * 32}:{boot}:192.0.2.5 51000 192.0.2.25 22\n", "")
+
+    monkeypatch.setitem(script, "mass_ssh", ssh)
+    assert script["main"](script["PLAN"], script["TARGETS"]) == (0 if recovers else 1)
+    assert rebooted and preflight_deployments and post_probes >= 2
+    output = capsys.readouterr().out
+    assert "WildFly-Deployments" in output and "Ist active" in output
+    assert "backend.war · FAILED" in output
+    assert "vor Neustart" in output.split("\nErgebnisse\n", 1)[-1]
+    assert ("2 von 2 Deployments OK" in output) is recovers
 
 
 @pytest.mark.parametrize("shared_machine_id", [False, True])

@@ -6,7 +6,7 @@ from dataclasses import replace
 import uuid
 
 from .constants import PALETTE
-from .restart_runtime import validate_execution_options, service_check
+from .restart_runtime import configured_service_check, validate_execution_options, service_check
 from .ssh_utils import connection_value
 
 TEMPLATE_COLORS = dict([("Ohne Farbe", "")] + PALETTE)
@@ -98,7 +98,7 @@ def validate_template(item, *, runnable=False):
         for check in checks:
             if not isinstance(check, dict) or not isinstance(check.get("unit"), str):
                 raise ValueError("Ungültige Serviceprüfung.")
-            value = service_check(check["unit"], check.get("expected"))
+            value = configured_service_check(check["unit"], check)
             if value["unit"] in units:
                 raise ValueError("Service je Server nur einmal prüfen.")
             units.add(value["unit"])

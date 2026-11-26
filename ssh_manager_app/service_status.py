@@ -9,6 +9,7 @@ import tkinter as tk
 from .window_policy import AppWindow
 from tkinter import ttk
 
+from .mass_restart import RestartCancelled, inspect_wildfly_deployments
 from .restart_runtime import probe_unit
 from .result_table import ResultTableTools
 from .ui_components import fit_window_to_parent
@@ -21,7 +22,15 @@ class ServiceStatus:
     detail: str = ""
 
 
-def check_unit(session, user, check):
+def check_unit(session, user, check, *, cancel=None):
+    if "wildfly" in check:
+        try:
+            outcome, actual, detail = inspect_wildfly_deployments(
+                session, user, check["unit"], check["wildfly"], cancel if cancel is not None else threading.Event(),
+            )
+        except RestartCancelled:
+            return ServiceStatus("nicht geprüft", "Nicht geprüft", "Prüfung abgebrochen")
+        return ServiceStatus(actual, {"ok": "Soll erfüllt", "mismatch": "Abweichung", "error": "Fehler"}[outcome], detail)
     kind, state = probe_unit(session, user, check["unit"])
     if kind != "state":
         actual = "nicht vorhanden" if state == "Dienst nicht vorhanden" else "nicht geprüft"
@@ -122,7 +131,7 @@ class ServiceStatusDialog(AppWindow):
 
 
 def run_service_status(app, name, targets, *, max_parallel=0):
-    """No reboot or credential path: only systemctl show through probe_unit."""
+    """Read systemd and optional WildFly states once, without reboot or sudo."""
     from .parallelism import worker_count
     window = ServiceStatusDialog(app, name, targets, max_parallel)
     reports = queue.Queue()
@@ -139,7 +148,7 @@ def run_service_status(app, name, targets, *, max_parallel=0):
                 result = ServiceStatus("—", "Nicht geprüft", "Keine Dienste hinterlegt")
             else:
                 try:
-                    result = check_unit(session, user, check)
+                    result = check_unit(session, user, check, cancel=cancel)
                 except Exception as error:
                     from .errors import record_failure
                     record_failure(error)

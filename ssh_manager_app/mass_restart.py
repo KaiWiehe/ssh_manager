@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from hashlib import sha256
 from ipaddress import ip_address
@@ -22,6 +22,10 @@ from .restart_runtime import (RestartResult, RestartScheduler, SshTarget, _ssh_a
                               execution_policy, service_probe_result)
 from .restart_winjob import CREATE_SUSPENDED, WindowsRestartJob
 from .ssh_failures import SSH_AUTHENTICATION_HELP, ssh_authentication_failed
+from .wildfly_deployments import (WILDFLY_CGROUP_ERROR, WILDFLY_CLI_ERROR, WILDFLY_LOCAL_ADDRESS_ERROR, WILDFLY_SCANNER_ERROR,
+                                 WildFlyScannerInspectionRequired,
+                                 parse_wildfly_snapshot, wildfly_deployment_result,
+                                 wildfly_expected_deployments, wildfly_probe_command)
 
 
 MACHINE_ID_FILE = "/etc/machine-id"
@@ -37,6 +41,7 @@ IDENTITY_COMMAND = (
 IDENTITY_CHANGED = 79
 REBOOT_COMMAND = "reboot"
 PROBE_TIMEOUT = 8
+WILDFLY_PROBE_TIMEOUT = 15
 REBOOT_REQUEST_TIMEOUT = 20
 
 
@@ -50,6 +55,8 @@ class RestartIdentity:
 @dataclass(frozen=True)
 class RestartPreflight(RestartResult):
     identity: RestartIdentity | None = None
+    wildfly_expected: dict[str, frozenset[str]] = field(default_factory=dict)
+    wildfly_before: tuple[str, ...] = ()
 
 
 class RestartCancelled(Exception):
@@ -267,6 +274,78 @@ def _probe_restart_unit(session, user, unit, identity, cancel, *, timeout=PROBE_
     return service_probe_result(result)
 
 
+def _read_wildfly_probe(session, user, command, cancel, timeout):
+    try:
+        result = mass_ssh(session, user, command, cancel, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return "connection", "Zeitüberschreitung der WildFly-Abfrage."
+    except OSError:
+        return "error", "OpenSSH konnte nicht ausgeführt werden."
+    failure = _ssh_verification_error(result)
+    if failure:
+        return "error", failure
+    failures = {
+        IDENTITY_CHANGED: "Zielidentität oder Boot-ID hat sich während der WildFly-Abfrage geändert.",
+        WILDFLY_LOCAL_ADDRESS_ERROR: "Management-IP ist keine verifizierbare lokale Adresse des SSH-Ziels.",
+        WILDFLY_CLI_ERROR: "jboss-cli.sh fehlt oder ist für den SSH-Benutzer nicht ausführbar.",
+        WILDFLY_SCANNER_ERROR: "Mindestens ein Scanner-Verzeichnis ist für den SSH-Benutzer nicht lesbar.",
+        WILDFLY_CGROUP_ERROR: "Lokale systemd-Prozessgruppe konnte nicht gelesen werden.",
+    }
+    if result.returncode in failures:
+        return "error", failures[result.returncode]
+    if result.returncode == 255:
+        return "connection", "SSH nicht erreichbar."
+    if result.returncode:
+        diagnostic = (result.stdout + "\n" + result.stderr).casefold()
+        if any(text in diagnostic for text in ("authentication", "username:", "password:", "permission denied",
+                                               "not authorized", "unauthorized")):
+            return "error", "WildFly-Authentifizierung oder Leseberechtigung fehlgeschlagen."
+        if any(text in diagnostic for text in ("connection refused", "failed to connect", "unable to connect",
+                                               "not available at", "connection timed out", "command timeout")):
+            return "connection", "WildFly-Management noch nicht erreichbar."
+        return "error", "WildFly-CLI-Aufruf fehlgeschlagen. CLI, Management-Port und Leserechte prüfen."
+    return "output", result.stdout
+
+
+def probe_wildfly_deployments(session, user, unit, settings, identity, cancel, *, timeout=WILDFLY_PROBE_TIMEOUT):
+    deadline = time.monotonic() + timeout
+    scanner_checks = (True,) if settings["scanner_dirs"] else (False, True)
+    for inspect_scanners in scanner_checks:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return "connection", "Zeitüberschreitung der WildFly-Abfrage."
+        token = "SSH_MANAGER_WILDFLY_" + token_hex(16)
+        command = _guarded_command(identity, wildfly_probe_command(settings, token, unit, inspect_scanners=inspect_scanners))
+        kind, output = _read_wildfly_probe(session, user, command, cancel, remaining)
+        if kind != "output":
+            return kind, output
+        try:
+            return "snapshot", parse_wildfly_snapshot(output, token, settings, inspect_scanners=inspect_scanners)
+        except WildFlyScannerInspectionRequired:
+            continue
+        except ValueError as error:
+            return "error", str(error)
+    return "error", "WildFly-Scanner-Konfiguration konnte nicht verifiziert werden."
+
+
+def inspect_wildfly_deployments(session, user, unit, settings, cancel):
+    kind, identity = read_restart_identity(session, user, cancel)
+    if kind != "identity":
+        return "error", "nicht geprüft", identity
+    kind, state = _probe_restart_unit(session, user, unit, identity, cancel)
+    if kind != "state":
+        return "error", "nicht geprüft", state
+    kind, snapshot = probe_wildfly_deployments(session, user, unit, settings, identity, cancel)
+    if kind != "snapshot":
+        return "error", state, snapshot
+    try:
+        expected = wildfly_expected_deployments(settings, snapshot)
+    except ValueError as error:
+        return "error", state, str(error)
+    ready, _, detail = wildfly_deployment_result(snapshot, expected, show_ok=True)
+    return ("ok" if state == "active" and ready else "mismatch"), state, detail
+
+
 def check_restart_target(session, user, checks, password, cancel, report, reserve_identity=None):
     report("preflight", "Vorprüfung gestartet")
     kind, identity = read_restart_identity(session, user, cancel)
@@ -282,10 +361,31 @@ def check_restart_target(session, user, checks, password, cancel, report, reserv
             return failed(conflict)
     boot = RestartIdentity(identity.machine_id, identity.boot_id)
     failures = []
+    deployment_notes = []
+    deployment_targets = {}
+    deployment_failures = []
     for check in checks:
-        kind, state = _probe_restart_unit(session, user, check["unit"], boot, cancel)
+        unit = check["unit"]
+        kind, state = _probe_restart_unit(session, user, unit, boot, cancel)
         if kind != "state":
-            failures.append(f"{check['unit']}: {state}")
+            failures.append(f"{unit}: {state}")
+            continue
+        if "wildfly" in check:
+            kind, snapshot = probe_wildfly_deployments(session, user, unit, check["wildfly"], identity, cancel)
+            if kind != "snapshot":
+                failures.append(f"{unit}: WildFly · {snapshot}")
+                continue
+            try:
+                expected = wildfly_expected_deployments(check["wildfly"], snapshot)
+            except ValueError as error:
+                failures.append(f"{unit}: {error}")
+                continue
+            deployment_targets[unit] = expected
+            _, failed_deployment, detail = wildfly_deployment_result(snapshot, expected)
+            note = f"{unit} · vor Neustart · {detail}"
+            deployment_notes.append(note)
+            if failed_deployment:
+                deployment_failures.append(note)
     if failures:
         return failed("Vorprüfung der Dienste fehlgeschlagen\n" + "\n".join(failures))
     try:
@@ -299,8 +399,9 @@ def check_restart_target(session, user, checks, password, cancel, report, reserv
         return failed("Zielidentität oder Boot-ID hat sich während der Vorprüfung geändert.")
     if result.returncode or not confirmed:
         return failed("sudo-Berechtigung für reboot nicht verifiziert. sudoers und Passwortmodus prüfen.")
-    report("preflight", "Vorprüfung bestanden; wartet auf den gesamten Plan")
-    return RestartPreflight("online", "Vorprüfung bestanden", identity=identity)
+    report("preflight", "\n".join(["Vorprüfung bestanden; wartet auf den gesamten Plan", *deployment_notes]))
+    return RestartPreflight("online", "\n".join(["Vorprüfung bestanden", *deployment_notes]), identity=identity,
+                            wildfly_expected=deployment_targets, wildfly_before=tuple(deployment_failures))
 
 
 def _request_verified_reboot(session, user, password, identity, cancel, timeout, report):
@@ -356,15 +457,30 @@ def wait_for_new_boot(session, user, original, deadline, cancel, report, monoton
     return None, RestartResult("timeout", "Neustart nicht bestätigt. Innerhalb der Frist keine stabile neue Boot-ID erhalten.")
 
 
-def wait_for_restart_services(session, user, checks, identity, timeout, cancel, report, monotonic, poll_interval):
+def wait_for_restart_services(session, user, checks, identity, timeout, cancel, report, monotonic, poll_interval,
+                              wildfly_expected=None):
     deadline = monotonic() + timeout
     latest = {check["unit"]: "nicht geprüft" for check in checks}
+    deployments = {check["unit"]: "nicht geprüft" for check in checks if "wildfly" in check}
+    failed_deployments = set()
+    wildfly_expected = wildfly_expected or {}
     evidence = "Boot-ID geändert; SSH wieder erreichbar"
 
     def result(status, message):
         details = [f"{check['unit']}: Soll {check['expected']}, Ist {latest[check['unit']]}" for check in checks]
+        details.extend(f"{unit} · WildFly · {state}" for unit, state in deployments.items())
         return RestartResult(status, "\n".join([evidence, message, *details]), includes_service_states=True)
 
+    def update_progress(values, unit, value):
+        if values[unit] == value:
+            return
+        values[unit] = value
+        details = [f"{item}: {state}" for item, state in latest.items()]
+        details.extend(f"{item} · WildFly · {state}" for item, state in deployments.items())
+        report("waiting_service", "\n".join(details))
+
+    if any(not wildfly_expected.get(unit) for unit in deployments):
+        return result("error", "Soll-Deployments aus der Vorprüfung fehlen.")
     while monotonic() < deadline and not cancel.is_set():
         matches = True
         for check in checks:
@@ -374,24 +490,55 @@ def wait_for_restart_services(session, user, checks, identity, timeout, cancel, 
                 break
             unit = check["unit"]
             kind, state = _probe_restart_unit(session, user, unit, identity, cancel, timeout=min(PROBE_TIMEOUT, remaining))
-            if latest[unit] != state:
-                latest[unit] = state
-                report("waiting_service", "\n".join(f"{item}: {value}" for item, value in latest.items()))
+            update_progress(latest, unit, state)
             if kind == "error":
                 return result("error", "Dienstprüfung fehlgeschlagen")
-            matches &= kind == "state" and state == check["expected"]
-        if matches and monotonic() <= deadline:
-            return result("online", "Alle Service-Sollzustände erfüllt")
+            service_ready = kind == "state" and state == check["expected"]
+            matches &= service_ready
+            if unit not in deployments:
+                continue
+            if not service_ready:
+                failed_deployments.discard(unit)
+                update_progress(deployments, unit, "wartet auf aktiven Dienst")
+                continue
+            remaining = deadline - monotonic()
+            if remaining <= 0 or cancel.is_set():
+                matches = False
+                break
+            kind, snapshot = probe_wildfly_deployments(session, user, unit, check["wildfly"], identity, cancel,
+                                                        timeout=min(WILDFLY_PROBE_TIMEOUT, remaining))
+            if kind != "snapshot":
+                failed_deployments.discard(unit)
+                update_progress(deployments, unit, snapshot)
+                if kind == "error":
+                    return result("error", "WildFly-Abfrage fehlgeschlagen")
+                matches = False
+                continue
+            ready, failed, detail = wildfly_deployment_result(snapshot, wildfly_expected[unit])
+            if failed:
+                failed_deployments.add(unit)
+            else:
+                failed_deployments.discard(unit)
+            update_progress(deployments, unit, detail)
+            matches &= ready
+        if matches and monotonic() <= deadline and not cancel.is_set():
+            return result("online", "Alle Service- und Deployment-Sollzustände erfüllt" if deployments
+                          else "Alle Service-Sollzustände erfüllt")
         cancel.wait(max(0, min(poll_interval, deadline - monotonic())))
     if cancel.is_set():
         return result("stopped", "Dienstüberwachung abgebrochen")
+    if failed_deployments:
+        return result("error", "WildFly meldete fehlgeschlagene Deployments bis zum Ende der Service-Wartezeit")
     return result("timeout", "Service-Wartezeit abgelaufen")
 
 
 def run_prepared_restart(session, user, checks, take_password, original, reboot_timeout, service_timeout,
-                         cancel, report, known_boot_ids=(), *, monotonic=time.monotonic, poll_interval=2):
+                         cancel, report, known_boot_ids=(), *, monotonic=time.monotonic, poll_interval=2,
+                         wildfly_expected=None):
     if cancel.is_set():
         return RestartResult("not_started", "Neustart wurde nicht ausgelöst")
+    if any("wildfly" in check and not (wildfly_expected or {}).get(check["unit"]) for check in checks):
+        return RestartResult("error", "Soll-Deployments aus der Vorprüfung fehlen. Neustart wurde nicht ausgelöst.")
     deadline = monotonic() + reboot_timeout
     report("restarting", "Sende Neustartanforderung")
     try:
@@ -409,7 +556,7 @@ def run_prepared_restart(session, user, checks, take_password, original, reboot_
         return RestartResult("online", "Boot-ID geändert; SSH wieder erreichbar")
     try:
         return wait_for_restart_services(session, user, checks, identity, service_timeout, cancel,
-                                         report, monotonic, poll_interval)
+                                         report, monotonic, poll_interval, wildfly_expected)
     except RestartCancelled:
         return RestartResult("stopped", "Boot-ID geändert; Dienstüberwachung abgebrochen")
 
@@ -520,12 +667,18 @@ class MassRestartRun:
             return password
 
         try:
-            original = self.preflights[index].identity
-            if index not in self.identity_checks:
+            preflight = self.preflights[index]
+            original = preflight.identity
+            if index not in self.identity_checks and not preflight.wildfly_expected:
                 original = RestartIdentity(original.machine_id, original.boot_id)
-            return run_prepared_restart(*self.targets[index], take_password, original,
-                                        self.plan["reboot_timeout"], self.plan["service_timeout"], self.cancel,
-                                        lambda state, detail: self._report(index, state, detail), self.known_boot_ids)
+            wildfly = {"wildfly_expected": preflight.wildfly_expected} if preflight.wildfly_expected else {}
+            result = run_prepared_restart(*self.targets[index], take_password, original,
+                                          self.plan["reboot_timeout"], self.plan["service_timeout"], self.cancel,
+                                          lambda state, detail: self._report(index, state, detail), self.known_boot_ids,
+                                          **wildfly)
+            if preflight.wildfly_before:
+                result = replace(result, detail="\n".join([result.detail, *preflight.wildfly_before]))
+            return result
         except Exception as error:
             return self._unexpected(index, "Neustartüberwachung", error)
 

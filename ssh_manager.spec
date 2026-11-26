@@ -11,7 +11,7 @@ PACKAGE_DATA = (
 RESTART_EXPORT_SOURCES = [
     (str(ROOT / 'ssh_manager_app' / name), 'restart_export_sources')
     for name in ('restart_runtime.py', 'mass_restart.py', 'restart_winjob.py', 'restart_script.py',
-                 'restart_terminal.py', 'ssh_utils.py', 'ssh_failures.py')
+                 'restart_terminal.py', 'ssh_utils.py', 'ssh_failures.py', 'wildfly_deployments.py')
 ]
 
 
