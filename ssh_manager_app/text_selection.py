@@ -7,6 +7,9 @@ from tkinter import font, ttk
 from weakref import WeakSet
 
 
+NATIVE_HEADER_THEMES = ("vista", "xpnative")
+
+
 @dataclass(frozen=True)
 class DisplayText:
     text: str
@@ -72,7 +75,7 @@ def heading_text(tree, column, x, y, style):
     theme = ttk.Style(tree)
     padding = tree.tk.splitlist(theme.lookup(name, "padding") or "0")
     border = theme.lookup(name, "borderwidth")
-    if theme.theme_use() in ("vista", "xpnative"):
+    if theme.theme_use() in NATIVE_HEADER_THEMES:
         # Windows' native HeaderItem element adds four pixels per side.
         border = 4
     elif "lightcolor" in theme.element_options("Treeheading.border"):
@@ -349,12 +352,16 @@ class DisplayTextSelection:
 
         background = option("background", "SystemWindow")
         foreground = content.foreground or option("foreground", "SystemWindowText")
+        if content.column and not content.row and style.theme_use() in NATIVE_HEADER_THEMES:
+            # Native headers paint their own hover surface over the ttk
+            # background. End that hover while the caption is being selected.
+            widget.event_generate("<Leave>")
+            background = "SystemWindow"
         if isinstance(widget, tk.Listbox):
             item = widget.nearest(y)
             prefix = "select" if item in widget.curselection() else ""
             background = widget.itemcget(item, prefix + "background") or widget.cget(prefix + "background")
-            foreground = (widget.itemcget(item, prefix + "foreground")
-                          if not prefix else "") or widget.cget(prefix + "foreground")
+            foreground = widget.itemcget(item, prefix + "foreground") or widget.cget(prefix + "foreground")
         selection, selection_text = "SystemHighlight", "SystemHighlightText"
         if widget.winfo_rgb(background) == widget.winfo_rgb(selection):
             selection, selection_text = selection_text, selection

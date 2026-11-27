@@ -272,10 +272,12 @@ def test_list_text_selection_preserves_selected_row_and_colors(app, export):
     controller = install_text_selection(app)
     widget = tk.Listbox(app, exportselection=export, selectbackground="#345678")
     widget.insert("end", "List text stays put")
+    widget.itemconfigure(0, selectforeground="#f0edf4")
     widget.pack()
     assert drag(app, widget, end=80) == "List text stays put"
     assert widget.curselection() == (0,)
     assert controller.overlay.cget("background") == "#345678"
+    assert controller.overlay.itemcget(controller.item, "fill") == "#f0edf4"
     controller.close()
     app.update()
     assert widget.curselection() == (0,)
