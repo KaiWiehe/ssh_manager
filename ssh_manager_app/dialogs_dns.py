@@ -7,6 +7,7 @@ from tkinter import ttk
 from .window_policy import messagebox
 
 from .dns_lookup import DnsLookupResult, normalize_dns_server
+from .text_selection import install_text_selection
 from .ui_components import install_context_help, build_dialog_actions, build_dialog_header, center_on_parent, fit_window_to_parent, set_validation_state
 
 
@@ -264,12 +265,10 @@ class DnsLookupResultsDialog(AppWindow):
         self.resizable(True, True)
         self._results = list(results)
         self._show_connection_names = any(result.connection_name for result in self._results)
-        self._selection_entry: tk.Entry | None = None
-        self._selection_entry_var: tk.StringVar | None = None
-        self._selection_anchor: int | None = None
         self.geometry("1080x420" if self._show_connection_names else "900x420")
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build(parent)
+        install_text_selection(parent).select_cells_on_click(self._tree)
         self._center_on_parent(parent)
         self.bind("<Escape>", lambda _e: self.destroy())
 
@@ -319,8 +318,6 @@ class DnsLookupResultsDialog(AppWindow):
         self._tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
-        self._tree.bind("<ButtonPress-1>", self._start_cell_selection, add="+")
-        self._tree.bind("<B1-Motion>", self._extend_cell_selection, add="+")
 
         for result in self._results:
             direction = "IP -> DNS" if result.mode == "reverse" else "DNS -> IP"
@@ -343,114 +340,6 @@ class DnsLookupResultsDialog(AppWindow):
         ttk.Button(btn_frame, text="Alle kopieren", command=lambda: self._copy_all(parent), width=14).pack(side="left", padx=(0, 6))
         ttk.Button(btn_frame, text="Ergebnisse kopieren", command=lambda: self._copy_values(parent), width=18).pack(side="left", padx=(0, 6))
         ttk.Button(btn_frame, text="Schließen", command=self.destroy, width=12, style="Accent.TButton").pack(side="right")
-
-    def _start_cell_selection(self, event: tk.Event) -> str | None:
-        item_id = self._tree.identify_row(event.y)
-        column_id = self._tree.identify_column(event.x)
-        region = self._tree.identify_region(event.x, event.y)
-        if not item_id or not column_id or region not in {"tree", "cell"}:
-            self._close_cell_selection()
-            return None
-
-        bbox = self._tree.bbox(item_id, column_id)
-        if not bbox:
-            self._close_cell_selection()
-            return None
-        text = self._cell_text(item_id, column_id)
-        self._close_cell_selection()
-
-        cell_x, cell_y, cell_width, cell_height = bbox
-        self._selection_entry_var = tk.StringVar(value=text)
-        style = ttk.Style(self)
-        background = style.lookup("Treeview", "background") or "SystemWindow"
-        foreground = style.lookup("Treeview", "foreground") or "SystemWindowText"
-        font = style.lookup("Treeview", "font") or "TkDefaultFont"
-        entry = tk.Entry(
-            self._tree,
-            textvariable=self._selection_entry_var,
-            relief="flat",
-            borderwidth=0,
-            highlightthickness=0,
-            readonlybackground=background,
-            background=background,
-            foreground=foreground,
-            selectbackground="SystemHighlight",
-            selectforeground="SystemHighlightText",
-            selectborderwidth=0,
-            insertwidth=0,
-            font=font,
-        )
-        entry.configure(state="readonly")
-        entry.place(x=cell_x + 1, y=cell_y, width=max(1, cell_width - 2), height=cell_height)
-        entry.focus_set()
-        self._selection_entry = entry
-
-        index = int(entry.index(f"@{max(0, event.x - cell_x - 1)}"))
-        self._selection_anchor = index
-        entry.icursor(index)
-        entry.selection_clear()
-        entry.bind("<ButtonPress-1>", self._restart_cell_selection)
-        entry.bind("<B1-Motion>", self._extend_cell_selection)
-        entry.bind("<Escape>", self._close_cell_selection)
-        entry.bind("<Control-a>", self._select_entire_cell)
-        entry.bind("<Control-A>", self._select_entire_cell)
-        return "break"
-
-    def _restart_cell_selection(self, event: tk.Event) -> str:
-        entry = self._selection_entry
-        if entry is not None:
-            index = int(entry.index(f"@{event.x}"))
-            self._selection_anchor = index
-            entry.icursor(index)
-            entry.selection_clear()
-        return "break"
-
-    def _extend_cell_selection(self, event: tk.Event) -> str | None:
-        entry = self._selection_entry
-        anchor = self._selection_anchor
-        if entry is None or anchor is None:
-            return None
-        try:
-            pointer_x = event.x_root - entry.winfo_rootx()
-            index = int(entry.index(f"@{pointer_x}"))
-            entry.selection_clear()
-            if index != anchor:
-                entry.selection_range(min(anchor, index), max(anchor, index))
-            entry.icursor(index)
-        except tk.TclError:
-            self._close_cell_selection()
-        return "break"
-
-    def _select_entire_cell(self, _event: tk.Event | None = None) -> str:
-        entry = self._selection_entry
-        if entry is not None:
-            entry.selection_range(0, "end")
-            entry.icursor("end")
-        return "break"
-
-    def _close_cell_selection(self, _event: tk.Event | None = None) -> str:
-        entry = getattr(self, "_selection_entry", None)
-        if entry is not None:
-            try:
-                entry.destroy()
-            except tk.TclError:
-                pass
-        self._selection_entry = None
-        self._selection_entry_var = None
-        self._selection_anchor = None
-        return "break"
-
-    def _cell_text(self, item_id: str, column_id: str) -> str:
-        if column_id == "#0":
-            return str(self._tree.item(item_id, "text"))
-        try:
-            value_index = int(column_id[1:]) - 1
-        except (TypeError, ValueError):
-            return ""
-        values = self._tree.item(item_id, "values")
-        if value_index < 0 or value_index >= len(values):
-            return ""
-        return str(values[value_index])
 
     def _status_label(self, result: DnsLookupResult) -> str:
         if result.status == "ok":

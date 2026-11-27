@@ -233,8 +233,6 @@ def test_dns_results_dialog_left_aligns_columns_and_headers():
         _result_label=lambda result: ", ".join(result.results),
         _copy_all=MagicMock(),
         _copy_values=MagicMock(),
-        _start_cell_selection=MagicMock(),
-        _extend_cell_selection=MagicMock(),
         destroy=MagicMock(),
     )
     parent = MagicMock()
@@ -273,8 +271,6 @@ def test_dns_results_dialog_adds_connection_name_before_hostname_for_sessions():
         _result_label=lambda lookup: ", ".join(lookup.results),
         _copy_all=MagicMock(),
         _copy_values=MagicMock(),
-        _start_cell_selection=MagicMock(),
-        _extend_cell_selection=MagicMock(),
         destroy=MagicMock(),
     )
     tree = MagicMock()
@@ -294,55 +290,6 @@ def test_dns_results_dialog_adds_connection_name_before_hostname_for_sessions():
     assert tree.insert.call_args.kwargs["values"][0] == "server.example.com"
 
 
-def test_dns_results_dialog_cell_text_covers_first_and_data_columns():
-    dialog = object.__new__(DnsLookupResultsDialog)
-    dialog._tree = MagicMock()
-    dialog._tree.item.side_effect = lambda _item, option: {
-        "text": "example.com",
-        "values": ("DNS -> IP", "93.184.216.34", "Resolve-DnsName", "OK"),
-    }[option]
-
-    assert dialog._cell_text("row-1", "#0") == "example.com"
-    assert dialog._cell_text("row-1", "#1") == "DNS -> IP"
-    assert dialog._cell_text("row-1", "#2") == "93.184.216.34"
-    assert dialog._cell_text("row-1", "#3") == "Resolve-DnsName"
-    assert dialog._cell_text("row-1", "#4") == "OK"
-
-
-def test_dns_results_dialog_marks_cell_text_with_range_selection():
-    dialog = object.__new__(DnsLookupResultsDialog)
-    dialog._selection_entry = None
-    dialog._selection_entry_var = None
-    dialog._selection_anchor = None
-    dialog._tree = MagicMock()
-    dialog._tree.identify_row.return_value = "row-1"
-    dialog._tree.identify_column.return_value = "#2"
-    dialog._tree.identify_region.return_value = "cell"
-    dialog._tree.bbox.return_value = (10, 20, 120, 24)
-    dialog._tree.item.return_value = ("DNS -> IP", "93.184.216.34", "Resolve-DnsName", "OK")
-    entry = MagicMock()
-    entry.index.side_effect = [2, 8]
-    entry.winfo_rootx.return_value = 100
-    style = MagicMock()
-    style.lookup.return_value = ""
-
-    with patch("ssh_manager_app.dialogs_dns.tk.StringVar"), \
-         patch("ssh_manager_app.dialogs_dns.tk.Entry", return_value=entry) as entry_cls, \
-         patch("ssh_manager_app.dialogs_dns.ttk.Style", return_value=style):
-        result = dialog._start_cell_selection(SimpleNamespace(x=25, y=25))
-        drag_result = dialog._extend_cell_selection(SimpleNamespace(x_root=150))
-
-    assert result == "break"
-    assert drag_result == "break"
-    assert entry_cls.call_args.kwargs["relief"] == "flat"
-    assert entry_cls.call_args.kwargs["borderwidth"] == 0
-    assert entry_cls.call_args.kwargs["highlightthickness"] == 0
-    entry.place.assert_called_once_with(x=11, y=20, width=118, height=24)
-    entry.selection_range.assert_called_once_with(2, 8)
-    entry.selection_from.assert_not_called()
-    entry.selection_to.assert_not_called()
-
-
 def test_dns_results_dialog_is_non_modal():
     result = DnsLookupResult("example.com", "forward", ["10.0.0.1"], "Python socket", "ok")
 
@@ -354,7 +301,7 @@ def test_dns_results_dialog_is_non_modal():
          patch.object(DnsLookupResultsDialog, "transient"), \
          patch.object(DnsLookupResultsDialog, "protocol"), \
          patch.object(DnsLookupResultsDialog, "grab_set") as grab_set, \
-         patch.object(DnsLookupResultsDialog, "_build"), \
+         patch.object(DnsLookupResultsDialog, "_build", autospec=True, side_effect=lambda dialog, _: setattr(dialog, "_tree", MagicMock())), \
          patch.object(DnsLookupResultsDialog, "_center_on_parent"), \
          patch.object(DnsLookupResultsDialog, "bind"):
         DnsLookupResultsDialog(MagicMock(), [result])
